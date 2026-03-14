@@ -19,6 +19,9 @@ namespace Tjdtjq5.UGSManager
 
         protected bool _isLoading;
         protected string _lastError;
+        protected string _lastSuccess;
+        protected string _lastResult;      // 실행 결과 (테스트 등)
+        protected bool _lastResultIsError; // 결과가 에러인지
         protected DateTime _lastRefreshTime;
 
         // Dashboard 캐시
@@ -181,28 +184,56 @@ namespace Tjdtjq5.UGSManager
 
         // ─── 에러/로딩 ──────────────────────────────────
 
-        /// <summary>에러 메시지 빨간 박스</summary>
+        /// <summary>에러 메시지 빨간 박스 + 복사 버튼</summary>
         protected void DrawError()
         {
             if (string.IsNullOrEmpty(_lastError)) return;
+            DrawNotification("Error", _lastError, COL_ERROR,
+                new Color(0.35f, 0.12f, 0.12f), new Color(0.95f, 0.60f, 0.60f),
+                () => _lastError = null);
+        }
 
+        /// <summary>성공 메시지 초록 박스</summary>
+        protected void DrawSuccess()
+        {
+            if (string.IsNullOrEmpty(_lastSuccess)) return;
+            DrawNotification("Success", _lastSuccess, COL_SUCCESS,
+                new Color(0.12f, 0.28f, 0.14f), new Color(0.60f, 0.90f, 0.65f),
+                () => _lastSuccess = null);
+        }
+
+        /// <summary>실행 결과 알림 (테스트 등)</summary>
+        protected void DrawResult()
+        {
+            if (string.IsNullOrEmpty(_lastResult)) return;
+            if (_lastResultIsError)
+                DrawNotification("Result", _lastResult, COL_ERROR,
+                    new Color(0.35f, 0.12f, 0.12f), new Color(0.95f, 0.60f, 0.60f),
+                    () => _lastResult = null);
+            else
+                DrawNotification("Result", _lastResult, COL_INFO,
+                    new Color(0.12f, 0.18f, 0.30f), new Color(0.70f, 0.85f, 0.95f),
+                    () => _lastResult = null);
+        }
+
+        /// <summary>공통 알림 박스 (라벨 + 내용 + Copy + 닫기)</summary>
+        void DrawNotification(string label, string content, Color labelColor, Color bgColor, Color textColor, Action onClose)
+        {
             GUILayout.Space(4);
-            EditorGUILayout.BeginVertical(GetBgStyle(new Color(0.35f, 0.12f, 0.12f)));
+            EditorGUILayout.BeginVertical(GetBgStyle(bgColor));
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Error", new GUIStyle(EditorStyles.boldLabel)
-                { normal = { textColor = COL_ERROR } }, GUILayout.Width(40));
-
-            if (GUILayout.Button("✕", GUILayout.Width(20), GUILayout.Height(16)))
-                _lastError = null;
-
+            EditorGUILayout.LabelField(label, new GUIStyle(EditorStyles.boldLabel)
+                { normal = { textColor = labelColor } }, GUILayout.Width(55));
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Copy", EditorStyles.miniButton, GUILayout.Width(36), GUILayout.Height(16)))
+                EditorGUIUtility.systemCopyBuffer = content;
+            if (GUILayout.Button("✕", EditorStyles.miniButton, GUILayout.Width(18), GUILayout.Height(16)))
+                onClose?.Invoke();
             EditorGUILayout.EndHorizontal();
 
-            if (!string.IsNullOrEmpty(_lastError))
-            {
-                EditorGUILayout.LabelField(_lastError, new GUIStyle(EditorStyles.wordWrappedLabel)
-                    { normal = { textColor = new Color(0.95f, 0.60f, 0.60f) } });
-            }
+            EditorGUILayout.LabelField(content, new GUIStyle(EditorStyles.wordWrappedLabel)
+                { normal = { textColor = textColor } });
 
             EditorGUILayout.EndVertical();
         }
@@ -269,6 +300,151 @@ namespace Tjdtjq5.UGSManager
                 EditorGUILayout.LabelField(text ?? "", style, GUILayout.Width(width));
             else
                 EditorGUILayout.LabelField(text ?? "", style);
+        }
+
+        // ─── 리사이저블 컬럼 ────────────────────────────
+
+        /// <summary>컬럼 정의</summary>
+        protected struct ColDef
+        {
+            public string Name;
+            public float DefaultWidth;
+            public bool Resizable;
+            public float MinWidth;
+
+            public ColDef(string name, float defaultWidth = 0f, bool resizable = false, float minWidth = 40f)
+            {
+                Name = name;
+                DefaultWidth = defaultWidth;
+                Resizable = resizable;
+                MinWidth = minWidth;
+            }
+        }
+
+        /// <summary>
+        /// Rect 기반 리사이저블 컬럼 헤더. EditorPrefs로 너비 자동 저장/복원.
+        /// width=0인 컬럼은 나머지 공간을 사용 (1개만 허용).
+        /// </summary>
+        protected class ResizableColumns
+        {
+            readonly string _prefsPrefix;
+            readonly ColDef[] _defs;
+            readonly float[] _widths;
+            readonly bool[] _dragging;
+
+            const float DRAG_W = 6f;
+            static readonly Color COL_DIVIDER = new(0.35f, 0.35f, 0.40f);
+
+            public int Count => _defs.Length;
+
+            public ResizableColumns(string prefsPrefix, ColDef[] defs)
+            {
+                _prefsPrefix = prefsPrefix;
+                _defs = defs;
+                _widths = new float[defs.Length];
+                _dragging = new bool[defs.Length];
+                LoadWidths();
+            }
+
+            /// <summary>컬럼 너비 (인덱스). 0이면 flex(나머지 공간)이므로 DrawHeader 이후에 계산됨.</summary>
+            public float GetWidth(int index) => _widths[index];
+
+            /// <summary>GUILayout.Width 옵션 반환. flex 컬럼이면 null (width 지정 안 함).</summary>
+            public GUILayoutOption WidthOption(int index)
+            {
+                return _defs[index].DefaultWidth > 0 ? GUILayout.Width(_widths[index]) : null;
+            }
+
+            /// <summary>Rect 기반 헤더 드로잉 (배경 + 라벨 + 구분선 + 드래그 핸들)</summary>
+            public void DrawHeader()
+            {
+                var r = GUILayoutUtility.GetRect(0, 18, GUILayout.ExpandWidth(true));
+                EditorGUI.DrawRect(r, new Color(0.18f, 0.18f, 0.22f)); // BG_HEADER
+
+                var st = new GUIStyle(EditorStyles.miniLabel)
+                {
+                    alignment = TextAnchor.MiddleCenter,
+                    fontStyle = FontStyle.Bold,
+                    normal = { textColor = new Color(0.45f, 0.45f, 0.50f) },
+                    fontSize = 10
+                };
+
+                // flex 컬럼 탐색 + 실제 너비 계산
+                float fixedTotal = 0f;
+                int flexIdx = -1;
+                for (int i = 0; i < _defs.Length; i++)
+                {
+                    if (_defs[i].DefaultWidth <= 0) flexIdx = i;
+                    else fixedTotal += _widths[i];
+                }
+                if (flexIdx >= 0)
+                    _widths[flexIdx] = Mathf.Max(r.width - fixedTotal, 40f);
+
+                // 컬럼 드로잉
+                float x = r.x;
+                for (int i = 0; i < _defs.Length; i++)
+                {
+                    float w = _widths[i];
+                    EditorGUI.LabelField(new Rect(x, r.y, w, r.height), _defs[i].Name, st);
+                    x += w;
+
+                    // 구분선 + 드래그 핸들
+                    // 규칙: flex 왼쪽 컬럼 → 오른쪽 경계에서 리사이즈 (정방향)
+                    //       flex 오른쪽 컬럼 → flex|컬럼 경계에서만 리사이즈 (역방향)
+                    if (i < _defs.Length - 1)
+                    {
+                        EditorGUI.DrawRect(new Rect(x - 1, r.y, 1, r.height), COL_DIVIDER);
+                        var dragRect = new Rect(x - DRAG_W / 2, r.y, DRAG_W, r.height);
+
+                        if (_defs[i].Resizable && (flexIdx < 0 || i < flexIdx))
+                            HandleDrag(dragRect, i, false);
+                        else if (flexIdx >= 0 && i == flexIdx && i + 1 < _defs.Length && _defs[i + 1].Resizable)
+                            HandleDrag(dragRect, i + 1, true);
+                    }
+                }
+
+                // 하단 구분선
+                EditorGUI.DrawRect(new Rect(r.x, r.yMax - 1, r.width, 1), COL_DIVIDER);
+            }
+
+            void HandleDrag(Rect handle, int colIndex, bool invertDelta)
+            {
+                EditorGUIUtility.AddCursorRect(handle, MouseCursor.ResizeHorizontal);
+                var evt = Event.current;
+
+                if (evt.type == EventType.MouseDown && handle.Contains(evt.mousePosition))
+                { _dragging[colIndex] = true; evt.Use(); }
+                else if (evt.type == EventType.MouseUp && _dragging[colIndex])
+                { _dragging[colIndex] = false; evt.Use(); }
+                else if (evt.type == EventType.MouseDrag && _dragging[colIndex])
+                {
+                    float delta = invertDelta ? -evt.delta.x : evt.delta.x;
+                    _widths[colIndex] = Mathf.Max(_widths[colIndex] + delta, _defs[colIndex].MinWidth);
+                    SaveWidths();
+                    evt.Use();
+                    EditorWindow.GetWindow<UGSWindow>()?.Repaint();
+                }
+            }
+
+            void SaveWidths()
+            {
+                for (int i = 0; i < _defs.Length; i++)
+                {
+                    if (_defs[i].Resizable)
+                        EditorPrefs.SetFloat($"{_prefsPrefix}_Col{i}", _widths[i]);
+                }
+            }
+
+            void LoadWidths()
+            {
+                for (int i = 0; i < _defs.Length; i++)
+                {
+                    if (_defs[i].Resizable)
+                        _widths[i] = EditorPrefs.GetFloat($"{_prefsPrefix}_Col{i}", _defs[i].DefaultWidth);
+                    else
+                        _widths[i] = _defs[i].DefaultWidth;
+                }
+            }
         }
 
         // ─── 라이프사이클 ────────────────────────────────

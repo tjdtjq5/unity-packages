@@ -1,8 +1,10 @@
 #if UNITY_EDITOR
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using UnityEditor;
+using UnityEngine.Networking;
 
 namespace Tjdtjq5.UGSManager
 {
@@ -169,6 +171,138 @@ namespace Tjdtjq5.UGSManager
 
         /// <summary>CLI 경로 캐시 초기화 (경로 변경 시)</summary>
         public static void ResetCliPath() => _cliPath = null;
+
+        // ─── REST API ──────────────────────────────────
+
+        static string _cachedCredentials;
+        static string _cachedEnvId;
+
+        /// <summary>Service Account credentials (Base64) 읽기</summary>
+        static string GetCredentials()
+        {
+            if (!string.IsNullOrEmpty(_cachedCredentials)) return _cachedCredentials;
+
+            // {LOCALAPPDATA}/UnityServices/credentials
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string credPath = Path.Combine(localAppData, "UnityServices", "credentials");
+            if (!File.Exists(credPath)) return null;
+
+            string raw = File.ReadAllText(credPath).Trim().Trim('"');
+            if (!string.IsNullOrEmpty(raw)) _cachedCredentials = raw;
+            return _cachedCredentials;
+        }
+
+        /// <summary>현재 활성 환경의 ID 조회 (캐시)</summary>
+        public static string GetEnvironmentId()
+        {
+            if (!string.IsNullOrEmpty(_cachedEnvId)) return _cachedEnvId;
+
+            string activeEnv = GetEnvironment();
+            if (string.IsNullOrEmpty(activeEnv)) return "";
+
+            var result = RunJson("env list");
+            if (!result.Success) return "";
+
+            string json = result.Output;
+            int sf = 0;
+            while (true)
+            {
+                int os = json.IndexOf('{', sf); if (os < 0) break;
+                int oe = json.IndexOf('}', os); if (oe < 0) break;
+                string blk = json.Substring(os, oe - os + 1);
+
+                string nameKey = "\"name\"";
+                int ni = blk.IndexOf(nameKey, StringComparison.Ordinal);
+                if (ni < 0) { sf = oe + 1; continue; }
+                int nc = blk.IndexOf(':', ni + nameKey.Length);
+                int nqs = blk.IndexOf('"', nc + 1);
+                int nqe = blk.IndexOf('"', nqs + 1);
+                string name = nqe > nqs ? blk.Substring(nqs + 1, nqe - nqs - 1) : "";
+
+                if (name == activeEnv)
+                {
+                    string idKey = "\"id\"";
+                    int ii = blk.IndexOf(idKey, StringComparison.Ordinal);
+                    if (ii >= 0)
+                    {
+                        int ic = blk.IndexOf(':', ii + idKey.Length);
+                        int iqs = blk.IndexOf('"', ic + 1);
+                        int iqe = blk.IndexOf('"', iqs + 1);
+                        if (iqe > iqs) _cachedEnvId = blk.Substring(iqs + 1, iqe - iqs - 1);
+                    }
+                    break;
+                }
+                sf = oe + 1;
+            }
+            return _cachedEnvId ?? "";
+        }
+
+        /// <summary>환경 변경 시 캐시 초기화</summary>
+        public static void ResetEnvIdCache() => _cachedEnvId = null;
+
+        /// <summary>
+        /// Cloud Code 스크립트 파라미터 스키마를 REST API로 등록 + publish.
+        /// 1) PATCH → draft에 params 저장
+        /// 2) POST .../publish → draft를 active로 배포
+        /// </summary>
+        public static void PatchScriptParameters(string scriptName, string paramsJsonArray, Action<bool, string> onComplete)
+        {
+            string cred = GetCredentials();
+            if (string.IsNullOrEmpty(cred))
+            {
+                onComplete?.Invoke(false, "credentials 파일을 찾을 수 없습니다.");
+                return;
+            }
+
+            string pid = GetProjectId();
+            string eid = GetEnvironmentId();
+            if (string.IsNullOrEmpty(pid) || string.IsNullOrEmpty(eid))
+            {
+                onComplete?.Invoke(false, "project-id 또는 environment-id를 가져올 수 없습니다.");
+                return;
+            }
+
+            string baseUrl = $"https://services.api.unity.com/cloud-code/v1/projects/{pid}/environments/{eid}/scripts/{scriptName}";
+
+            // Step 1: PATCH — params를 draft에 저장
+            string patchBody = $"{{\"params\":{paramsJsonArray}}}";
+            var patchReq = new UnityWebRequest(baseUrl, "PATCH");
+            patchReq.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(patchBody));
+            patchReq.downloadHandler = new DownloadHandlerBuffer();
+            patchReq.SetRequestHeader("Authorization", $"Basic {cred}");
+            patchReq.SetRequestHeader("Content-Type", "application/json");
+
+            var patchOp = patchReq.SendWebRequest();
+            patchOp.completed += _ =>
+            {
+                bool patchOk = patchReq.responseCode is 204 or 200;
+                if (!patchOk)
+                {
+                    string err = $"PATCH HTTP {patchReq.responseCode}: {patchReq.downloadHandler?.text}";
+                    patchReq.Dispose();
+                    EditorApplication.delayCall += () => onComplete?.Invoke(false, err);
+                    return;
+                }
+                patchReq.Dispose();
+
+                // Step 2: POST publish — draft를 active로
+                string publishUrl = $"{baseUrl}/publish";
+                var pubReq = new UnityWebRequest(publishUrl, "POST");
+                pubReq.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes("{}"));
+                pubReq.downloadHandler = new DownloadHandlerBuffer();
+                pubReq.SetRequestHeader("Authorization", $"Basic {cred}");
+                pubReq.SetRequestHeader("Content-Type", "application/json");
+
+                var pubOp = pubReq.SendWebRequest();
+                pubOp.completed += _ =>
+                {
+                    bool pubOk = pubReq.responseCode is 200 or 204;
+                    string error = pubOk ? "" : $"Publish HTTP {pubReq.responseCode}: {pubReq.downloadHandler?.text}";
+                    pubReq.Dispose();
+                    EditorApplication.delayCall += () => onComplete?.Invoke(pubOk, error);
+                };
+            };
+        }
 
         // ─── 내부 유틸 ──────────────────────────────────
 

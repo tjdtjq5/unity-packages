@@ -1,6 +1,6 @@
 {
   "name": "com.tjdtjq5.ugs-manager",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "UGS Manager",
   "description": "Unity Gaming Services CLI 래핑 에디터. Remote Config, Cloud Code, Environment, Deploy 관리.",
   "unity": "6000.1",

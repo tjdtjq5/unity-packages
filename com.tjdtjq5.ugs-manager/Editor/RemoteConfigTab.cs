@@ -25,10 +25,7 @@ namespace Tjdtjq5.UGSManager
         // ─── UI 상태 ────────────────────────────────
         int _activeGroupIdx;
         string _searchFilter = "";
-        float _colKeyWidth = 160f;
-        float _colTypeWidth = 60f;
-        bool _draggingKeyCol, _draggingTypeCol;
-        bool _foldAdd, _foldEnum, _foldFile, _foldDeployLog;
+        bool _foldAdd, _foldEnum, _foldFile;
 
         // 키 추가
         string _newKey = "";
@@ -36,14 +33,9 @@ namespace Tjdtjq5.UGSManager
         int _newTypeIdx;
         bool _newIsList;
 
-        // Deploy 로그
-        readonly List<(string time, string msg, Color color)> _deployLogs = new();
-
         // 컬럼
-        const float COL_ACTION_W = 60f;
-        const float MIN_COL_W = 40f;
-        const float DRAG_W = 6f;
-        static readonly Color COL_DIVIDER = new(0.35f, 0.35f, 0.40f);
+        ResizableColumns _columns;
+        const int COL_KEY = 0, COL_TYPE = 1, COL_LIST = 2, COL_VAL = 3, COL_ACT = 4;
 
         // ─── 데이터 로드 ────────────────────────────
 
@@ -52,10 +44,15 @@ namespace Tjdtjq5.UGSManager
             _isLoading = false;
             _lastError = null;
 
-            // 컬럼 너비 복원
-            _colKeyWidth = UGSConfig.ColKeyWidth;
-            _colTypeWidth = UGSConfig.ColTypeWidth;
-
+            // 컬럼 너비 + 로그 복원
+            _columns ??= new ResizableColumns("UGS_RC", new[]
+            {
+                new ColDef("키",   160f, resizable: true),
+                new ColDef("타입",  60f, resizable: true),
+                new ColDef("[]",   18f),
+                new ColDef("값",    0f),   // flex
+                new ColDef("",     60f),   // 액션
+            });
             if (string.IsNullOrEmpty(_rcFilePath) || !File.Exists(_rcFilePath))
                 _rcFilePath = FindFile("*.rc", "entries");
             if (string.IsNullOrEmpty(_rcFilePath)) { _lastError = ".rc 파일을 찾을 수 없습니다."; return; }
@@ -239,20 +236,25 @@ namespace Tjdtjq5.UGSManager
                 if (e.IsList)
                     val = $"\"{string.Join(",", e.ListItems)}\"";
                 else
+                {
+                    string v = string.IsNullOrEmpty(e.EditValue) ? ConfigTypeConverter.GetDefault(e.DisplayType) : e.EditValue;
                     val = e.DisplayType switch
                     {
-                        "ENUM" => $"\"{e.EditValue}\"",
-                        "STRING" => $"\"{e.EditValue}\"",
-                        "BOOL" => e.EditValue.ToLower(),
-                        _ => e.EditValue
+                        "ENUM" => $"\"{v}\"",
+                        "STRING" => $"\"{v}\"",
+                        "BOOL" => (v == "true" ? "true" : "false"),
+                        "INT" => int.TryParse(v, out var iv) ? iv.ToString() : "0",
+                        "FLOAT" => float.TryParse(v, out var fv) ? fv.ToString() : "0",
+                        _ => $"\"{v}\""
                     };
+                }
                 sb.AppendLine($"    \"{e.Key}\": {val}{(i < _entries.Count - 1 ? "," : "")}");
             }
             sb.AppendLine("  },");
             sb.AppendLine("  \"types\": {");
-            var floats = _entries.Where(e => e.BaseType == "FLOAT").ToList();
-            for (int i = 0; i < floats.Count; i++)
-                sb.AppendLine($"    \"{floats[i].Key}\": \"FLOAT\"{(i < floats.Count - 1 ? "," : "")}");
+            var typed = _entries.Where(e => e.BaseType is "FLOAT" or "INT" or "BOOL").ToList();
+            for (int i = 0; i < typed.Count; i++)
+                sb.AppendLine($"    \"{typed[i].Key}\": \"{typed[i].BaseType}\"{(i < typed.Count - 1 ? "," : "")}");
             sb.AppendLine("  }");
             sb.AppendLine("}");
             File.WriteAllText(_rcFilePath, sb.ToString());
@@ -266,9 +268,16 @@ namespace Tjdtjq5.UGSManager
 
         void SaveEntry(ConfigEntry entry)
         {
-            // 키 이름 변경 시 스키마 업데이트
+            // 키 이름 변경 시 중복 검사 + 스키마 업데이트
             if (entry.Key != entry.OrigKey)
             {
+                if (_entries.Any(e => e != entry && e.Key == entry.Key))
+                {
+                    EditorUtility.DisplayDialog("중복 키", $"'{entry.Key}' 키가 이미 존재합니다.", "확인");
+                    entry.Key = entry.OrigKey;
+                    entry.RecalcDirty();
+                    return;
+                }
                 RemoteConfigSchema.RenameKey(_schema, entry.OrigKey, entry.Key);
                 // enumMap/lists도 키 업데이트
                 if (_schema.EnumMap.ContainsKey(entry.OrigKey))
@@ -337,6 +346,7 @@ namespace Tjdtjq5.UGSManager
         {
             DrawMainToolbar();
             DrawError();
+            DrawSuccess();
             DrawLoading();
             if (_isLoading) return;
 
@@ -360,7 +370,6 @@ namespace Tjdtjq5.UGSManager
             DrawAddKeySection();
             DrawEnumSection();
             DrawFileSection();
-            DrawDeployLogSection();
         }
 
         // ─── 툴바 ─────────────────────────────────
@@ -493,43 +502,7 @@ namespace Tjdtjq5.UGSManager
 
         // ─── 테이블 헤더 ───────────────────────────
 
-        void DrawTableHeader()
-        {
-            var r = GUILayoutUtility.GetRect(0, 18, GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(r, BG_HEADER);
-            float x = r.x, y = r.y, h = r.height;
-            var st = new GUIStyle(EditorStyles.miniLabel)
-            { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold, normal = { textColor = COL_MUTED }, fontSize = 10 };
-
-            EditorGUI.LabelField(new Rect(x, y, _colKeyWidth, h), "키", st);
-            x += _colKeyWidth;
-            EditorGUI.DrawRect(new Rect(x - 1, y, 1, h), COL_DIVIDER);
-            HandleDrag(new Rect(x - DRAG_W / 2, y, DRAG_W, h), ref _colKeyWidth, ref _draggingKeyCol);
-
-            EditorGUI.LabelField(new Rect(x, y, _colTypeWidth, h), "타입", st);
-            x += _colTypeWidth;
-            EditorGUI.DrawRect(new Rect(x - 1, y, 1, h), COL_DIVIDER);
-            HandleDrag(new Rect(x - DRAG_W / 2, y, DRAG_W, h), ref _colTypeWidth, ref _draggingTypeCol);
-
-            EditorGUI.LabelField(new Rect(x, y, r.width - _colKeyWidth - _colTypeWidth - COL_ACTION_W, h), "값", st);
-            EditorGUI.DrawRect(new Rect(r.x, r.yMax - 1, r.width, 1), COL_DIVIDER);
-        }
-
-        void HandleDrag(Rect handle, ref float w, ref bool dragging)
-        {
-            EditorGUIUtility.AddCursorRect(handle, MouseCursor.ResizeHorizontal);
-            var evt = Event.current;
-            if (evt.type == EventType.MouseDown && handle.Contains(evt.mousePosition)) { dragging = true; evt.Use(); }
-            else if (evt.type == EventType.MouseUp && dragging) { dragging = false; evt.Use(); }
-            else if (evt.type == EventType.MouseDrag && dragging)
-            {
-                w = Mathf.Max(w + evt.delta.x, MIN_COL_W);
-                UGSConfig.ColKeyWidth = _colKeyWidth;
-                UGSConfig.ColTypeWidth = _colTypeWidth;
-                evt.Use();
-                EditorWindow.GetWindow<UGSWindow>()?.Repaint();
-            }
-        }
+        void DrawTableHeader() => _columns.DrawHeader();
 
         // ─── 엔트리 행 ─────────────────────────────
 
@@ -561,7 +534,7 @@ namespace Tjdtjq5.UGSManager
 
             // 행 구분선
             var line = GUILayoutUtility.GetRect(0, 1, GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(line, new Color(COL_DIVIDER.r, COL_DIVIDER.g, COL_DIVIDER.b, 0.3f));
+            EditorGUI.DrawRect(line, new Color(0.35f, 0.35f, 0.40f, 0.3f));
         }
 
         // ─── 키 컬럼 (더블클릭 편집) ────────────────
@@ -571,7 +544,7 @@ namespace Tjdtjq5.UGSManager
             if (entry.IsEditingKey)
             {
                 GUI.SetNextControlName($"key_{entry.GetHashCode()}");
-                string newKey = EditorGUILayout.TextField(entry.Key, GUILayout.Width(_colKeyWidth));
+                string newKey = EditorGUILayout.TextField(entry.Key, GUILayout.Width(_columns.GetWidth(COL_KEY)));
                 if (newKey != entry.Key) { entry.Key = newKey; entry.RecalcDirty(); }
 
                 // Enter 또는 포커스 이탈로 확정
@@ -586,7 +559,7 @@ namespace Tjdtjq5.UGSManager
             }
             else
             {
-                var rect = GUILayoutUtility.GetRect(_colKeyWidth, 18, GUILayout.Width(_colKeyWidth));
+                var rect = GUILayoutUtility.GetRect(_columns.GetWidth(COL_KEY), 18, GUILayout.Width(_columns.GetWidth(COL_KEY)));
                 EditorGUI.LabelField(rect, entry.Key, new GUIStyle(EditorStyles.label)
                     { normal = { textColor = entry.Key != entry.OrigKey ? COL_WARN : Color.white } });
 
@@ -602,7 +575,7 @@ namespace Tjdtjq5.UGSManager
             int currentIdx = Array.IndexOf(ConfigTypeConverter.BaseTypes, entry.DisplayType);
             if (currentIdx < 0) currentIdx = 3; // STRING fallback
 
-            int newIdx = EditorGUILayout.Popup(currentIdx, ConfigTypeConverter.BaseTypes, GUILayout.Width(_colTypeWidth));
+            int newIdx = EditorGUILayout.Popup(currentIdx, ConfigTypeConverter.BaseTypes, GUILayout.Width(_columns.GetWidth(COL_TYPE)));
             if (newIdx == currentIdx) return;
 
             string oldType = entry.DisplayType;
@@ -652,7 +625,7 @@ namespace Tjdtjq5.UGSManager
 
         void DrawListCheckbox(ConfigEntry entry)
         {
-            bool newIsList = EditorGUILayout.Toggle(entry.IsList, GUILayout.Width(14));
+            bool newIsList = EditorGUILayout.Toggle(entry.IsList, GUILayout.Width(_columns.GetWidth(COL_LIST)));
             if (newIsList == entry.IsList) return;
 
             entry.IsList = newIsList;
@@ -780,7 +753,7 @@ namespace Tjdtjq5.UGSManager
             for (int i = 0; i < entry.ListItems.Count; i++)
             {
                 EditorGUILayout.BeginHorizontal(GUILayout.Height(16));
-                GUILayout.Space(_colKeyWidth + _colTypeWidth + 20);
+                GUILayout.Space(_columns.GetWidth(COL_KEY) + _columns.GetWidth(COL_TYPE) + 20);
 
                 EditorGUILayout.LabelField($"[{i}]", new GUIStyle(EditorStyles.miniLabel)
                     { normal = { textColor = COL_MUTED } }, GUILayout.Width(24));
@@ -795,7 +768,7 @@ namespace Tjdtjq5.UGSManager
             }
 
             EditorGUILayout.BeginHorizontal(GUILayout.Height(16));
-            GUILayout.Space(_colKeyWidth + _colTypeWidth + 20);
+            GUILayout.Space(_columns.GetWidth(COL_KEY) + _columns.GetWidth(COL_TYPE) + 20);
             if (GUILayout.Button("+", EditorStyles.miniButton, GUILayout.Width(20), GUILayout.Height(14)))
             {
                 string def = ConfigTypeConverter.GetDefault(entry.DisplayType);
@@ -849,40 +822,69 @@ namespace Tjdtjq5.UGSManager
         {
             if (!DrawSectionFoldout(ref _foldAdd, "키 추가", COL_WARN)) return;
             BeginBody();
+
+            _columns.DrawHeader();
+
+            // 입력 행
             EditorGUILayout.BeginHorizontal(GUILayout.Height(18));
-            EditorGUILayout.LabelField("키:", GUILayout.Width(25));
-            _newKey = EditorGUILayout.TextField(_newKey, GUILayout.MinWidth(80));
-            EditorGUILayout.LabelField("타입:", GUILayout.Width(35));
-            _newTypeIdx = EditorGUILayout.Popup(_newTypeIdx, ConfigTypeConverter.BaseTypes, GUILayout.Width(70));
-            _newIsList = EditorGUILayout.ToggleLeft("리스트", _newIsList, GUILayout.Width(50));
-            EditorGUILayout.LabelField("값:", GUILayout.Width(20));
-            _newValue = EditorGUILayout.TextField(_newValue, GUILayout.MinWidth(50));
-            GUI.enabled = !string.IsNullOrWhiteSpace(_newKey);
-            if (DrawColorBtn("추가", COL_SUCCESS, 20))
+            _newKey = EditorGUILayout.TextField(_newKey, GUILayout.Width(_columns.GetWidth(COL_KEY)));
+            _newTypeIdx = EditorGUILayout.Popup(_newTypeIdx, ConfigTypeConverter.BaseTypes, GUILayout.Width(_columns.GetWidth(COL_TYPE)));
+            _newIsList = EditorGUILayout.Toggle(_newIsList, GUILayout.Width(_columns.GetWidth(COL_LIST)));
+            _newValue = EditorGUILayout.TextField(_newValue);
+
+            string trimmedKey = _newKey?.Trim() ?? "";
+            bool isDuplicate = _entries.Any(e => e.Key == trimmedKey);
+            GUI.enabled = !string.IsNullOrWhiteSpace(_newKey) && !isDuplicate;
+            if (GUILayout.Button("+", EditorStyles.miniButton, GUILayout.Width(24), GUILayout.Height(16)))
             {
                 string type = ConfigTypeConverter.BaseTypes[_newTypeIdx];
+                // 빈 값이면 타입별 기본값 자동 입력
+                string value = string.IsNullOrEmpty(_newValue) ? ConfigTypeConverter.GetDefault(type) : _newValue;
                 var ne = new ConfigEntry
                 {
                     Key = _newKey.Trim(),
                     BaseType = type == "ENUM" || _newIsList ? "STRING" : type,
                     DisplayType = type,
-                    Value = _newValue,
-                    EditValue = _newValue,
+                    Value = value,
+                    EditValue = value,
                     IsList = _newIsList
                 };
                 if (_newIsList)
                 {
                     ne.ListItemType = type;
-                    ne.ListItems = string.IsNullOrEmpty(_newValue)
+                    ne.ListItems = string.IsNullOrEmpty(value)
                         ? new List<string>()
-                        : _newValue.Split(',').Select(s => s.Trim()).ToList();
+                        : value.Split(',').Select(s => s.Trim()).ToList();
                 }
                 ne.OrigKey = ne.Key;
                 ne.OrigDisplayType = ne.DisplayType;
                 ne.OrigIsList = ne.IsList;
                 ne.CommitAsOriginal();
                 _entries.Add(ne);
+
+                // 활성 그룹에 새 키 추가 (그룹 필터에 의해 안 보이는 버그 방지)
+                if (_schema != null && _schema.Groups.Count > 0 && _activeGroupIdx < _schema.Groups.Count)
+                {
+                    var g = _schema.Groups[_activeGroupIdx];
+                    var keys = g.Keys.ToList();
+                    keys.Add(ne.Key);
+                    _schema.Groups[_activeGroupIdx] = new GroupInfo { Name = g.Name, Color = g.Color, Keys = keys.ToArray() };
+                }
+
+                // LIST/ENUM 스키마도 저장
+                if (ne.IsList)
+                {
+                    _schema.Lists[ne.Key] = new ListSchemaInfo
+                    {
+                        ItemType = ne.DisplayType,
+                        EnumSchema = ne.DisplayType == "ENUM" ? ne.EnumSchemaKey : null
+                    };
+                }
+                if (ne.DisplayType == "ENUM" && !string.IsNullOrEmpty(ne.EnumSchemaKey))
+                    _schema.EnumMap[ne.Key] = ne.EnumSchemaKey;
+
                 SaveRcFile();
+                SaveSchema();
                 _newKey = ""; _newValue = ""; _newIsList = false;
             }
             GUI.enabled = true;
@@ -926,28 +928,6 @@ namespace Tjdtjq5.UGSManager
             EditorGUILayout.EndHorizontal();
         }
 
-        void DrawDeployLogSection()
-        {
-            if (!DrawSectionFoldout(ref _foldDeployLog, $"Deploy 결과 ({_deployLogs.Count})", COL_MUTED)) return;
-            BeginBody();
-            if (_deployLogs.Count == 0)
-            {
-                EditorGUILayout.LabelField("아직 배포 기록 없음", new GUIStyle(EditorStyles.centeredGreyMiniLabel));
-            }
-            else
-            {
-                for (int i = _deployLogs.Count - 1; i >= 0; i--)
-                {
-                    var (time, msg, color) = _deployLogs[i];
-                    EditorGUILayout.LabelField($"[{time}] {msg}", new GUIStyle(EditorStyles.miniLabel)
-                        { normal = { textColor = color }, wordWrap = true });
-                }
-                GUILayout.Space(2);
-                if (DrawColorBtn("로그 지우기", COL_MUTED, 16)) _deployLogs.Clear();
-            }
-            EndBody();
-        }
-
         // ─── Deploy ────────────────────────────────
 
         void PushToServer()
@@ -955,27 +935,26 @@ namespace Tjdtjq5.UGSManager
             if (string.IsNullOrEmpty(_rcFilePath)) { _lastError = ".rc 파일 없음"; return; }
             string dir = Path.GetDirectoryName(_rcFilePath)!.Replace('\\', '/');
             _isLoading = true;
-            AddLog("배포 시작...", COL_INFO);
+            _lastError = null;
+            _lastSuccess = null;
 
             UGSCliRunner.RunAsync($"deploy \"{dir}\" -s remote-config", result =>
             {
                 _isLoading = false;
                 if (result.Success)
                 {
-                    _lastError = null;
-                    AddLog($"✓ Deploy 완료", COL_SUCCESS);
-                    if (!string.IsNullOrEmpty(result.Output)) AddLog(result.Output, Color.white);
+                    _lastSuccess = "Deploy 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : "");
                 }
                 else
                 {
-                    _lastError = result.Error;
-                    AddLog($"✗ 실패: {result.Error}", COL_ERROR);
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append($"Deploy 실패 (exit {result.ExitCode})");
+                    if (!string.IsNullOrEmpty(result.Error)) sb.Append($"\n{result.Error}");
+                    if (!string.IsNullOrEmpty(result.Output)) sb.Append($"\n{result.Output}");
+                    _lastError = sb.ToString();
                 }
             });
         }
-
-        void AddLog(string msg, Color c) =>
-            _deployLogs.Add((DateTime.Now.ToString("HH:mm:ss"), msg, c));
     }
 }
 #endif
