@@ -1,0 +1,13 @@
+{
+    "name": "Tjdtjq5.EditorWindows.Editor",
+    "rootNamespace": "Tjdtjq5.EditorWindows",
+    "references": [
+        "Tjdtjq5.EditorToolkit.Editor"
+    ],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "autoReferenced": true,
+    "noEngineReferences": false
+}

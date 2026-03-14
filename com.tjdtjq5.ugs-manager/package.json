@@ -1,0 +1,20 @@
+{
+  "name": "com.tjdtjq5.ugs-manager",
+  "version": "1.0.0",
+  "displayName": "UGS Manager",
+  "description": "Unity Gaming Services CLI 래핑 에디터. Remote Config, Cloud Code, Environment, Deploy 관리.",
+  "unity": "6000.1",
+  "author": {
+    "name": "tjdtjq5"
+  },
+  "dependencies": {
+    "com.tjdtjq5.editor-toolkit": "1.0.0"
+  },
+  "keywords": [
+    "ugs",
+    "remote-config",
+    "cloud-code",
+    "deploy",
+    "editor"
+  ]
+}

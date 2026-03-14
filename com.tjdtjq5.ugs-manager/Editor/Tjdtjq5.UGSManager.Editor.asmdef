@@ -1,0 +1,18 @@
+{
+    "name": "Tjdtjq5.UGSManager.Editor",
+    "rootNamespace": "Tjdtjq5.UGSManager",
+    "references": [
+        "Tjdtjq5.EditorToolkit.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

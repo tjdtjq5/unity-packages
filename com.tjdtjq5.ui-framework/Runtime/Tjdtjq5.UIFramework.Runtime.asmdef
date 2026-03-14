@@ -1,0 +1,11 @@
+{
+    "name": "Tjdtjq5.UIFramework.Runtime",
+    "rootNamespace": "Tjdtjq5.UIFramework",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "autoReferenced": true,
+    "noEngineReferences": false
+}

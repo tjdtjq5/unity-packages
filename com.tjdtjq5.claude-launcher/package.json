@@ -1,0 +1,9 @@
+{
+  "name": "com.tjdtjq5.claude-launcher",
+  "version": "0.1.0",
+  "displayName": "Claude Launcher",
+  "description": "Unity 에디터에서 Claude Code CLI 실행 + git worktree 자동 관리",
+  "unity": "6000.1",
+  "author": { "name": "tjdtjq5" },
+  "keywords": ["claude", "ai", "worktree", "terminal"]
+}

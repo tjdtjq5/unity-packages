@@ -1,0 +1,12 @@
+# Unity meta files (패키지 배포에 필요하므로 유지)
+# *.meta는 커밋함
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vs/
+*.sln
+*.csproj
