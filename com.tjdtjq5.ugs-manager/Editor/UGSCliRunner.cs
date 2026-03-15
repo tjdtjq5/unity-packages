@@ -85,9 +85,10 @@ namespace Tjdtjq5.UGSManager
 
                 var stdOut = new StringBuilder();
                 var stdErr = new StringBuilder();
+                var ioLock = new object();
 
-                DataReceivedEventHandler outHandler = (_, e) => { if (e.Data != null) stdOut.AppendLine(e.Data); };
-                DataReceivedEventHandler errHandler = (_, e) => { if (e.Data != null) stdErr.AppendLine(e.Data); };
+                DataReceivedEventHandler outHandler = (_, e) => { if (e.Data != null) lock (ioLock) stdOut.AppendLine(e.Data); };
+                DataReceivedEventHandler errHandler = (_, e) => { if (e.Data != null) lock (ioLock) stdErr.AppendLine(e.Data); };
 
                 process.OutputDataReceived += outHandler;
                 process.ErrorDataReceived += errHandler;
@@ -100,7 +101,8 @@ namespace Tjdtjq5.UGSManager
 
                     string filteredErr = FilterDeprecationWarnings(stdErr.ToString());
                     int exitCode;
-                    try { exitCode = process.ExitCode; } catch { exitCode = -1; }
+                    try { exitCode = process.HasExited ? process.ExitCode : -1; }
+                    catch (Exception) { exitCode = -1; }
 
                     var result = new CliResult
                     {
@@ -115,8 +117,15 @@ namespace Tjdtjq5.UGSManager
                     // 메인 스레드에서 콜백 (도메인 리로드 중이면 무시)
                     EditorApplication.delayCall += () =>
                     {
-                        if (!EditorApplication.isCompiling)
-                            onComplete.Invoke(result);
+                        try
+                        {
+                            if (!EditorApplication.isCompiling)
+                                onComplete.Invoke(result);
+                        }
+                        catch (Exception ex)
+                        {
+                            UnityEngine.Debug.LogError($"[UGS] Callback error: {ex.Message}");
+                        }
                     };
                 };
 
@@ -127,7 +136,11 @@ namespace Tjdtjq5.UGSManager
             catch (Exception ex)
             {
                 var result = new CliResult { Success = false, Error = ex.Message };
-                EditorApplication.delayCall += () => onComplete.Invoke(result);
+                EditorApplication.delayCall += () =>
+                {
+                    try { onComplete.Invoke(result); }
+                    catch (Exception cbEx) { UnityEngine.Debug.LogError($"[UGS] Callback error: {cbEx.Message}"); }
+                };
             }
         }
 
@@ -239,6 +252,37 @@ namespace Tjdtjq5.UGSManager
 
         /// <summary>환경 변경 시 캐시 초기화</summary>
         public static void ResetEnvIdCache() => _cachedEnvId = null;
+
+        /// <summary>범용 REST GET 요청. Service Account 인증 자동 처리.</summary>
+        public static void RestGet(string path, Action<bool, string> onComplete)
+        {
+            string cred = GetCredentials();
+            if (string.IsNullOrEmpty(cred)) { onComplete?.Invoke(false, "credentials 없음"); return; }
+
+            string pid = GetProjectId();
+            string eid = GetEnvironmentId();
+            if (string.IsNullOrEmpty(pid) || string.IsNullOrEmpty(eid))
+            { onComplete?.Invoke(false, "project/environment ID 없음"); return; }
+
+            // {pid}와 {eid} 치환
+            string url = path.Replace("{pid}", pid).Replace("{eid}", eid);
+            if (!url.StartsWith("http"))
+                url = $"https://services.api.unity.com{url}";
+
+            var request = UnityWebRequest.Get(url);
+            request.SetRequestHeader("Authorization", $"Basic {cred}");
+
+            var op = request.SendWebRequest();
+            op.completed += _ =>
+            {
+                bool ok = request.responseCode is >= 200 and < 300;
+                string body = request.downloadHandler?.text ?? "";
+                string error = ok ? "" : $"HTTP {request.responseCode}: {body}";
+                request.Dispose();
+
+                EditorApplication.delayCall += () => onComplete?.Invoke(ok, ok ? body : error);
+            };
+        }
 
         /// <summary>
         /// Cloud Code 스크립트 파라미터 스키마를 REST API로 등록 + publish.

@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -302,6 +303,301 @@ namespace Tjdtjq5.UGSManager
                 EditorGUILayout.LabelField(text ?? "", style);
         }
 
+        // ─── JSON 유틸 (공통) ────────────────────────────
+
+        /// <summary>중괄호 매칭. 문자열 내 괄호를 무시.</summary>
+        protected static int JsonFindBrace(string s, int open)
+        {
+            int depth = 1;
+            bool inStr = false;
+            for (int i = open + 1; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == '\\' && inStr) { i++; continue; } // 이스케이프 건너뜀
+                if (c == '"') { inStr = !inStr; continue; }
+                if (inStr) continue;
+                if (c == '{') depth++;
+                else if (c == '}') { depth--; if (depth == 0) return i; }
+            }
+            return s.Length - 1;
+        }
+
+        /// <summary>대괄호 매칭. 문자열 내 괄호를 무시.</summary>
+        protected static int JsonFindBracket(string s, int open)
+        {
+            int depth = 1;
+            bool inStr = false;
+            for (int i = open + 1; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == '\\' && inStr) { i++; continue; }
+                if (c == '"') { inStr = !inStr; continue; }
+                if (inStr) continue;
+                if (c == '[') depth++;
+                else if (c == ']') { depth--; if (depth == 0) return i; }
+            }
+            return s.Length - 1;
+        }
+
+        // ─── 스타일 탭 (공통) ────────────────────────────
+
+        // 더블클릭 이름 편집 상태
+        int _tabEditIdx = -1;
+        string _tabEditName;
+
+        /// <summary>
+        /// 스타일 탭 바. 반환값: 선택된 인덱스.
+        /// onAdd: + 탭 표시, onRename: 더블클릭 이름 편집 활성화
+        /// </summary>
+        protected int DrawStyledTabs(string[] labels, int activeIdx, Color[] colors = null,
+            Action onAdd = null, Action<int, string> onRename = null)
+        {
+            if (labels == null || labels.Length == 0)
+            {
+                // 탭 없어도 + 버튼은 표시
+                if (onAdd != null)
+                {
+                    var r2 = GUILayoutUtility.GetRect(0, 26, GUILayout.ExpandWidth(true));
+                    EditorGUI.DrawRect(r2, BG_HEADER);
+                    var addR = new Rect(r2.x, r2.y, 30, r2.height);
+                    DrawAddTab(addR, onAdd);
+                }
+                return 0;
+            }
+            if (activeIdx >= labels.Length) activeIdx = 0;
+
+            bool hasAdd = onAdd != null;
+            float addW = hasAdd ? 30f : 0f;
+            var rect = GUILayoutUtility.GetRect(0, 26, GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(rect, BG_HEADER);
+
+            float tabW = (rect.width - addW) / labels.Length;
+            for (int i = 0; i < labels.Length; i++)
+            {
+                var tr = new Rect(rect.x + tabW * i, rect.y, tabW, rect.height);
+                bool active = activeIdx == i;
+                Color c = colors != null && i < colors.Length ? colors[i] : TabColor;
+
+                if (active)
+                {
+                    EditorGUI.DrawRect(tr, new Color(c.r, c.g, c.b, 0.15f));
+                    EditorGUI.DrawRect(new Rect(tr.x, tr.yMax - 2, tr.width, 2), c);
+                }
+
+                // 더블클릭 이름 편집
+                if (_tabEditIdx == i && onRename != null)
+                {
+                    GUI.SetNextControlName($"tabEdit_{i}");
+                    _tabEditName = EditorGUI.TextField(new Rect(tr.x + 2, tr.y + 3, tr.width - 4, tr.height - 6),
+                        _tabEditName, new GUIStyle(EditorStyles.textField) { fontSize = 11, alignment = TextAnchor.MiddleCenter });
+
+                    // Enter로 확정
+                    if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return)
+                    {
+                        onRename.Invoke(i, _tabEditName);
+                        _tabEditIdx = -1;
+                        Event.current.Use();
+                    }
+                    // 포커스 이탈 시 확정
+                    else if (Event.current.type == EventType.MouseDown && !tr.Contains(Event.current.mousePosition))
+                    {
+                        onRename.Invoke(i, _tabEditName);
+                        _tabEditIdx = -1;
+                    }
+                }
+                else
+                {
+                    var st = new GUIStyle(EditorStyles.miniLabel)
+                    {
+                        fontSize = 11, alignment = TextAnchor.MiddleCenter,
+                        fontStyle = active ? FontStyle.Bold : FontStyle.Normal,
+                        normal = { textColor = active ? c : COL_MUTED }
+                    };
+                    EditorGUI.LabelField(tr, labels[i], st);
+                }
+
+                // 클릭 / 더블클릭
+                if (Event.current.type == EventType.MouseDown && tr.Contains(Event.current.mousePosition))
+                {
+                    if (Event.current.clickCount == 2 && onRename != null)
+                    {
+                        _tabEditIdx = i;
+                        _tabEditName = labels[i];
+                    }
+                    else
+                    {
+                        activeIdx = i;
+                        if (_tabEditIdx != i) _tabEditIdx = -1;
+                    }
+                    Event.current.Use();
+                }
+            }
+
+            // + 탭 (탭 바 끝에 자연스럽게)
+            if (hasAdd)
+            {
+                var addRect = new Rect(rect.x + tabW * labels.Length, rect.y, addW, rect.height);
+                DrawAddTab(addRect, onAdd);
+            }
+
+            return activeIdx;
+        }
+
+        void DrawAddTab(Rect rect, Action onAdd)
+        {
+            EditorGUIUtility.AddCursorRect(rect, MouseCursor.Link);
+            var st = new GUIStyle(EditorStyles.miniLabel)
+            {
+                fontSize = 14, alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = COL_MUTED }
+            };
+            EditorGUI.LabelField(rect, "+", st);
+
+            if (Event.current.type == EventType.MouseDown && rect.Contains(Event.current.mousePosition))
+            { onAdd.Invoke(); Event.current.Use(); }
+        }
+
+        // ─── 환경 복사 (공통) ────────────────────────────
+
+        protected static string[] _sharedEnvNames;
+        protected static string[] _sharedEnvIds;
+        protected int _envCopySrcIdx;
+        protected int _envCopyDstIdx;
+        protected bool _foldEnvCopy;
+
+        /// <summary>환경 목록 로드 (전 탭 공유)</summary>
+        protected static void LoadSharedEnvironments()
+        {
+            if (_sharedEnvNames != null) return;
+            var result = UGSCliRunner.RunJson("env list");
+            if (!result.Success) return;
+
+            var names = new List<string>();
+            var ids = new List<string>();
+            int sf = 0;
+            while (true)
+            {
+                int os = result.Output.IndexOf('{', sf); if (os < 0) break;
+                int oe = result.Output.IndexOf('}', os); if (oe < 0) break;
+                string blk = result.Output.Substring(os, oe - os + 1);
+                string name = ExtractField(blk, "name");
+                string id = ExtractField(blk, "id");
+                if (!string.IsNullOrEmpty(name)) { names.Add(name); ids.Add(id); }
+                sf = oe + 1;
+            }
+            _sharedEnvNames = names.ToArray();
+            _sharedEnvIds = ids.ToArray();
+        }
+
+        /// <summary>환경 복사 UI 섹션 그리기. fetchService와 deployDir를 지정하면 자동 처리.</summary>
+        /// <param name="serviceName">CLI 서비스명 (remote-config, cloud-code-scripts, economy)</param>
+        /// <param name="deployDir">로컬 파일 경로</param>
+        /// <param name="needsPublish">Deploy 후 publish 필요 여부 (Economy만 true)</param>
+        /// <param name="publishCmd">publish CLI 명령 (예: "economy publish")</param>
+        /// <param name="onComplete">복사 완료 후 콜백</param>
+        protected void DrawEnvCopySection(string serviceName, string deployDir, bool needsPublish = false,
+            string publishCmd = null, Action onComplete = null)
+        {
+            if (!DrawSectionFoldout(ref _foldEnvCopy, "환경 복사", COL_INFO)) return;
+            BeginBody();
+
+            LoadSharedEnvironments();
+
+            if (_sharedEnvNames == null || _sharedEnvNames.Length == 0)
+            {
+                EditorGUILayout.LabelField("환경 정보 없음",
+                    new GUIStyle(EditorStyles.centeredGreyMiniLabel));
+                EndBody();
+                return;
+            }
+
+            // 기본값: src=production, dst=dev
+            if (_envCopySrcIdx == 0 && _envCopyDstIdx == 0 && _sharedEnvNames.Length > 1)
+            {
+                _envCopySrcIdx = System.Array.IndexOf(_sharedEnvNames, "dev");
+                _envCopyDstIdx = System.Array.IndexOf(_sharedEnvNames, "production");
+                if (_envCopySrcIdx < 0) _envCopySrcIdx = 0;
+                if (_envCopyDstIdx < 0) _envCopyDstIdx = _sharedEnvNames.Length > 1 ? 1 : 0;
+            }
+
+            EditorGUILayout.BeginHorizontal(GUILayout.Height(18));
+            EditorGUILayout.LabelField("소스:", GUILayout.Width(35));
+            _envCopySrcIdx = EditorGUILayout.Popup(_envCopySrcIdx, _sharedEnvNames, GUILayout.Width(120));
+            EditorGUILayout.LabelField("→", GUILayout.Width(20));
+            EditorGUILayout.LabelField("대상:", GUILayout.Width(35));
+            _envCopyDstIdx = EditorGUILayout.Popup(_envCopyDstIdx, _sharedEnvNames, GUILayout.Width(120));
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(4);
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            GUI.enabled = _envCopySrcIdx != _envCopyDstIdx && !_isLoading;
+            if (GUILayout.Button("복사 실행", EditorStyles.miniButton, GUILayout.Width(60), GUILayout.Height(18)))
+                ExecuteEnvCopy(serviceName, deployDir, _sharedEnvNames[_envCopySrcIdx],
+                    _sharedEnvNames[_envCopyDstIdx], needsPublish, publishCmd, onComplete);
+            GUI.enabled = true;
+            EditorGUILayout.EndHorizontal();
+
+            EndBody();
+        }
+
+        void ExecuteEnvCopy(string service, string dir, string srcEnv, string dstEnv,
+            bool needsPublish, string publishCmd, Action onComplete)
+        {
+            _isLoading = true;
+            _lastError = null;
+            _lastSuccess = null;
+
+            if (!System.IO.Directory.Exists(dir))
+                System.IO.Directory.CreateDirectory(dir);
+
+            string safeDir = dir.Replace('\\', '/');
+
+            // Step 1: Fetch from source
+            UGSCliRunner.RunAsync($"fetch \"{safeDir}\" -s {service} -e {srcEnv}", fetchResult =>
+            {
+                if (!fetchResult.Success)
+                {
+                    _isLoading = false;
+                    _lastError = $"Fetch 실패 ({srcEnv}): {fetchResult.Error}";
+                    return;
+                }
+
+                // Step 2: Deploy to target
+                UGSCliRunner.RunAsync($"deploy \"{safeDir}\" -s {service} -e {dstEnv}", deployResult =>
+                {
+                    if (!deployResult.Success)
+                    {
+                        _isLoading = false;
+                        _lastError = $"Deploy 실패 ({dstEnv}): {deployResult.Error}";
+                        return;
+                    }
+
+                    // Step 3: Publish if needed
+                    if (needsPublish && !string.IsNullOrEmpty(publishCmd))
+                    {
+                        UGSCliRunner.RunAsync($"{publishCmd} -e {dstEnv}", pubResult =>
+                        {
+                            _isLoading = false;
+                            if (pubResult.Success)
+                            {
+                                _lastSuccess = $"{srcEnv} → {dstEnv} 복사 완료 ({service})";
+                                onComplete?.Invoke();
+                            }
+                            else
+                                _lastError = $"Publish 실패: {pubResult.Error}";
+                        });
+                    }
+                    else
+                    {
+                        _isLoading = false;
+                        _lastSuccess = $"{srcEnv} → {dstEnv} 복사 완료 ({service})";
+                        onComplete?.Invoke();
+                    }
+                });
+            });
+        }
+
         // ─── 리사이저블 컬럼 ────────────────────────────
 
         /// <summary>컬럼 정의</summary>
@@ -415,12 +711,11 @@ namespace Tjdtjq5.UGSManager
                 if (evt.type == EventType.MouseDown && handle.Contains(evt.mousePosition))
                 { _dragging[colIndex] = true; evt.Use(); }
                 else if (evt.type == EventType.MouseUp && _dragging[colIndex])
-                { _dragging[colIndex] = false; evt.Use(); }
+                { _dragging[colIndex] = false; SaveWidths(); evt.Use(); }
                 else if (evt.type == EventType.MouseDrag && _dragging[colIndex])
                 {
                     float delta = invertDelta ? -evt.delta.x : evt.delta.x;
                     _widths[colIndex] = Mathf.Max(_widths[colIndex] + delta, _defs[colIndex].MinWidth);
-                    SaveWidths();
                     evt.Use();
                     EditorWindow.GetWindow<UGSWindow>()?.Repaint();
                 }

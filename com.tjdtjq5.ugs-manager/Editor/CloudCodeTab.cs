@@ -15,9 +15,15 @@ namespace Tjdtjq5.UGSManager
     /// </summary>
     public class CloudCodeTab : UGSTabBase
     {
-        public override string TabName => "Code";
+        public override string TabName => "Cloud Code";
         public override Color TabColor => new(0.65f, 0.50f, 0.95f);
         protected override string DashboardPath => "cloud-code/scripts";
+
+        // ─── 서브 탭 ────────────────────────────────
+        int _subTabIdx;
+        static readonly string[] SUB_TAB_LABELS = { "Scripts", "Schedules", "Triggers" };
+        SchedulerTab _schedulerSub;
+        TriggersTab _triggersSub;
 
         // ─── 데이터 ──────────────────────────────────
         List<LocalScript> _localScripts = new();
@@ -35,6 +41,17 @@ namespace Tjdtjq5.UGSManager
         // 새 스크립트
         string _newName = "";
         string _newDesc = "";
+
+        // 커스텀 그룹
+        int _groupIdx;
+        List<ScriptGroup> _groups = new();
+        const string KEY_CC_GROUPS = "UGS_CC_Groups";
+
+        struct ScriptGroup
+        {
+            public string Name;
+            public List<string> ScriptNames;
+        }
 
         // 테스트
         int _testScriptIdx;
@@ -85,6 +102,10 @@ namespace Tjdtjq5.UGSManager
 
         public override void OnEnable()
         {
+            _schedulerSub ??= new SchedulerTab();
+            _triggersSub ??= new TriggersTab();
+            _schedulerSub.OnEnable();
+            _triggersSub.OnEnable();
             base.OnEnable();
             SetupWatcher();
         }
@@ -93,6 +114,8 @@ namespace Tjdtjq5.UGSManager
         {
             base.OnDisable();
             DisposeWatcher();
+            _schedulerSub?.OnDisable();
+            _triggersSub?.OnDisable();
         }
 
         void SetupWatcher()
@@ -157,6 +180,7 @@ namespace Tjdtjq5.UGSManager
 
             // 로컬만으로 우선 병합 (서버 조회 전에도 목록 표시)
             BuildMergedList();
+            LoadGroups();
 
             _isLoading = true;
             UGSCliRunner.RunAsync("cc scripts list -j -q", result =>
@@ -171,10 +195,10 @@ namespace Tjdtjq5.UGSManager
                 else
                 {
                     _serverScripts.Clear();
-                    // 서버 조회 실패는 에러로 표시하지 않음 (로컬 목록은 정상 동작)
                     Debug.LogWarning($"[UGS] cc scripts list 실패: {result.Error}");
                 }
                 BuildMergedList();
+                LoadGroups();
             });
         }
 
@@ -342,6 +366,21 @@ namespace Tjdtjq5.UGSManager
 
         public override void OnDraw()
         {
+            // 서브 탭 (Scripts / Schedules / Triggers)
+            var subColors = new[] { TabColor, new Color(0.75f, 0.60f, 0.85f), new Color(0.90f, 0.65f, 0.35f) };
+            _subTabIdx = DrawStyledTabs(SUB_TAB_LABELS, _subTabIdx, subColors);
+            GUILayout.Space(2);
+
+            switch (_subTabIdx)
+            {
+                case 0: DrawScriptsContent(); break;
+                case 1: _schedulerSub?.OnDraw(); break;
+                case 2: _triggersSub?.OnDraw(); break;
+            }
+        }
+
+        void DrawScriptsContent()
+        {
             DrawMainToolbar();
             DrawError();
             DrawSuccess();
@@ -353,6 +392,9 @@ namespace Tjdtjq5.UGSManager
             GUILayout.Space(8);
             DrawCreateSection();
             DrawTestSection();
+
+            if (!string.IsNullOrEmpty(_scriptDir))
+                DrawEnvCopySection("cloud-code-scripts", _scriptDir, onComplete: () => FetchData());
         }
 
         // ─── 툴바 ──────────────────────────────────
@@ -404,7 +446,20 @@ namespace Tjdtjq5.UGSManager
             if (!DrawSectionFoldout(ref _foldScripts, $"Scripts ({total})", TabColor)) return;
             BeginBody();
 
-            if (total == 0)
+            // 커스텀 그룹 탭
+            var groupLabels = _groups.Select(g => g.Name).ToArray();
+            _groupIdx = DrawStyledTabs(groupLabels, _groupIdx, onAdd: AddGroup, onRename: RenameGroup);
+
+            List<MergedScript> filtered;
+            if (_groups.Count == 0 || _groupIdx >= _groups.Count)
+                filtered = _mergedScripts;
+            else
+            {
+                var keys = new HashSet<string>(_groups[_groupIdx].ScriptNames);
+                filtered = _mergedScripts.Where(s => keys.Contains(s.Name)).ToList();
+            }
+
+            if (filtered.Count == 0)
             {
                 EditorGUILayout.LabelField("스크립트 없음", new GUIStyle(EditorStyles.centeredGreyMiniLabel));
             }
@@ -412,8 +467,8 @@ namespace Tjdtjq5.UGSManager
             {
                 _columns.DrawHeader();
 
-                for (int i = 0; i < _mergedScripts.Count; i++)
-                    DrawScriptRow(_mergedScripts[i], i);
+                for (int i = 0; i < filtered.Count; i++)
+                    DrawScriptRow(filtered[i], i);
             }
 
             EndBody();
@@ -446,8 +501,11 @@ namespace Tjdtjq5.UGSManager
                 new GUIStyle(EditorStyles.label) { normal = { textColor = iconColor }, alignment = TextAnchor.MiddleCenter, fontSize = 13 },
                 GUILayout.Width(_columns.GetWidth(COL_STATUS)));
 
-            // 이름
-            DrawCellLabel(script.Name, _columns.GetWidth(COL_NAME));
+            // 이름 (우클릭 → 그룹 할당)
+            var nameRect = GUILayoutUtility.GetRect(_columns.GetWidth(COL_NAME), 18, GUILayout.Width(_columns.GetWidth(COL_NAME)));
+            EditorGUI.LabelField(nameRect, script.Name);
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 1 && nameRect.Contains(Event.current.mousePosition))
+            { ShowScriptGroupMenu(script.Name); Event.current.Use(); }
 
             // 설명
             bool hasDesc = !string.IsNullOrEmpty(script.Description);
@@ -759,6 +817,97 @@ module.exports = async ({{ params, context, logger }}) => {{
             }
             sb.Append(']');
             return sb.ToString();
+        }
+
+        // ─── 삭제 ──────────────────────────────────
+
+        // ─── 그룹 관리 ─────────────────────────────
+
+        void LoadGroups()
+        {
+            _groups.Clear();
+            string raw = EditorPrefs.GetString(KEY_CC_GROUPS, "");
+            if (string.IsNullOrEmpty(raw)) return;
+
+            foreach (var part in raw.Split('|'))
+            {
+                int sep = part.IndexOf(':');
+                if (sep < 0) continue;
+                _groups.Add(new ScriptGroup
+                {
+                    Name = part.Substring(0, sep),
+                    ScriptNames = new List<string>(
+                        part.Substring(sep + 1).Split(',').Where(s => !string.IsNullOrEmpty(s)))
+                });
+            }
+        }
+
+        void SaveGroups()
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < _groups.Count; i++)
+            {
+                if (i > 0) sb.Append('|');
+                sb.Append(_groups[i].Name).Append(':');
+                sb.Append(string.Join(",", _groups[i].ScriptNames));
+            }
+            EditorPrefs.SetString(KEY_CC_GROUPS, sb.ToString());
+        }
+
+        void AddGroup()
+        {
+            // 첫 그룹 생성 시 모든 기존 스크립트 포함
+            var scripts = _groups.Count == 0
+                ? new List<string>(_mergedScripts.Select(s => s.Name))
+                : new List<string>();
+
+            _groups.Add(new ScriptGroup
+            {
+                Name = $"Group {_groups.Count + 1}",
+                ScriptNames = scripts
+            });
+            _groupIdx = _groups.Count - 1;
+            SaveGroups();
+        }
+
+        void RenameGroup(int idx, string newName)
+        {
+            if (idx < 0 || idx >= _groups.Count) return;
+
+            // 빈 이름 입력 → 그룹 삭제
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                _groups.RemoveAt(idx);
+                if (_groupIdx >= _groups.Count) _groupIdx = Mathf.Max(0, _groups.Count - 1);
+                SaveGroups();
+                return;
+            }
+
+            var g = _groups[idx];
+            g.Name = newName.Trim();
+            _groups[idx] = g;
+            SaveGroups();
+        }
+
+        void ShowScriptGroupMenu(string scriptName)
+        {
+            if (_groups.Count == 0) return;
+            var menu = new GenericMenu();
+            for (int i = 0; i < _groups.Count; i++)
+            {
+                var g = _groups[i];
+                bool inGroup = g.ScriptNames.Contains(scriptName);
+                int idx = i;
+                menu.AddItem(new GUIContent(g.Name), inGroup, () =>
+                {
+                    var grp = _groups[idx];
+                    if (grp.ScriptNames.Contains(scriptName)) grp.ScriptNames.Remove(scriptName);
+                    else grp.ScriptNames.Add(scriptName);
+                    _groups[idx] = grp;
+                    SaveGroups();
+                });
+            }
+            menu.ShowAsContext();
         }
 
         // ─── 삭제 ──────────────────────────────────

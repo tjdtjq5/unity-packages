@@ -1,12 +1,13 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.Text;
 using UnityEditor;
 using UnityEngine;
 
 namespace Tjdtjq5.UGSManager
 {
-    /// <summary>UGS 통합 배포 탭. 서비스별 선택 배포 + 로그.</summary>
+    /// <summary>UGS 통합 배포 탭. 서비스별 선택 배포 + Dry Run + Fetch.</summary>
     public class DeployTab : UGSTabBase
     {
         public override string TabName => "Deploy";
@@ -15,36 +16,29 @@ namespace Tjdtjq5.UGSManager
 
         bool _foldDeploy = true;
         bool _foldFetch;
-        bool _foldLog = true;
-
         string _deployPath;
 
         // 서비스별 선택
         bool _selRemoteConfig = true;
         bool _selCloudCode = true;
-
-        // 로그
-        readonly List<LogEntry> _logs = new();
-        Vector2 _logScroll;
-
-        struct LogEntry
-        {
-            public string Time;
-            public string Message;
-            public Color Color;
-        }
+        bool _selEconomy = true;
+        bool _selLeaderboards = true;
+        bool _selScheduler = true;
+        bool _selTriggers = true;
 
         protected override void FetchData()
         {
             if (string.IsNullOrEmpty(_deployPath))
                 _deployPath = UGSConfig.DeployPath;
-
             _isLoading = false;
             _lastRefreshTime = DateTime.Now;
         }
 
         public override void OnDraw()
         {
+            DrawError();
+            DrawSuccess();
+
             GUILayout.Space(4);
 
             // 배포
@@ -58,12 +52,11 @@ namespace Tjdtjq5.UGSManager
                 _deployPath = EditorGUILayout.TextField(_deployPath);
                 if (GUILayout.Button("...", GUILayout.Width(28)))
                 {
-                    string selected = EditorUtility.OpenFolderPanel("배포 폴더 선택",
-                        "Assets/_Project", "");
+                    string selected = EditorUtility.OpenFolderPanel("배포 폴더 선택", "Assets", "");
                     if (!string.IsNullOrEmpty(selected))
                     {
-                        int assetsIdx = selected.IndexOf("Assets", StringComparison.Ordinal);
-                        _deployPath = assetsIdx >= 0 ? selected[assetsIdx..] : selected;
+                        int ai = selected.IndexOf("Assets", StringComparison.Ordinal);
+                        _deployPath = ai >= 0 ? selected[ai..] : selected;
                     }
                 }
                 EditorGUILayout.EndHorizontal();
@@ -71,22 +64,31 @@ namespace Tjdtjq5.UGSManager
                 GUILayout.Space(4);
                 DrawSubLabel("배포 대상 선택");
 
-                // 체크박스
-                _selRemoteConfig = EditorGUILayout.ToggleLeft("Remote Config", _selRemoteConfig);
-                _selCloudCode = EditorGUILayout.ToggleLeft("Cloud Code Scripts", _selCloudCode);
+                EditorGUILayout.BeginHorizontal();
+                _selRemoteConfig = EditorGUILayout.ToggleLeft("Remote Config", _selRemoteConfig, GUILayout.Width(130));
+                _selCloudCode = EditorGUILayout.ToggleLeft("Cloud Code", _selCloudCode, GUILayout.Width(100));
+                _selEconomy = EditorGUILayout.ToggleLeft("Economy", _selEconomy, GUILayout.Width(80));
+                _selLeaderboards = EditorGUILayout.ToggleLeft("LB", _selLeaderboards, GUILayout.Width(40));
+                EditorGUILayout.EndHorizontal();
+                EditorGUILayout.BeginHorizontal();
+                _selScheduler = EditorGUILayout.ToggleLeft("Scheduler", _selScheduler, GUILayout.Width(80));
+                _selTriggers = EditorGUILayout.ToggleLeft("Triggers", _selTriggers, GUILayout.Width(70));
+                EditorGUILayout.EndHorizontal();
 
                 GUILayout.Space(6);
 
                 EditorGUILayout.BeginHorizontal();
+                if (DrawColorBtn("Dry Run", COL_MUTED, 24))
+                    RunDeploy(true);
 
-                GUI.enabled = _selRemoteConfig || _selCloudCode;
-                if (DrawColorBtn("Deploy Selected", COL_SUCCESS, 28))
-                    DeploySelected();
+                bool anySelected = _selRemoteConfig || _selCloudCode || _selEconomy || _selLeaderboards || _selScheduler || _selTriggers;
+                GUI.enabled = anySelected;
+                if (DrawColorBtn("Deploy Selected", COL_SUCCESS, 24))
+                    RunDeploy(false);
                 GUI.enabled = true;
 
-                if (DrawColorBtn("Deploy All", COL_INFO, 28))
+                if (DrawColorBtn("Deploy All", COL_INFO, 24))
                     DeployAll();
-
                 EditorGUILayout.EndHorizontal();
 
                 EndBody();
@@ -106,134 +108,110 @@ namespace Tjdtjq5.UGSManager
                 EditorGUILayout.EndHorizontal();
 
                 GUILayout.Space(4);
-
-                if (DrawColorBtn("Fetch All", COL_INFO, 28))
-                    FetchAll();
-
-                EndBody();
-            }
-
-            GUILayout.Space(8);
-
-            // 실행 로그
-            if (DrawSectionFoldout(ref _foldLog, $"실행 로그 ({_logs.Count})", COL_MUTED))
-            {
-                BeginBody();
-
-                if (_logs.Count == 0)
-                {
-                    EditorGUILayout.LabelField("아직 실행 기록 없음",
-                        new GUIStyle(EditorStyles.centeredGreyMiniLabel));
-                }
-                else
-                {
-                    _logScroll = EditorGUILayout.BeginScrollView(_logScroll,
-                        GUILayout.MaxHeight(200));
-
-                    // 최신 로그가 위에
-                    for (int i = _logs.Count - 1; i >= 0; i--)
-                    {
-                        var log = _logs[i];
-                        var style = new GUIStyle(EditorStyles.miniLabel)
-                            { normal = { textColor = log.Color }, wordWrap = true };
-                        EditorGUILayout.LabelField($"[{log.Time}] {log.Message}", style);
-                    }
-
-                    EditorGUILayout.EndScrollView();
-
-                    GUILayout.Space(4);
-                    if (DrawColorBtn("로그 지우기", COL_MUTED, 20))
-                        _logs.Clear();
-                }
+                if (DrawColorBtn("Fetch All", COL_INFO, 24))
+                    FetchFromServer();
 
                 EndBody();
             }
 
-            DrawLoading("배포 중...");
+            DrawLoading("실행 중...");
         }
 
-        // ─── 배포 명령 ──────────────────────────────────
+        // ─── Deploy ──────────────────────────────────
 
-        void DeploySelected()
+        void RunDeploy(bool dryRun)
         {
             var services = new List<string>();
             if (_selRemoteConfig) services.Add("remote-config");
             if (_selCloudCode) services.Add("cloud-code-scripts");
+            if (_selEconomy) services.Add("economy");
+            if (_selLeaderboards) services.Add("leaderboards");
+            if (_selScheduler) services.Add("scheduler");
+            if (_selTriggers) services.Add("triggers");
 
-            foreach (var svc in services)
-                DeployService(svc);
+            if (services.Count == 0) return;
+
+            _isLoading = true;
+            _lastError = null;
+            _lastSuccess = null;
+
+            string dryFlag = dryRun ? " --dry-run" : "";
+            string svcFlag = $"-s {string.Join(" -s ", services)}";
+            string cmd = $"deploy \"{_deployPath}\" {svcFlag}{dryFlag}";
+
+            UGSCliRunner.RunAsync(cmd, result =>
+            {
+                if (result.Success)
+                {
+                    string prefix = dryRun ? "[Dry Run] " : "";
+                    string output = !string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : "";
+                    _lastSuccess = $"{prefix}완료{output}";
+
+                    // Economy는 publish 필요
+                    if (!dryRun && _selEconomy)
+                    {
+                        UGSCliRunner.RunAsync("economy publish", pubResult =>
+                        {
+                            _isLoading = false;
+                            if (!pubResult.Success)
+                                _lastSuccess += "\n(Economy publish 실패 — Dashboard에서 수동 publish 필요)";
+                        });
+                    }
+                    else
+                        _isLoading = false;
+                }
+                else
+                {
+                    _isLoading = false;
+                    var sb = new StringBuilder($"실패 (exit {result.ExitCode})");
+                    if (!string.IsNullOrEmpty(result.Error)) sb.Append($"\n{result.Error}");
+                    if (!string.IsNullOrEmpty(result.Output)) sb.Append($"\n{result.Output}");
+                    _lastError = sb.ToString();
+                }
+            });
         }
 
         void DeployAll()
         {
-            AddLog("전체 배포 시작...", COL_INFO);
             _isLoading = true;
+            _lastError = null;
+            _lastSuccess = null;
 
             UGSCliRunner.RunAsync($"deploy \"{_deployPath}\"", result =>
             {
-                _isLoading = false;
                 if (result.Success)
                 {
-                    AddLog("전체 배포 완료!", COL_SUCCESS);
-                    if (!string.IsNullOrEmpty(result.Output))
-                        AddLog(result.Output, Color.white);
+                    string output = !string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : "";
+                    _lastSuccess = $"전체 배포 완료{output}";
+
+                    UGSCliRunner.RunAsync("economy publish", pubResult =>
+                    {
+                        _isLoading = false;
+                        if (!pubResult.Success)
+                            _lastSuccess += "\n(Economy publish 실패)";
+                    });
                 }
                 else
                 {
-                    AddLog($"배포 실패: {result.Error}", COL_ERROR);
+                    _isLoading = false;
+                    _lastError = $"배포 실패: {result.Error}";
                 }
             });
         }
 
-        void DeployService(string service)
+        void FetchFromServer()
         {
-            AddLog($"{service} 배포 시작...", COL_INFO);
             _isLoading = true;
-
-            UGSCliRunner.RunAsync($"deploy \"{_deployPath}\" -s {service}", result =>
-            {
-                _isLoading = false;
-                if (result.Success)
-                {
-                    AddLog($"{service} 배포 완료!", COL_SUCCESS);
-                    if (!string.IsNullOrEmpty(result.Output))
-                        AddLog(result.Output, Color.white);
-                }
-                else
-                {
-                    AddLog($"{service} 실패: {result.Error}", COL_ERROR);
-                }
-            });
-        }
-
-        void FetchAll()
-        {
-            AddLog("Fetch 시작...", COL_INFO);
-            _isLoading = true;
+            _lastError = null;
+            _lastSuccess = null;
 
             UGSCliRunner.RunAsync($"fetch \"{_deployPath}\"", result =>
             {
                 _isLoading = false;
                 if (result.Success)
-                {
-                    AddLog("Fetch 완료!", COL_SUCCESS);
-                    if (!string.IsNullOrEmpty(result.Output))
-                        AddLog(result.Output, Color.white);
-                }
+                    _lastSuccess = "Fetch 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : "");
                 else
-                {
-                    AddLog($"Fetch 실패: {result.Error}", COL_ERROR);
-                }
-            });
-        }
-
-        void AddLog(string message, Color color)
-        {
-            _logs.Add(new LogEntry
-            {
-                Time = DateTime.Now.ToString("HH:mm:ss"),
-                Message = message,
-                Color = color
+                    _lastError = $"Fetch 실패: {result.Error}";
             });
         }
     }

@@ -25,7 +25,7 @@ namespace Tjdtjq5.UGSManager
         // ─── UI 상태 ────────────────────────────────
         int _activeGroupIdx;
         string _searchFilter = "";
-        bool _foldAdd, _foldEnum, _foldFile;
+        bool _foldAdd, _foldEnum, _foldFile, _foldDiff;
 
         // 키 추가
         string _newKey = "";
@@ -97,7 +97,7 @@ namespace Tjdtjq5.UGSManager
             int ei = json.IndexOf("\"entries\"", StringComparison.Ordinal);
             if (ei < 0) return result;
             int bs = json.IndexOf('{', ei + 9);
-            int be = FindBrace(json, bs);
+            int be = JsonFindBrace(json, bs);
             string block = json.Substring(bs + 1, be - bs - 1);
             ParseKVPairs(block, result);
             return result;
@@ -109,7 +109,7 @@ namespace Tjdtjq5.UGSManager
             int ti = json.IndexOf("\"types\"", StringComparison.Ordinal);
             if (ti < 0) return result;
             int bs = json.IndexOf('{', ti + 7);
-            int be = FindBrace(json, bs);
+            int be = JsonFindBrace(json, bs);
             string block = json.Substring(bs + 1, be - bs - 1);
             // types는 항상 string:string
             int idx = 0;
@@ -155,13 +155,6 @@ namespace Tjdtjq5.UGSManager
             }
         }
 
-        static int FindBrace(string s, int o)
-        {
-            int d = 1;
-            for (int i = o + 1; i < s.Length; i++)
-            { if (s[i] == '{') d++; else if (s[i] == '}') { d--; if (d == 0) return i; } }
-            return s.Length - 1;
-        }
 
         // ─── 엔트리 빌드 ───────────────────────────
 
@@ -369,7 +362,12 @@ namespace Tjdtjq5.UGSManager
             GUILayout.Space(8);
             DrawAddKeySection();
             DrawEnumSection();
+            DrawDiffSection();
             DrawFileSection();
+
+            string rcDir = !string.IsNullOrEmpty(_rcFilePath) ? Path.GetDirectoryName(_rcFilePath)!.Replace('\\', '/') : "";
+            if (!string.IsNullOrEmpty(rcDir))
+                DrawEnvCopySection("remote-config", rcDir, onComplete: () => FetchData());
         }
 
         // ─── 툴바 ─────────────────────────────────
@@ -458,28 +456,32 @@ namespace Tjdtjq5.UGSManager
         void DrawGroupTabs()
         {
             if (_schema == null || _schema.Groups.Count == 0) return;
-            if (_activeGroupIdx >= _schema.Groups.Count) _activeGroupIdx = 0;
 
-            var rect = GUILayoutUtility.GetRect(0, 26, GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(rect, BG_HEADER);
+            var labels = _schema.Groups.Select(g => g.Name).ToArray();
+            var colors = _schema.Groups.Select(g => g.Color).ToArray();
+            _activeGroupIdx = DrawStyledTabs(labels, _activeGroupIdx, colors,
+                onAdd: AddNewGroup, onRename: RenameGroup);
+        }
 
-            float tabW = rect.width / _schema.Groups.Count;
-            for (int i = 0; i < _schema.Groups.Count; i++)
+        void AddNewGroup()
+        {
+            string name = $"Group {_schema.Groups.Count + 1}";
+            _schema.Groups.Add(new GroupInfo
             {
-                var g = _schema.Groups[i];
-                var tr = new Rect(rect.x + tabW * i, rect.y, tabW, rect.height);
-                bool active = _activeGroupIdx == i;
-                if (active)
-                {
-                    EditorGUI.DrawRect(tr, new Color(g.Color.r, g.Color.g, g.Color.b, 0.15f));
-                    EditorGUI.DrawRect(new Rect(tr.x, tr.yMax - 2, tr.width, 2), g.Color);
-                }
-                var st = new GUIStyle(EditorStyles.miniLabel)
-                { fontSize = 11, alignment = TextAnchor.MiddleCenter, fontStyle = active ? FontStyle.Bold : FontStyle.Normal, normal = { textColor = active ? g.Color : COL_MUTED } };
-                EditorGUI.LabelField(tr, g.Name, st);
-                if (Event.current.type == EventType.MouseDown && tr.Contains(Event.current.mousePosition))
-                { _activeGroupIdx = i; Event.current.Use(); }
-            }
+                Name = name,
+                Color = new Color(0.5f, 0.7f, 0.9f),
+                Keys = Array.Empty<string>()
+            });
+            _activeGroupIdx = _schema.Groups.Count - 1;
+            SaveSchema();
+        }
+
+        void RenameGroup(int idx, string newName)
+        {
+            if (idx < 0 || idx >= _schema.Groups.Count || string.IsNullOrWhiteSpace(newName)) return;
+            var g = _schema.Groups[idx];
+            _schema.Groups[idx] = new GroupInfo { Name = newName.Trim(), Color = g.Color, Keys = g.Keys };
+            SaveSchema();
         }
 
         List<ConfigEntry> GetVisibleEntries()
@@ -563,9 +565,48 @@ namespace Tjdtjq5.UGSManager
                 EditorGUI.LabelField(rect, entry.Key, new GUIStyle(EditorStyles.label)
                     { normal = { textColor = entry.Key != entry.OrigKey ? COL_WARN : Color.white } });
 
-                if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 && rect.Contains(Event.current.mousePosition))
-                { entry.IsEditingKey = true; Event.current.Use(); }
+                if (Event.current.type == EventType.MouseDown && rect.Contains(Event.current.mousePosition))
+                {
+                    if (Event.current.clickCount == 2)
+                    { entry.IsEditingKey = true; Event.current.Use(); }
+                    else if (Event.current.button == 1) // 우클릭
+                    { ShowGroupAssignMenu(entry.Key); Event.current.Use(); }
+                }
             }
+        }
+
+        void ShowGroupAssignMenu(string key)
+        {
+            if (_schema == null || _schema.Groups.Count == 0) return;
+            var menu = new GenericMenu();
+            for (int i = 0; i < _schema.Groups.Count; i++)
+            {
+                var g = _schema.Groups[i];
+                bool inGroup = g.Keys != null && Array.IndexOf(g.Keys, key) >= 0;
+                int idx = i;
+                menu.AddItem(new GUIContent(g.Name), inGroup, () => AssignToGroup(idx, key));
+            }
+            menu.ShowAsContext();
+        }
+
+        void AssignToGroup(int targetIdx, string key)
+        {
+            // 다른 그룹에서 제거 + 대상 그룹에 추가 (1개만 유지)
+            for (int i = 0; i < _schema.Groups.Count; i++)
+            {
+                var g = _schema.Groups[i];
+                var keys = g.Keys != null ? new List<string>(g.Keys) : new List<string>();
+                if (i == targetIdx)
+                {
+                    if (!keys.Contains(key)) keys.Add(key);
+                }
+                else
+                {
+                    keys.Remove(key);
+                }
+                _schema.Groups[i] = new GroupInfo { Name = g.Name, Color = g.Color, Keys = keys.ToArray() };
+            }
+            SaveSchema();
         }
 
         // ─── 타입 드롭다운 (LIST 제거) ──────────────
@@ -898,6 +939,144 @@ namespace Tjdtjq5.UGSManager
             BeginBody();
             _enumEditor?.Draw();
             EndBody();
+        }
+
+        // ─── 환경 비교 (diff) ─────────────────────
+
+        int _diffSrcIdx = -1, _diffDstIdx = -1;
+        List<(string key, string srcVal, string dstVal, string status)> _diffResults;
+
+        void DrawDiffSection()
+        {
+            if (!DrawSectionFoldout(ref _foldDiff, "환경 비교", COL_INFO)) return;
+            BeginBody();
+
+            LoadSharedEnvironments();
+            if (_diffSrcIdx < 0 && _sharedEnvNames != null)
+            {
+                _diffSrcIdx = System.Array.IndexOf(_sharedEnvNames, "dev");
+                _diffDstIdx = System.Array.IndexOf(_sharedEnvNames, "production");
+                if (_diffSrcIdx < 0) _diffSrcIdx = 0;
+                if (_diffDstIdx < 0) _diffDstIdx = _sharedEnvNames.Length > 1 ? 1 : 0;
+            }
+            if (_sharedEnvNames == null || _sharedEnvNames.Length < 2)
+            {
+                EditorGUILayout.LabelField("환경 2개 이상 필요", new GUIStyle(EditorStyles.centeredGreyMiniLabel));
+                EndBody();
+                return;
+            }
+
+            EditorGUILayout.BeginHorizontal(GUILayout.Height(18));
+            _diffSrcIdx = EditorGUILayout.Popup(_diffSrcIdx, _sharedEnvNames, GUILayout.Width(100));
+            EditorGUILayout.LabelField("vs", GUILayout.Width(20));
+            _diffDstIdx = EditorGUILayout.Popup(_diffDstIdx, _sharedEnvNames, GUILayout.Width(100));
+            GUILayout.Space(4);
+            GUI.enabled = _diffSrcIdx != _diffDstIdx && !_isLoading;
+            if (GUILayout.Button("비교", EditorStyles.miniButton, GUILayout.Width(40), GUILayout.Height(16)))
+                RunDiff();
+            GUI.enabled = true;
+            EditorGUILayout.EndHorizontal();
+
+            if (_diffResults != null && _diffResults.Count > 0)
+            {
+                GUILayout.Space(4);
+                // 헤더
+                EditorGUILayout.BeginHorizontal();
+                DrawHeaderLabel("키", 120);
+                DrawHeaderLabel(_sharedEnvNames[_diffSrcIdx], 100);
+                DrawHeaderLabel(_sharedEnvNames[_diffDstIdx], 100);
+                DrawHeaderLabel("상태", 50);
+                EditorGUILayout.EndHorizontal();
+
+                for (int i = 0; i < _diffResults.Count; i++)
+                {
+                    var (key, src, dst, status) = _diffResults[i];
+                    Color statusColor = status switch { "=" => COL_MUTED, "≠" => COL_WARN, "+" => COL_SUCCESS, "-" => COL_ERROR, _ => COL_MUTED };
+                    var bg = i % 2 == 0 ? BG_CARD : BG_SECTION;
+
+                    EditorGUILayout.BeginHorizontal(GetBgStyle(bg));
+                    DrawCellLabel(key, 120);
+                    DrawCellLabel(src, 100, status == "-" ? COL_MUTED : (Color?)null);
+                    DrawCellLabel(dst, 100, status == "+" ? COL_MUTED : (Color?)null);
+                    DrawCellLabel(status, 50, statusColor);
+                    EditorGUILayout.EndHorizontal();
+                }
+            }
+            else if (_diffResults != null)
+            {
+                EditorGUILayout.LabelField("차이 없음", new GUIStyle(EditorStyles.centeredGreyMiniLabel));
+            }
+
+            EndBody();
+        }
+
+        void RunDiff()
+        {
+            _diffResults = null;
+            string srcEnv = _sharedEnvNames[_diffSrcIdx];
+            string dstEnv = _sharedEnvNames[_diffDstIdx];
+
+            string tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ugs_diff");
+            string srcDir = System.IO.Path.Combine(tempDir, "src");
+            string dstDir = System.IO.Path.Combine(tempDir, "dst");
+            System.IO.Directory.CreateDirectory(srcDir);
+            System.IO.Directory.CreateDirectory(dstDir);
+
+            _isLoading = true;
+            UGSCliRunner.RunAsync($"fetch \"{srcDir.Replace('\\', '/')}\" -s remote-config -e {srcEnv}", srcResult =>
+            {
+                if (!srcResult.Success) { _isLoading = false; _lastError = $"Fetch 실패 ({srcEnv})"; return; }
+
+                UGSCliRunner.RunAsync($"fetch \"{dstDir.Replace('\\', '/')}\" -s remote-config -e {dstEnv}", dstResult =>
+                {
+                    _isLoading = false;
+                    if (!dstResult.Success) { _lastError = $"Fetch 실패 ({dstEnv})"; return; }
+
+                    // .rc 파일 파싱 비교
+                    var srcEntries = ParseRcFile(srcDir);
+                    var dstEntries = ParseRcFile(dstDir);
+                    BuildDiffResults(srcEntries, dstEntries);
+                });
+            });
+        }
+
+        Dictionary<string, string> ParseRcFile(string dir)
+        {
+            var result = new Dictionary<string, string>();
+            foreach (var file in System.IO.Directory.GetFiles(dir, "*.rc"))
+            {
+                string json = System.IO.File.ReadAllText(file);
+                var entries = ParseRcEntries(json);
+                foreach (var kv in entries) result[kv.Key] = kv.Value;
+            }
+            return result;
+        }
+
+        void BuildDiffResults(Dictionary<string, string> src, Dictionary<string, string> dst)
+        {
+            _diffResults = new List<(string, string, string, string)>();
+            var allKeys = new HashSet<string>(src.Keys);
+            foreach (var k in dst.Keys) allKeys.Add(k);
+
+            foreach (var key in allKeys)
+            {
+                bool inSrc = src.TryGetValue(key, out string sv);
+                bool inDst = dst.TryGetValue(key, out string dv);
+
+                if (inSrc && inDst)
+                    _diffResults.Add((key, sv, dv, sv == dv ? "=" : "≠"));
+                else if (inSrc)
+                    _diffResults.Add((key, sv, "—", "+"));
+                else
+                    _diffResults.Add((key, "—", dv, "-"));
+            }
+
+            // 다른 것 먼저 정렬
+            _diffResults.Sort((a, b) =>
+            {
+                int OrderOf(string s) => s switch { "≠" => 0, "+" => 1, "-" => 2, _ => 3 };
+                return OrderOf(a.status).CompareTo(OrderOf(b.status));
+            });
         }
 
         void DrawFileSection()

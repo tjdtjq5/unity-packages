@@ -329,10 +329,15 @@ namespace Tjdtjq5.UGSManager
         static int FindBrace(string json, int open)
         {
             int depth = 1;
+            bool inStr = false;
             for (int i = open + 1; i < json.Length; i++)
             {
-                if (json[i] == '{') depth++;
-                else if (json[i] == '}') { depth--; if (depth == 0) return i; }
+                char c = json[i];
+                if (c == '\\' && inStr) { i++; continue; }
+                if (c == '"') { inStr = !inStr; continue; }
+                if (inStr) continue;
+                if (c == '{') depth++;
+                else if (c == '}') { depth--; if (depth == 0) return i; }
             }
             return json.Length - 1;
         }
@@ -340,10 +345,15 @@ namespace Tjdtjq5.UGSManager
         static int FindBracket(string json, int open)
         {
             int depth = 1;
+            bool inStr = false;
             for (int i = open + 1; i < json.Length; i++)
             {
-                if (json[i] == '[') depth++;
-                else if (json[i] == ']') { depth--; if (depth == 0) return i; }
+                char c = json[i];
+                if (c == '\\' && inStr) { i++; continue; }
+                if (c == '"') { inStr = !inStr; continue; }
+                if (inStr) continue;
+                if (c == '[') depth++;
+                else if (c == ']') { depth--; if (depth == 0) return i; }
             }
             return json.Length - 1;
         }

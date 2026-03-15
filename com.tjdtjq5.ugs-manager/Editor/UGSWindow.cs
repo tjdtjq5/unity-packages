@@ -50,6 +50,10 @@ namespace Tjdtjq5.UGSManager
                 new EnvironmentTab(),
                 new RemoteConfigTab(),
                 new CloudCodeTab(),
+                new EconomyTab(),
+                new LeaderboardsTab(),
+                new PlayerDataTab(),
+                new CustomDataTab(),
                 new DeployTab(),
             };
 
@@ -380,12 +384,10 @@ namespace Tjdtjq5.UGSManager
 
         void AutoDetectPaths()
         {
-            // .rc 파일 찾기
-            string root = Application.dataPath.Replace("/Assets", "");
-            var rcFiles = System.IO.Directory.GetFiles(root, "*.rc", System.IO.SearchOption.AllDirectories);
+            // .rc 파일 찾기 (Assets 하위만 탐색)
+            var rcFiles = System.IO.Directory.GetFiles(Application.dataPath, "*.rc", System.IO.SearchOption.AllDirectories);
             foreach (var f in rcFiles)
             {
-                if (f.Contains("Library") || f.Contains("Temp")) continue;
                 string content = System.IO.File.ReadAllText(f);
                 if (!content.Contains("entries")) continue;
 
