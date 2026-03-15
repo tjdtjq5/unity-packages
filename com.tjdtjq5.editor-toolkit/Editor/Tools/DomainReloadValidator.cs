@@ -22,7 +22,7 @@ namespace Tjdtjq5.EditorToolkit.Editor.Tools
         {
             "GameCreator", "DG.Tweening", "Zenject", "VContainer",
             "TMPro", "Spine", "UnityEngine", "UnityEditor",
-            "NinjutsuGames", "ChocDino",
+            "NinjutsuGames", "ChocDino", "LayerLab",
         };
 
         [DidReloadScripts]
