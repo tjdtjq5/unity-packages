@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -42,20 +43,20 @@ namespace Tjdtjq5.UGSManager
         protected override void FetchData()
         {
             _isLoading = false;
-            _lastError = null;
+            _notification = null;
 
             // 컬럼 너비 + 로그 복원
-            _columns ??= new ResizableColumns("UGS_RC", new[]
+            _columns ??= new ResizableColumns("UGS_RC", new ColumnDef[]
             {
-                new ColDef("키",   160f, resizable: true),
-                new ColDef("타입",  60f, resizable: true),
-                new ColDef("[]",   18f),
-                new ColDef("값",    0f),   // flex
-                new ColDef("",     60f),   // 액션
-            });
+                new ColumnDef("키",   160f, resizable: true),
+                new ColumnDef("타입",  60f, resizable: true),
+                new ColumnDef("[]",   18f),
+                new ColumnDef("값",    0f),   // flex
+                new ColumnDef("",     60f),   // 액션
+            }, () => EditorWindow.GetWindow<UGSWindow>()?.Repaint());
             if (string.IsNullOrEmpty(_rcFilePath) || !File.Exists(_rcFilePath))
                 _rcFilePath = FindFile("*.rc", "entries");
-            if (string.IsNullOrEmpty(_rcFilePath)) { _lastError = ".rc 파일을 찾을 수 없습니다."; return; }
+            if (string.IsNullOrEmpty(_rcFilePath)) { ShowNotification(".rc 파일을 찾을 수 없습니다.", NotificationType.Error); return; }
 
             string dir = Path.GetDirectoryName(_rcFilePath);
             string baseName = Path.GetFileNameWithoutExtension(_rcFilePath);
@@ -75,7 +76,7 @@ namespace Tjdtjq5.UGSManager
                 _enumEditor = new RemoteConfigEnumEditor(_schema, _schemaFilePath);
                 _lastRefreshTime = DateTime.Now;
             }
-            catch (Exception e) { _lastError = $"파일 읽기 실패: {e.Message}"; }
+            catch (Exception e) { ShowNotification($"파일 읽기 실패: {e.Message}", NotificationType.Error); }
         }
 
         static string FindFile(string pattern, string check)
@@ -97,7 +98,7 @@ namespace Tjdtjq5.UGSManager
             int ei = json.IndexOf("\"entries\"", StringComparison.Ordinal);
             if (ei < 0) return result;
             int bs = json.IndexOf('{', ei + 9);
-            int be = JsonFindBrace(json, bs);
+            int be = JsonHelper.FindBrace(json, bs);
             string block = json.Substring(bs + 1, be - bs - 1);
             ParseKVPairs(block, result);
             return result;
@@ -109,7 +110,7 @@ namespace Tjdtjq5.UGSManager
             int ti = json.IndexOf("\"types\"", StringComparison.Ordinal);
             if (ti < 0) return result;
             int bs = json.IndexOf('{', ti + 7);
-            int be = JsonFindBrace(json, bs);
+            int be = JsonHelper.FindBrace(json, bs);
             string block = json.Substring(bs + 1, be - bs - 1);
             // types는 항상 string:string
             int idx = 0;
@@ -338,9 +339,8 @@ namespace Tjdtjq5.UGSManager
         public override void OnDraw()
         {
             DrawMainToolbar();
-            DrawError();
-            DrawSuccess();
-            DrawLoading();
+            DrawNotifications();
+            DrawLoading(_isLoading);
             if (_isLoading) return;
 
             GUILayout.Space(2);
@@ -393,7 +393,7 @@ namespace Tjdtjq5.UGSManager
             _searchFilter = EditorGUILayout.TextField(_searchFilter, GUILayout.MinWidth(60));
 
             GUILayout.FlexibleSpace();
-            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkBtn("Dashboard")) OpenDashboardFromTab();
+            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkButton("Dashboard")) OpenDashboardFromTab();
 
             if (_lastRefreshTime != default)
             {
@@ -459,7 +459,7 @@ namespace Tjdtjq5.UGSManager
 
             var labels = _schema.Groups.Select(g => g.Name).ToArray();
             var colors = _schema.Groups.Select(g => g.Color).ToArray();
-            _activeGroupIdx = DrawStyledTabs(labels, _activeGroupIdx, colors,
+            _activeGroupIdx = DrawTabBar(labels, _activeGroupIdx, colors,
                 onAdd: AddNewGroup, onRename: RenameGroup);
         }
 
@@ -1025,12 +1025,12 @@ namespace Tjdtjq5.UGSManager
             _isLoading = true;
             UGSCliRunner.RunAsync($"fetch \"{srcDir.Replace('\\', '/')}\" -s remote-config -e {srcEnv}", srcResult =>
             {
-                if (!srcResult.Success) { _isLoading = false; _lastError = $"Fetch 실패 ({srcEnv})"; return; }
+                if (!srcResult.Success) { _isLoading = false; ShowNotification($"Fetch 실패 ({srcEnv})", NotificationType.Error); return; }
 
                 UGSCliRunner.RunAsync($"fetch \"{dstDir.Replace('\\', '/')}\" -s remote-config -e {dstEnv}", dstResult =>
                 {
                     _isLoading = false;
-                    if (!dstResult.Success) { _lastError = $"Fetch 실패 ({dstEnv})"; return; }
+                    if (!dstResult.Success) { ShowNotification($"Fetch 실패 ({dstEnv})", NotificationType.Error); return; }
 
                     // .rc 파일 파싱 비교
                     var srcEntries = ParseRcFile(srcDir);
@@ -1111,18 +1111,17 @@ namespace Tjdtjq5.UGSManager
 
         void PushToServer()
         {
-            if (string.IsNullOrEmpty(_rcFilePath)) { _lastError = ".rc 파일 없음"; return; }
+            if (string.IsNullOrEmpty(_rcFilePath)) { ShowNotification(".rc 파일 없음", NotificationType.Error); return; }
             string dir = Path.GetDirectoryName(_rcFilePath)!.Replace('\\', '/');
             _isLoading = true;
-            _lastError = null;
-            _lastSuccess = null;
+            _notification = null;
 
             UGSCliRunner.RunAsync($"deploy \"{dir}\" -s remote-config", result =>
             {
                 _isLoading = false;
                 if (result.Success)
                 {
-                    _lastSuccess = "Deploy 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : "");
+                    ShowNotification("Deploy 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : ""), NotificationType.Success);
                 }
                 else
                 {
@@ -1130,7 +1129,7 @@ namespace Tjdtjq5.UGSManager
                     sb.Append($"Deploy 실패 (exit {result.ExitCode})");
                     if (!string.IsNullOrEmpty(result.Error)) sb.Append($"\n{result.Error}");
                     if (!string.IsNullOrEmpty(result.Output)) sb.Append($"\n{result.Output}");
-                    _lastError = sb.ToString();
+                    ShowNotification(sb.ToString(), NotificationType.Error);
                 }
             });
         }

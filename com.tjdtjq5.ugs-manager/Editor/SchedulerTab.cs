@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -67,17 +68,17 @@ namespace Tjdtjq5.UGSManager
         protected override void FetchData()
         {
             _isLoading = false;
-            _lastError = null;
+            _notification = null;
 
-            _columns ??= new ResizableColumns("UGS_SC", new[]
+            _columns ??= new ResizableColumns("UGS_SC", new ColumnDef[]
             {
-                new ColDef("상태", 36f),
-                new ColDef("ID", 120f, resizable: true),
-                new ColDef("이벤트", 0f),
-                new ColDef("타입", 50f),
-                new ColDef("주기", 50f),
-                new ColDef("", 26f),
-            });
+                new ColumnDef("상태", 36f),
+                new ColumnDef("ID", 120f, resizable: true),
+                new ColumnDef("이벤트", 0f),
+                new ColumnDef("타입", 50f),
+                new ColumnDef("주기", 50f),
+                new ColumnDef("", 26f),
+            }, () => EditorWindow.GetWindow<UGSWindow>()?.Repaint());
 
             ResolveDir();
             ScanLocalFile();
@@ -127,7 +128,7 @@ namespace Tjdtjq5.UGSManager
             string json = File.ReadAllText(_schedFilePath);
 
             // "Configs" 블록 파싱
-            string configsBlock = ExtractObject(json, "Configs");
+            string configsBlock = JsonHelper.GetObject(json, "Configs");
             if (string.IsNullOrEmpty(configsBlock)) return;
 
             // 각 스케줄 ID를 키로 파싱
@@ -145,17 +146,17 @@ namespace Tjdtjq5.UGSManager
 
                 int objStart = configsBlock.IndexOf('{', ke);
                 if (objStart < 0) break;
-                int objEnd = JsonFindBrace(configsBlock, objStart);
+                int objEnd = JsonHelper.FindBrace(configsBlock, objStart);
                 string obj = configsBlock.Substring(objStart, objEnd - objStart + 1);
 
                 _entries.Add(new ScheduleEntry
                 {
                     Id = id,
-                    EventName = ExtractStr(obj, "EventName"),
-                    Type = ExtractStr(obj, "Type"),
-                    Schedule = ExtractStr(obj, "Schedule"),
-                    Payload = ExtractStr(obj, "Payload"),
-                    PayloadVersion = ExtractInt(obj, "PayloadVersion"),
+                    EventName = JsonHelper.GetString(obj, "EventName"),
+                    Type = JsonHelper.GetString(obj, "Type"),
+                    Schedule = JsonHelper.GetString(obj, "Schedule"),
+                    Payload = JsonHelper.GetString(obj, "Payload"),
+                    PayloadVersion = Math.Max(1, JsonHelper.GetInt(obj, "PayloadVersion")),
                     Status = SyncState.LocalOnly
                 });
 
@@ -175,13 +176,13 @@ namespace Tjdtjq5.UGSManager
             while (true)
             {
                 int os = json.IndexOf('{', sf); if (os < 0) break;
-                int oe = JsonFindBrace(json, os); if (oe < 0) break;
+                int oe = JsonHelper.FindBrace(json, os); if (oe < 0) break;
                 string obj = json.Substring(os, oe - os + 1);
 
-                string id = ExtractStr(obj, "id");
-                if (string.IsNullOrEmpty(id)) id = ExtractStr(obj, "Id");
-                if (string.IsNullOrEmpty(id)) id = ExtractStr(obj, "name");
-                if (string.IsNullOrEmpty(id)) id = ExtractStr(obj, "Name");
+                string id = JsonHelper.GetString(obj, "id");
+                if (string.IsNullOrEmpty(id)) id = JsonHelper.GetString(obj, "Id");
+                if (string.IsNullOrEmpty(id)) id = JsonHelper.GetString(obj, "name");
+                if (string.IsNullOrEmpty(id)) id = JsonHelper.GetString(obj, "Name");
                 if (!string.IsNullOrEmpty(id)) _serverIds.Add(id);
 
                 sf = oe + 1;
@@ -208,9 +209,8 @@ namespace Tjdtjq5.UGSManager
         public override void OnDraw()
         {
             DrawMainToolbar();
-            DrawError();
-            DrawSuccess();
-            DrawLoading();
+            DrawNotifications();
+            DrawLoading(_isLoading);
             if (_isLoading) return;
 
             GUILayout.Space(4);
@@ -243,7 +243,7 @@ namespace Tjdtjq5.UGSManager
                 new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = COL_MUTED } }, GUILayout.Width(110));
 
             GUILayout.FlexibleSpace();
-            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkBtn("Dashboard"))
+            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkButton("Dashboard"))
             {
                 if (UGSConfig.IsConfigured)
                 {
@@ -534,24 +534,23 @@ namespace Tjdtjq5.UGSManager
             foreach (var e in _entries) e.IsDirty = false;
             AssetDatabase.Refresh();
 
-            _lastSuccess = "저장 완료";
+            ShowNotification("저장 완료", NotificationType.Success);
         }
 
         // ─── Deploy ─────────────────────────────────
 
         void DeploySchedules()
         {
-            if (!Directory.Exists(_schedDir)) { _lastError = "Scheduler 폴더 없음"; return; }
+            if (!Directory.Exists(_schedDir)) { ShowNotification("Scheduler 폴더 없음", NotificationType.Error); return; }
             _isLoading = true;
-            _lastError = null;
-            _lastSuccess = null;
+            _notification = null;
 
             UGSCliRunner.RunAsync($"deploy \"{_schedDir.Replace('\\', '/')}\" -s scheduler", result =>
             {
                 _isLoading = false;
                 if (result.Success)
                 {
-                    _lastSuccess = "Deploy 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : "");
+                    ShowNotification("Deploy 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : ""), NotificationType.Success);
                     FetchData();
                 }
                 else
@@ -559,7 +558,7 @@ namespace Tjdtjq5.UGSManager
                     var sb = new StringBuilder($"Deploy 실패 (exit {result.ExitCode})");
                     if (!string.IsNullOrEmpty(result.Error)) sb.Append($"\n{result.Error}");
                     if (!string.IsNullOrEmpty(result.Output)) sb.Append($"\n{result.Output}");
-                    _lastError = sb.ToString();
+                    ShowNotification(sb.ToString(), NotificationType.Error);
                 }
             });
         }
@@ -574,35 +573,6 @@ namespace Tjdtjq5.UGSManager
             if (cron.StartsWith("0 0 * * ")) return "매주";
             if (cron.StartsWith("0 0 1 * *")) return "매월";
             return "커스텀";
-        }
-
-        static string ExtractStr(string json, string field)
-        {
-            string key = $"\"{field}\"";
-            int ki = json.IndexOf(key, StringComparison.Ordinal); if (ki < 0) return "";
-            int ci = json.IndexOf(':', ki + key.Length); if (ci < 0) return "";
-            int s = ci + 1;
-            while (s < json.Length && json[s] == ' ') s++;
-            if (s >= json.Length) return "";
-            if (json[s] == '"') { int qe = json.IndexOf('"', s + 1); return qe > s ? json.Substring(s + 1, qe - s - 1) : ""; }
-            int e = s;
-            while (e < json.Length && json[e] != ',' && json[e] != '}') e++;
-            return json.Substring(s, e - s).Trim();
-        }
-
-        static int ExtractInt(string json, string field)
-        {
-            string val = ExtractStr(json, field);
-            return int.TryParse(val, out int v) ? v : 1;
-        }
-
-        static string ExtractObject(string json, string field)
-        {
-            string key = $"\"{field}\"";
-            int ki = json.IndexOf(key, StringComparison.Ordinal); if (ki < 0) return "";
-            int bs = json.IndexOf('{', ki + key.Length); if (bs < 0) return "";
-            int be = JsonFindBrace(json, bs);
-            return json.Substring(bs + 1, be - bs - 1);
         }
 
     }

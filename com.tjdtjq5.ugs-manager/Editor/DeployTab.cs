@@ -36,8 +36,7 @@ namespace Tjdtjq5.UGSManager
 
         public override void OnDraw()
         {
-            DrawError();
-            DrawSuccess();
+            DrawNotifications();
 
             GUILayout.Space(4);
 
@@ -114,7 +113,7 @@ namespace Tjdtjq5.UGSManager
                 EndBody();
             }
 
-            DrawLoading("실행 중...");
+            DrawLoading(_isLoading, "실행 중...");
         }
 
         // ─── Deploy ──────────────────────────────────
@@ -132,8 +131,7 @@ namespace Tjdtjq5.UGSManager
             if (services.Count == 0) return;
 
             _isLoading = true;
-            _lastError = null;
-            _lastSuccess = null;
+            _notification = null;
 
             string dryFlag = dryRun ? " --dry-run" : "";
             string svcFlag = $"-s {string.Join(" -s ", services)}";
@@ -145,7 +143,7 @@ namespace Tjdtjq5.UGSManager
                 {
                     string prefix = dryRun ? "[Dry Run] " : "";
                     string output = !string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : "";
-                    _lastSuccess = $"{prefix}완료{output}";
+                    ShowNotification($"{prefix}완료{output}", NotificationType.Success);
 
                     // Economy는 publish 필요
                     if (!dryRun && _selEconomy)
@@ -154,7 +152,7 @@ namespace Tjdtjq5.UGSManager
                         {
                             _isLoading = false;
                             if (!pubResult.Success)
-                                _lastSuccess += "\n(Economy publish 실패 — Dashboard에서 수동 publish 필요)";
+                                ShowNotification(_notification + "\n(Economy publish 실패 — Dashboard에서 수동 publish 필요)", NotificationType.Success);
                         });
                     }
                     else
@@ -166,7 +164,7 @@ namespace Tjdtjq5.UGSManager
                     var sb = new StringBuilder($"실패 (exit {result.ExitCode})");
                     if (!string.IsNullOrEmpty(result.Error)) sb.Append($"\n{result.Error}");
                     if (!string.IsNullOrEmpty(result.Output)) sb.Append($"\n{result.Output}");
-                    _lastError = sb.ToString();
+                    ShowNotification(sb.ToString(), NotificationType.Error);
                 }
             });
         }
@@ -174,27 +172,26 @@ namespace Tjdtjq5.UGSManager
         void DeployAll()
         {
             _isLoading = true;
-            _lastError = null;
-            _lastSuccess = null;
+            _notification = null;
 
             UGSCliRunner.RunAsync($"deploy \"{_deployPath}\"", result =>
             {
                 if (result.Success)
                 {
                     string output = !string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : "";
-                    _lastSuccess = $"전체 배포 완료{output}";
+                    ShowNotification($"전체 배포 완료{output}", NotificationType.Success);
 
                     UGSCliRunner.RunAsync("economy publish", pubResult =>
                     {
                         _isLoading = false;
                         if (!pubResult.Success)
-                            _lastSuccess += "\n(Economy publish 실패)";
+                            ShowNotification(_notification + "\n(Economy publish 실패)", NotificationType.Success);
                     });
                 }
                 else
                 {
                     _isLoading = false;
-                    _lastError = $"배포 실패: {result.Error}";
+                    ShowNotification($"배포 실패: {result.Error}", NotificationType.Error);
                 }
             });
         }
@@ -202,16 +199,15 @@ namespace Tjdtjq5.UGSManager
         void FetchFromServer()
         {
             _isLoading = true;
-            _lastError = null;
-            _lastSuccess = null;
+            _notification = null;
 
             UGSCliRunner.RunAsync($"fetch \"{_deployPath}\"", result =>
             {
                 _isLoading = false;
                 if (result.Success)
-                    _lastSuccess = "Fetch 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : "");
+                    ShowNotification("Fetch 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : ""), NotificationType.Success);
                 else
-                    _lastError = $"Fetch 실패: {result.Error}";
+                    ShowNotification($"Fetch 실패: {result.Error}", NotificationType.Error);
             });
         }
     }

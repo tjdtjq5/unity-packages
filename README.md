@@ -41,7 +41,7 @@ TableWindow / TestWindow 탭 기반 에디터 윈도우
 
 ---
 
-### UGS Manager `v1.2.0`
+### UGS Manager `v1.3.0`
 
 Unity Gaming Services CLI 래핑 에디터 윈도우
 
@@ -53,7 +53,7 @@ Unity Gaming Services CLI 래핑 에디터 윈도우
 | Deploy | 원클릭 배포 |
 
 ```json
-"com.tjdtjq5.ugs-manager": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ugs-manager#ugs-manager/v1.2.0"
+"com.tjdtjq5.ugs-manager": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ugs-manager#ugs-manager/v1.3.0"
 ```
 
 > 의존: `editor-toolkit >= 1.0.0`

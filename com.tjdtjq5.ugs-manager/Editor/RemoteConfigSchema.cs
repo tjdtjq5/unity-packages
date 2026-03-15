@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Tjdtjq5.EditorToolkit.Editor;
 using UnityEngine;
 
 namespace Tjdtjq5.UGSManager
@@ -32,7 +33,7 @@ namespace Tjdtjq5.UGSManager
             if (idx < 0) return;
 
             int arrStart = json.IndexOf('[', idx);
-            int arrEnd = FindBracket(json, arrStart);
+            int arrEnd = JsonHelper.FindBracket(json, arrStart);
             string block = json.Substring(arrStart + 1, arrEnd - arrStart - 1);
 
             int searchFrom = 0;
@@ -40,11 +41,11 @@ namespace Tjdtjq5.UGSManager
             {
                 int objStart = block.IndexOf('{', searchFrom);
                 if (objStart < 0) break;
-                int objEnd = FindBrace(block, objStart);
+                int objEnd = JsonHelper.FindBrace(block, objStart);
                 string obj = block.Substring(objStart, objEnd - objStart + 1);
 
-                string name = ExtractStr(obj, "name");
-                string color = ExtractStr(obj, "color");
+                string name = JsonHelper.GetString(obj, "name");
+                string color = JsonHelper.GetString(obj, "color");
                 var keys = ExtractStrArray(obj, "keys");
 
                 if (!string.IsNullOrEmpty(name))
@@ -68,7 +69,7 @@ namespace Tjdtjq5.UGSManager
             }
 
             int braceStart = json.IndexOf('{', idx + 8);
-            int braceEnd = FindBrace(json, braceStart);
+            int braceEnd = JsonHelper.FindBrace(json, braceStart);
             string block = json.Substring(braceStart + 1, braceEnd - braceStart - 1);
 
             int searchFrom = 0;
@@ -97,7 +98,7 @@ namespace Tjdtjq5.UGSManager
                 else if (nextChar < block.Length && block[nextChar] == '{')
                 {
                     // v1: "event_name": { "options": [...] }
-                    int objEnd = FindBrace(block, nextChar);
+                    int objEnd = JsonHelper.FindBrace(block, nextChar);
                     string obj = block.Substring(nextChar, objEnd - nextChar + 1);
                     var options = ExtractStrArray(obj, "options");
                     data.EnumDefs[key] = new List<string>(options);
@@ -120,7 +121,7 @@ namespace Tjdtjq5.UGSManager
             if (idx < 0) return;
 
             int braceStart = json.IndexOf('{', idx + 9);
-            int braceEnd = FindBrace(json, braceStart);
+            int braceEnd = JsonHelper.FindBrace(json, braceStart);
             string block = json.Substring(braceStart + 1, braceEnd - braceStart - 1);
 
             int searchFrom = 0;
@@ -149,7 +150,7 @@ namespace Tjdtjq5.UGSManager
             if (idx < 0) return;
 
             int braceStart = json.IndexOf('{', idx + 7);
-            int braceEnd = FindBrace(json, braceStart);
+            int braceEnd = JsonHelper.FindBrace(json, braceStart);
             string block = json.Substring(braceStart + 1, braceEnd - braceStart - 1);
 
             int searchFrom = 0;
@@ -163,11 +164,11 @@ namespace Tjdtjq5.UGSManager
 
                 int objStart = block.IndexOf('{', ke);
                 if (objStart < 0) break;
-                int objEnd = FindBrace(block, objStart);
+                int objEnd = JsonHelper.FindBrace(block, objStart);
                 string obj = block.Substring(objStart, objEnd - objStart + 1);
 
-                string itemType = ExtractStr(obj, "itemType");
-                string enumSchema = ExtractStr(obj, "enumSchema");
+                string itemType = JsonHelper.GetString(obj, "itemType");
+                string enumSchema = JsonHelper.GetString(obj, "enumSchema");
 
                 data.Lists[key] = new ListSchemaInfo
                 {
@@ -283,19 +284,6 @@ namespace Tjdtjq5.UGSManager
 
         // ─── JSON 유틸 ──────────────────────────────────
 
-        static string ExtractStr(string block, string field)
-        {
-            string key = $"\"{field}\"";
-            int ki = block.IndexOf(key, StringComparison.Ordinal);
-            if (ki < 0) return "";
-            int colon = block.IndexOf(':', ki + key.Length);
-            if (colon < 0) return "";
-            int qs = block.IndexOf('"', colon + 1);
-            if (qs < 0) return "";
-            int qe = block.IndexOf('"', qs + 1);
-            return qe > qs ? block.Substring(qs + 1, qe - qs - 1) : "";
-        }
-
         static string[] ExtractStrArray(string block, string field)
         {
             string key = $"\"{field}\"";
@@ -326,37 +314,6 @@ namespace Tjdtjq5.UGSManager
             return result.ToArray();
         }
 
-        static int FindBrace(string json, int open)
-        {
-            int depth = 1;
-            bool inStr = false;
-            for (int i = open + 1; i < json.Length; i++)
-            {
-                char c = json[i];
-                if (c == '\\' && inStr) { i++; continue; }
-                if (c == '"') { inStr = !inStr; continue; }
-                if (inStr) continue;
-                if (c == '{') depth++;
-                else if (c == '}') { depth--; if (depth == 0) return i; }
-            }
-            return json.Length - 1;
-        }
-
-        static int FindBracket(string json, int open)
-        {
-            int depth = 1;
-            bool inStr = false;
-            for (int i = open + 1; i < json.Length; i++)
-            {
-                char c = json[i];
-                if (c == '\\' && inStr) { i++; continue; }
-                if (c == '"') { inStr = !inStr; continue; }
-                if (inStr) continue;
-                if (c == '[') depth++;
-                else if (c == ']') { depth--; if (depth == 0) return i; }
-            }
-            return json.Length - 1;
-        }
     }
 }
 #endif

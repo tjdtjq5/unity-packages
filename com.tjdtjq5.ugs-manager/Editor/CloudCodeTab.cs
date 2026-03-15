@@ -163,16 +163,16 @@ namespace Tjdtjq5.UGSManager
         protected override void FetchData()
         {
             _isLoading = false;
-            _lastError = null;
+            _notification = null;
 
-            _columns ??= new ResizableColumns("UGS_CC", new[]
+            _columns ??= new ResizableColumns("UGS_CC", new ColumnDef[]
             {
-                new ColDef("상태",  36f),
-                new ColDef("이름", 130f, resizable: true),
-                new ColDef("설명",   0f),   // flex
-                new ColDef("수정일", 72f, resizable: true),
-                new ColDef("",      50f),   // 액션
-            });
+                new ColumnDef("상태",  36f),
+                new ColumnDef("이름", 130f, resizable: true),
+                new ColumnDef("설명",   0f),   // flex
+                new ColumnDef("수정일", 72f, resizable: true),
+                new ColumnDef("",      50f),   // 액션
+            }, () => EditorWindow.GetWindow<UGSWindow>()?.Repaint());
 
             ResolveScriptDir();
             ScanLocalScripts();
@@ -188,7 +188,7 @@ namespace Tjdtjq5.UGSManager
                 _isLoading = false;
                 if (result.Success)
                 {
-                    _lastError = null;
+                    _notification = null;
                     _lastRefreshTime = DateTime.Now;
                     ParseServerScripts(result.Output);
                 }
@@ -311,7 +311,7 @@ namespace Tjdtjq5.UGSManager
                     idx = nameIdx + 1;
                 }
             }
-            catch (Exception e) { _lastError = $"파싱 실패: {e.Message}"; }
+            catch (Exception e) { ShowNotification($"파싱 실패: {e.Message}", NotificationType.Error); }
         }
 
         static string ExtractJsonValue(string json, int keyIdx)
@@ -368,7 +368,7 @@ namespace Tjdtjq5.UGSManager
         {
             // 서브 탭 (Scripts / Schedules / Triggers)
             var subColors = new[] { TabColor, new Color(0.75f, 0.60f, 0.85f), new Color(0.90f, 0.65f, 0.35f) };
-            _subTabIdx = DrawStyledTabs(SUB_TAB_LABELS, _subTabIdx, subColors);
+            _subTabIdx = DrawTabBar(SUB_TAB_LABELS, _subTabIdx, subColors);
             GUILayout.Space(2);
 
             switch (_subTabIdx)
@@ -382,9 +382,8 @@ namespace Tjdtjq5.UGSManager
         void DrawScriptsContent()
         {
             DrawMainToolbar();
-            DrawError();
-            DrawSuccess();
-            DrawLoading();
+            DrawNotifications();
+            DrawLoading(_isLoading);
             if (_isLoading) return;
 
             GUILayout.Space(4);
@@ -414,7 +413,7 @@ namespace Tjdtjq5.UGSManager
 
             GUILayout.FlexibleSpace();
 
-            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkBtn("Dashboard"))
+            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkButton("Dashboard"))
             {
                 if (UGSConfig.IsConfigured)
                 {
@@ -448,7 +447,7 @@ namespace Tjdtjq5.UGSManager
 
             // 커스텀 그룹 탭
             var groupLabels = _groups.Select(g => g.Name).ToArray();
-            _groupIdx = DrawStyledTabs(groupLabels, _groupIdx, onAdd: AddGroup, onRename: RenameGroup);
+            _groupIdx = DrawTabBar(groupLabels, _groupIdx, onAdd: AddGroup, onRename: RenameGroup);
 
             List<MergedScript> filtered;
             if (_groups.Count == 0 || _groupIdx >= _groups.Count)
@@ -730,7 +729,7 @@ module.exports = async ({{ params, context, logger }}) => {{
             EditorGUILayout.LabelField("Dashboard에서 테스트 실행 가능",
                 new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = COL_MUTED } });
 
-            if (DrawLinkBtn($"{names[_testScriptIdx]} 테스트"))
+            if (DrawLinkButton($"{names[_testScriptIdx]} 테스트"))
                 OpenScriptDashboard(names[_testScriptIdx]);
 
             EditorGUILayout.EndHorizontal();
@@ -754,13 +753,12 @@ module.exports = async ({{ params, context, logger }}) => {{
         {
             if (!Directory.Exists(_scriptDir))
             {
-                _lastError = "스크립트 폴더를 찾을 수 없습니다.";
+                ShowNotification("스크립트 폴더를 찾을 수 없습니다.", NotificationType.Error);
                 return;
             }
 
             _isLoading = true;
-            _lastError = null;
-            _lastSuccess = null;
+            _notification = null;
             string dir = _scriptDir.Replace('\\', '/');
 
             UGSCliRunner.RunAsync($"deploy \"{dir}\" -s cloud-code-scripts", result =>
@@ -768,7 +766,7 @@ module.exports = async ({{ params, context, logger }}) => {{
                 _isLoading = false;
                 if (result.Success)
                 {
-                    _lastSuccess = "Deploy 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : "");
+                    ShowNotification("Deploy 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : ""), NotificationType.Success);
                     UpdateParamSchemas();
                     FetchData();
                 }
@@ -778,7 +776,7 @@ module.exports = async ({{ params, context, logger }}) => {{
                     sb.Append($"Deploy 실패 (exit {result.ExitCode})");
                     if (!string.IsNullOrEmpty(result.Error)) sb.Append($"\n{result.Error}");
                     if (!string.IsNullOrEmpty(result.Output)) sb.Append($"\n{result.Output}");
-                    _lastError = sb.ToString();
+                    ShowNotification(sb.ToString(), NotificationType.Error);
                 }
             });
         }
@@ -915,12 +913,11 @@ module.exports = async ({{ params, context, logger }}) => {{
         void DeleteServerScript(string name)
         {
             _isLoading = true;
-            _lastError = null;
-            _lastSuccess = null;
+            _notification = null;
             UGSCliRunner.RunAsync($"cc scripts delete {name}", result =>
             {
-                if (result.Success) { _lastSuccess = $"'{name}' 삭제 완료"; FetchData(); }
-                else { _isLoading = false; _lastError = $"삭제 실패: {result.Error}"; }
+                if (result.Success) { ShowNotification($"'{name}' 삭제 완료", NotificationType.Success); FetchData(); }
+                else { _isLoading = false; ShowNotification($"삭제 실패: {result.Error}", NotificationType.Error); }
             });
         }
 
@@ -935,7 +932,7 @@ module.exports = async ({{ params, context, logger }}) => {{
                 ScanLocalScripts();
                 BuildMergedList();
             }
-            catch (Exception e) { _lastError = $"삭제 실패: {e.Message}"; }
+            catch (Exception e) { ShowNotification($"삭제 실패: {e.Message}", NotificationType.Error); }
         }
 
     }

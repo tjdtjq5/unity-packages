@@ -54,7 +54,6 @@ namespace Tjdtjq5.UGSManager
                 new LeaderboardsTab(),
                 new PlayerDataTab(),
                 new CustomDataTab(),
-                new DeployTab(),
             };
 
             RefreshStatus();

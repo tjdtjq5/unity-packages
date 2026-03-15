@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -56,15 +57,15 @@ namespace Tjdtjq5.UGSManager
         protected override void FetchData()
         {
             _isLoading = false;
-            _lastError = null;
+            _notification = null;
 
-            _columns ??= new ResizableColumns("UGS_TR", new[]
+            _columns ??= new ResizableColumns("UGS_TR", new ColumnDef[]
             {
-                new ColDef("이름", 120f, resizable: true),
-                new ColDef("이벤트", 0f),
-                new ColDef("스크립트", 120f, resizable: true),
-                new ColDef("", 26f),
-            });
+                new ColumnDef("이름", 120f, resizable: true),
+                new ColumnDef("이벤트", 0f),
+                new ColumnDef("스크립트", 120f, resizable: true),
+                new ColumnDef("", 26f),
+            }, () => EditorWindow.GetWindow<UGSWindow>()?.Repaint());
 
             ResolveDir();
             ScanLocalFile();
@@ -103,7 +104,7 @@ namespace Tjdtjq5.UGSManager
 
             // "Configs" 배열 파싱
             int arrStart = json.IndexOf('[');
-            int arrEnd = arrStart >= 0 ? JsonFindBracket(json, arrStart) : -1;
+            int arrEnd = arrStart >= 0 ? JsonHelper.FindBracket(json, arrStart) : -1;
             if (arrStart < 0 || arrEnd < 0) return;
             string arrBlock = json.Substring(arrStart, arrEnd - arrStart + 1);
 
@@ -111,18 +112,18 @@ namespace Tjdtjq5.UGSManager
             while (true)
             {
                 int os = arrBlock.IndexOf('{', sf); if (os < 0) break;
-                int oe = JsonFindBrace(arrBlock, os); if (oe < 0) break;
+                int oe = JsonHelper.FindBrace(arrBlock, os); if (oe < 0) break;
                 string obj = arrBlock.Substring(os, oe - os + 1);
 
-                string name = ExtractStr(obj, "Name");
+                string name = JsonHelper.GetString(obj, "Name");
                 if (string.IsNullOrEmpty(name)) { sf = oe + 1; continue; }
 
                 _entries.Add(new TriggerEntry
                 {
                     Name = name,
-                    EventType = ExtractStr(obj, "EventType"),
-                    ActionUrn = ExtractStr(obj, "ActionUrn"),
-                    Filter = ExtractStr(obj, "Filter")
+                    EventType = JsonHelper.GetString(obj, "EventType"),
+                    ActionUrn = JsonHelper.GetString(obj, "ActionUrn"),
+                    Filter = JsonHelper.GetString(obj, "Filter")
                 });
 
                 sf = oe + 1;
@@ -134,9 +135,8 @@ namespace Tjdtjq5.UGSManager
         public override void OnDraw()
         {
             DrawMainToolbar();
-            DrawError();
-            DrawSuccess();
-            DrawLoading();
+            DrawNotifications();
+            DrawLoading(_isLoading);
             if (_isLoading) return;
 
             GUILayout.Space(4);
@@ -167,7 +167,7 @@ namespace Tjdtjq5.UGSManager
                 new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = COL_MUTED } }, GUILayout.Width(70));
 
             GUILayout.FlexibleSpace();
-            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkBtn("Dashboard"))
+            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkButton("Dashboard"))
             {
                 if (UGSConfig.IsConfigured)
                 {
@@ -436,24 +436,23 @@ namespace Tjdtjq5.UGSManager
             foreach (var e in _entries) e.IsDirty = false;
             AssetDatabase.Refresh();
 
-            _lastSuccess = "저장 완료";
+            ShowNotification("저장 완료", NotificationType.Success);
         }
 
         // ─── Deploy ─────────────────────────────────
 
         void DeployTriggers()
         {
-            if (!Directory.Exists(_triggerDir)) { _lastError = "Triggers 폴더 없음"; return; }
+            if (!Directory.Exists(_triggerDir)) { ShowNotification("Triggers 폴더 없음", NotificationType.Error); return; }
             _isLoading = true;
-            _lastError = null;
-            _lastSuccess = null;
+            _notification = null;
 
             UGSCliRunner.RunAsync($"deploy \"{_triggerDir.Replace('\\', '/')}\" -s triggers", result =>
             {
                 _isLoading = false;
                 if (result.Success)
                 {
-                    _lastSuccess = "Deploy 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : "");
+                    ShowNotification("Deploy 완료" + (!string.IsNullOrEmpty(result.Output) ? $"\n{result.Output}" : ""), NotificationType.Success);
                     FetchData();
                 }
                 else
@@ -461,25 +460,9 @@ namespace Tjdtjq5.UGSManager
                     var sb = new StringBuilder($"Deploy 실패 (exit {result.ExitCode})");
                     if (!string.IsNullOrEmpty(result.Error)) sb.Append($"\n{result.Error}");
                     if (!string.IsNullOrEmpty(result.Output)) sb.Append($"\n{result.Output}");
-                    _lastError = sb.ToString();
+                    ShowNotification(sb.ToString(), NotificationType.Error);
                 }
             });
-        }
-
-        // ─── 유틸 ──────────────────────────────────
-
-        static string ExtractStr(string json, string field)
-        {
-            string key = $"\"{field}\"";
-            int ki = json.IndexOf(key, StringComparison.Ordinal); if (ki < 0) return "";
-            int ci = json.IndexOf(':', ki + key.Length); if (ci < 0) return "";
-            int s = ci + 1;
-            while (s < json.Length && json[s] == ' ') s++;
-            if (s >= json.Length) return "";
-            if (json[s] == '"') { int qe = json.IndexOf('"', s + 1); return qe > s ? json.Substring(s + 1, qe - s - 1) : ""; }
-            int e = s;
-            while (e < json.Length && json[e] != ',' && json[e] != '}') e++;
-            return json.Substring(s, e - s).Trim();
         }
 
     }

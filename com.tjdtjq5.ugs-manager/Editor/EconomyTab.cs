@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -80,16 +81,16 @@ namespace Tjdtjq5.UGSManager
         protected override void FetchData()
         {
             _isLoading = false;
-            _lastError = null;
+            _notification = null;
 
-            _columns ??= new ResizableColumns("UGS_EC", new[]
+            _columns ??= new ResizableColumns("UGS_EC", new ColumnDef[]
             {
-                new ColDef("상태", 36f),
-                new ColDef("ID", 120f, resizable: true),
-                new ColDef("이름", 0f),
-                new ColDef("타입", 50f),
-                new ColDef("", 44f),
-            });
+                new ColumnDef("상태", 36f),
+                new ColumnDef("ID", 120f, resizable: true),
+                new ColumnDef("이름", 0f),
+                new ColumnDef("타입", 50f),
+                new ColumnDef("", 44f),
+            }, () => EditorWindow.GetWindow<UGSWindow>()?.Repaint());
 
             ResolveEconomyDir();
             ScanLocalFiles();
@@ -100,7 +101,7 @@ namespace Tjdtjq5.UGSManager
                 _isLoading = false;
                 if (result.Success)
                 {
-                    _lastError = null;
+                    _notification = null;
                     _lastRefreshTime = DateTime.Now;
                     MergeServerResources(result.Output);
                 }
@@ -160,12 +161,12 @@ namespace Tjdtjq5.UGSManager
             try
             {
                 string json = File.ReadAllText(filePath);
-                res.Name = ExtractStr(json, "name");
+                res.Name = JsonHelper.GetString(json, "name");
 
                 if (type == ResourceType.Currency)
                 {
-                    res.Initial = ExtractInt(json, "initial");
-                    res.Max = ExtractInt(json, "max");
+                    res.Initial = JsonHelper.GetInt(json, "initial");
+                    res.Max = JsonHelper.GetInt(json, "max");
                 }
                 else if (type == ResourceType.VirtualPurchase)
                 {
@@ -175,7 +176,8 @@ namespace Tjdtjq5.UGSManager
                 else if (type == ResourceType.RealMoneyPurchase)
                 {
                     res.Rewards = ExtractCostRewardArray(json, "rewards");
-                    res.StoreId = ExtractNestedStr(json, "storeIdentifiers", "googlePlayStore");
+                    var storeBlock = JsonHelper.GetObject(json, "storeIdentifiers");
+                    res.StoreId = JsonHelper.GetString(storeBlock, "googlePlayStore");
                 }
             }
             catch { /* ignore parse errors */ }
@@ -191,7 +193,7 @@ namespace Tjdtjq5.UGSManager
 
             // "Resources" 배열 내부만 파싱
             int arrStart = json.IndexOf('[');
-            int arrEnd = arrStart >= 0 ? JsonFindBracket(json, arrStart) : -1;
+            int arrEnd = arrStart >= 0 ? JsonHelper.FindBracket(json, arrStart) : -1;
             if (arrStart < 0 || arrEnd < 0) return;
             string arrBlock = json.Substring(arrStart, arrEnd - arrStart + 1);
 
@@ -201,13 +203,13 @@ namespace Tjdtjq5.UGSManager
             {
                 int objStart = arrBlock.IndexOf('{', searchFrom);
                 if (objStart < 0) break;
-                int objEnd = JsonFindBrace(arrBlock, objStart);
+                int objEnd = JsonHelper.FindBrace(arrBlock, objStart);
                 if (objEnd < 0) break;
                 string obj = arrBlock.Substring(objStart, objEnd - objStart + 1);
 
-                string id = ExtractStr(obj, "id");
-                string name = ExtractStr(obj, "name");
-                string typeStr = ExtractStr(obj, "type");
+                string id = JsonHelper.GetString(obj, "id");
+                string name = JsonHelper.GetString(obj, "name");
+                string typeStr = JsonHelper.GetString(obj, "type");
 
                 if (!string.IsNullOrEmpty(id))
                 {
@@ -253,9 +255,8 @@ namespace Tjdtjq5.UGSManager
         public override void OnDraw()
         {
             DrawMainToolbar();
-            DrawError();
-            DrawSuccess();
-            DrawLoading();
+            DrawNotifications();
+            DrawLoading(_isLoading);
             if (_isLoading) return;
 
             GUILayout.Space(4);
@@ -290,7 +291,7 @@ namespace Tjdtjq5.UGSManager
 
             GUILayout.FlexibleSpace();
 
-            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkBtn("Dashboard"))
+            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkButton("Dashboard"))
             {
                 if (UGSConfig.IsConfigured)
                 {
@@ -328,7 +329,7 @@ namespace Tjdtjq5.UGSManager
                 new Color(0.40f, 0.80f, 0.95f),
                 new Color(0.70f, 0.55f, 0.95f)
             };
-            _filterTypeIdx = DrawStyledTabs(FILTER_LABELS, _filterTypeIdx, filterColors);
+            _filterTypeIdx = DrawTabBar(FILTER_LABELS, _filterTypeIdx, filterColors);
 
             var filtered = GetFilteredResources();
 
@@ -580,7 +581,7 @@ namespace Tjdtjq5.UGSManager
         {
             foreach (var res in _resources.Where(r => r.IsDirty && r.FilePath != null))
                 SaveResourceFile(res);
-            _lastSuccess = "저장 완료";
+            ShowNotification("저장 완료", NotificationType.Success);
         }
 
         void SaveResourceFile(EconomyResource res)
@@ -712,13 +713,12 @@ namespace Tjdtjq5.UGSManager
         {
             if (!Directory.Exists(_economyDir))
             {
-                _lastError = "Economy 폴더가 없습니다.";
+                ShowNotification("Economy 폴더가 없습니다.", NotificationType.Error);
                 return;
             }
 
             _isLoading = true;
-            _lastError = null;
-            _lastSuccess = null;
+            _notification = null;
             string dir = _economyDir.Replace('\\', '/');
 
             UGSCliRunner.RunAsync($"deploy \"{dir}\" -s economy", deployResult =>
@@ -729,7 +729,7 @@ namespace Tjdtjq5.UGSManager
                     var sb = new StringBuilder($"Deploy 실패 (exit {deployResult.ExitCode})");
                     if (!string.IsNullOrEmpty(deployResult.Error)) sb.Append($"\n{deployResult.Error}");
                     if (!string.IsNullOrEmpty(deployResult.Output)) sb.Append($"\n{deployResult.Output}");
-                    _lastError = sb.ToString();
+                    ShowNotification(sb.ToString(), NotificationType.Error);
                     return;
                 }
 
@@ -739,13 +739,13 @@ namespace Tjdtjq5.UGSManager
                     _isLoading = false;
                     if (pubResult.Success)
                     {
-                        _lastSuccess = "Deploy + Publish 완료"
-                            + (!string.IsNullOrEmpty(deployResult.Output) ? $"\n{deployResult.Output}" : "");
+                        ShowNotification("Deploy + Publish 완료"
+                            + (!string.IsNullOrEmpty(deployResult.Output) ? $"\n{deployResult.Output}" : ""), NotificationType.Success);
                         FetchData();
                     }
                     else
                     {
-                        _lastError = $"Deploy 성공, Publish 실패: {pubResult.Error}";
+                        ShowNotification($"Deploy 성공, Publish 실패: {pubResult.Error}", NotificationType.Error);
                     }
                 });
             });
@@ -759,8 +759,8 @@ namespace Tjdtjq5.UGSManager
             UGSCliRunner.RunAsync($"economy delete {id}", result =>
             {
                 _isLoading = false;
-                if (result.Success) { _lastSuccess = $"'{id}' 삭제 완료"; FetchData(); }
-                else _lastError = $"삭제 실패: {result.Error}";
+                if (result.Success) { ShowNotification($"'{id}' 삭제 완료", NotificationType.Success); FetchData(); }
+                else ShowNotification($"삭제 실패: {result.Error}", NotificationType.Error);
             });
         }
 
@@ -776,51 +776,11 @@ namespace Tjdtjq5.UGSManager
             ScanLocalFiles();
         }
 
-        // ─── JSON 유틸 ──────────────────────────────
-
-        static string ExtractStr(string json, string field)
-        {
-            string key = $"\"{field}\"";
-            int ki = json.IndexOf(key, StringComparison.Ordinal);
-            if (ki < 0) return "";
-            int ci = json.IndexOf(':', ki + key.Length);
-            if (ci < 0) return "";
-            int qs = json.IndexOf('"', ci + 1);
-            if (qs < 0) return "";
-            int qe = json.IndexOf('"', qs + 1);
-            return qe > qs ? json.Substring(qs + 1, qe - qs - 1) : "";
-        }
-
-        static int ExtractInt(string json, string field)
-        {
-            string key = $"\"{field}\"";
-            int ki = json.IndexOf(key, StringComparison.Ordinal);
-            if (ki < 0) return 0;
-            int ci = json.IndexOf(':', ki + key.Length);
-            if (ci < 0) return 0;
-            int start = ci + 1;
-            while (start < json.Length && (json[start] == ' ' || json[start] == '\t')) start++;
-            int end = start;
-            while (end < json.Length && (char.IsDigit(json[end]) || json[end] == '-')) end++;
-            return int.TryParse(json.Substring(start, end - start), out int v) ? v : 0;
-        }
-
-        static string ExtractNestedStr(string json, string obj, string field)
-        {
-            string key = $"\"{obj}\"";
-            int ki = json.IndexOf(key, StringComparison.Ordinal);
-            if (ki < 0) return "";
-            int bs = json.IndexOf('{', ki);
-            if (bs < 0) return "";
-            int be = JsonFindBrace(json, bs);
-            string block = json.Substring(bs, be - bs + 1);
-            return ExtractStr(block, field);
-        }
 
         static List<CostReward> ExtractCostRewardArray(string json, string field)
         {
             var list = new List<CostReward>();
-            string arr = ExtractArray(json, field);
+            string arr = JsonHelper.GetArray(json, field);
             if (string.IsNullOrEmpty(arr)) return list;
 
             int sf = 0;
@@ -831,34 +791,12 @@ namespace Tjdtjq5.UGSManager
                 string obj = arr.Substring(os, oe - os + 1);
                 list.Add(new CostReward
                 {
-                    ResourceId = ExtractStr(obj, "resourceId"),
-                    Amount = ExtractInt(obj, "amount")
+                    ResourceId = JsonHelper.GetString(obj, "resourceId"),
+                    Amount = JsonHelper.GetInt(obj, "amount")
                 });
                 sf = oe + 1;
             }
             return list;
-        }
-
-        static string ExtractArray(string json, string field)
-        {
-            string key = $"\"{field}\"";
-            int ki = json.IndexOf(key, StringComparison.Ordinal);
-            if (ki < 0) return "";
-            int as_ = json.IndexOf('[', ki);
-            if (as_ < 0) return "";
-            int ae = JsonFindBracket(json, as_);
-            return json.Substring(as_, ae - as_ + 1);
-        }
-
-        static string ExtractObject(string json, string field)
-        {
-            string key = $"\"{field}\"";
-            int ki = json.IndexOf(key, StringComparison.Ordinal);
-            if (ki < 0) return "";
-            int bs = json.IndexOf('{', ki + key.Length);
-            if (bs < 0) return "";
-            int be = JsonFindBrace(json, bs);
-            return json.Substring(bs, be - bs + 1);
         }
 
     }

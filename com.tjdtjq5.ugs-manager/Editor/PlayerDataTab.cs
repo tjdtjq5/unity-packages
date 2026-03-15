@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -63,14 +64,14 @@ namespace Tjdtjq5.UGSManager
         protected override void FetchData()
         {
             _isLoading = false;
-            _lastError = null;
+            _notification = null;
 
-            _columns ??= new ResizableColumns("UGS_PD", new[]
+            _columns ??= new ResizableColumns("UGS_PD", new ColumnDef[]
             {
-                new ColDef("키", 140f, resizable: true),
-                new ColDef("값", 0f),
-                new ColDef("", 44f),
-            });
+                new ColumnDef("키", 140f, resizable: true),
+                new ColumnDef("값", 0f),
+                new ColumnDef("", 44f),
+            }, () => EditorWindow.GetWindow<UGSWindow>()?.Repaint());
 
             LoadBookmarks();
             _lastRefreshTime = DateTime.Now;
@@ -132,9 +133,9 @@ namespace Tjdtjq5.UGSManager
                 _isLoading = false;
                 if (!result.Success)
                 {
-                    _lastError = result.Error.Contains("404") || result.Error.Contains("not found")
+                    ShowNotification(result.Error.Contains("404") || result.Error.Contains("not found")
                         ? $"플레이어를 찾을 수 없습니다: {playerId}"
-                        : $"데이터 조회 실패: {result.Error}";
+                        : $"데이터 조회 실패: {result.Error}", NotificationType.Error);
                     _dataLoaded = false;
                     return;
                 }
@@ -144,11 +145,11 @@ namespace Tjdtjq5.UGSManager
 
                 if (_items.Count == 0)
                 {
-                    _lastError = $"플레이어 없음: {playerId}";
+                    ShowNotification($"플레이어 없음: {playerId}", NotificationType.Error);
                     _dataLoaded = false;
                 }
                 else
-                    _lastSuccess = $"데이터 조회 완료 ({_items.Count}개 키)";
+                    ShowNotification($"데이터 조회 완료 ({_items.Count}개 키)", NotificationType.Success);
             });
         }
 
@@ -158,7 +159,7 @@ namespace Tjdtjq5.UGSManager
             if (string.IsNullOrEmpty(json)) return;
 
             int arrStart = json.IndexOf('[');
-            int arrEnd = arrStart >= 0 ? JsonFindBracket(json, arrStart) : -1;
+            int arrEnd = arrStart >= 0 ? JsonHelper.FindBracket(json, arrStart) : -1;
             if (arrStart < 0 || arrEnd < 0) return;
             string arrBlock = json.Substring(arrStart, arrEnd - arrStart + 1);
 
@@ -167,14 +168,14 @@ namespace Tjdtjq5.UGSManager
             {
                 int objStart = arrBlock.IndexOf('{', searchFrom);
                 if (objStart < 0) break;
-                int objEnd = JsonFindBrace(arrBlock, objStart);
+                int objEnd = JsonHelper.FindBrace(arrBlock, objStart);
                 if (objEnd < 0) break;
                 string obj = arrBlock.Substring(objStart, objEnd - objStart + 1);
 
-                string key = ExtractStr(obj, "key");
+                string key = JsonHelper.GetString(obj, "key");
                 if (string.IsNullOrEmpty(key)) { searchFrom = objEnd + 1; continue; }
 
-                string value = ExtractValue(obj, "value");
+                string value = JsonHelper.GetValue(obj, "value");
                 bool isJson = value.TrimStart().StartsWith("{") || value.TrimStart().StartsWith("[");
 
                 _items.Add(new DataItem
@@ -196,9 +197,8 @@ namespace Tjdtjq5.UGSManager
         public override void OnDraw()
         {
             DrawMainToolbar();
-            DrawError();
-            DrawSuccess();
-            DrawLoading();
+            DrawNotifications();
+            DrawLoading(_isLoading);
             if (_isLoading) return;
 
             GUILayout.Space(4);
@@ -231,7 +231,7 @@ namespace Tjdtjq5.UGSManager
 
             GUILayout.FlexibleSpace();
 
-            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkBtn("Dashboard"))
+            if (!string.IsNullOrEmpty(DashboardPath) && DrawLinkButton("Dashboard"))
             {
                 if (UGSConfig.IsConfigured)
                 {
@@ -600,10 +600,10 @@ namespace Tjdtjq5.UGSManager
                 {
                     item.Value = item.EditValue.Trim();
                     item.IsEditing = false;
-                    _lastSuccess = $"'{item.Key}' 저장 완료";
+                    ShowNotification($"'{item.Key}' 저장 완료", NotificationType.Success);
                 }
                 else
-                    _lastError = $"저장 실패: {result.Error}";
+                    ShowNotification($"저장 실패: {result.Error}", NotificationType.Error);
             });
         }
 
@@ -616,10 +616,10 @@ namespace Tjdtjq5.UGSManager
                 if (result.Success)
                 {
                     _items.Remove(item);
-                    _lastSuccess = $"'{item.Key}' 삭제 완료";
+                    ShowNotification($"'{item.Key}' 삭제 완료", NotificationType.Success);
                 }
                 else
-                    _lastError = $"삭제 실패: {result.Error}";
+                    ShowNotification($"삭제 실패: {result.Error}", NotificationType.Error);
             });
         }
 
@@ -635,13 +635,13 @@ namespace Tjdtjq5.UGSManager
                 _isLoading = false;
                 if (result.Success)
                 {
-                    _lastSuccess = $"'{key}' 추가 완료";
+                    ShowNotification($"'{key}' 추가 완료", NotificationType.Success);
                     _newKey = "";
                     _newValue = "";
                     FetchPlayerData(_activePlayerId);
                 }
                 else
-                    _lastError = $"추가 실패: {result.Error}";
+                    ShowNotification($"추가 실패: {result.Error}", NotificationType.Error);
             });
         }
 
@@ -682,48 +682,6 @@ namespace Tjdtjq5.UGSManager
                 return sb.ToString();
             }
             catch { return json; }
-        }
-
-        static string ExtractStr(string json, string field)
-        {
-            string key = $"\"{field}\"";
-            int ki = json.IndexOf(key, StringComparison.Ordinal);
-            if (ki < 0) return "";
-            int ci = json.IndexOf(':', ki + key.Length);
-            if (ci < 0) return "";
-            int s = ci + 1;
-            while (s < json.Length && json[s] == ' ') s++;
-            if (s >= json.Length) return "";
-            if (json[s] == '"')
-            {
-                int qe = json.IndexOf('"', s + 1);
-                return qe > s ? json.Substring(s + 1, qe - s - 1) : "";
-            }
-            int e = s;
-            while (e < json.Length && json[e] != ',' && json[e] != '}') e++;
-            return json.Substring(s, e - s).Trim();
-        }
-
-        static string ExtractValue(string json, string field)
-        {
-            string key = $"\"{field}\"";
-            int ki = json.IndexOf(key, StringComparison.Ordinal);
-            if (ki < 0) return "";
-            int ci = json.IndexOf(':', ki + key.Length);
-            if (ci < 0) return "";
-            int s = ci + 1;
-            while (s < json.Length && json[s] == ' ') s++;
-            if (s >= json.Length) return "";
-            if (json[s] == '{') { int e = JsonFindBrace(json, s); return json.Substring(s, e - s + 1); }
-            if (json[s] == '[') { int e = JsonFindBracket(json, s); return json.Substring(s, e - s + 1); }
-            if (json[s] == '"')
-            {
-                int qe = json.IndexOf('"', s + 1);
-                return qe > s ? json.Substring(s + 1, qe - s - 1) : "";
-            }
-            int end = s;
-            while (end < json.Length && json[end] != ',' && json[end] != '}') end++;
-            return json.Substring(s, end - s).Trim();
         }
 
     }
