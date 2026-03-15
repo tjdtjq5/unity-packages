@@ -8,7 +8,7 @@ Unity 6000.1+ 커스텀 패키지 모노리포.
 
 ## Packages
 
-### Editor Toolkit `v1.0.0`
+### Editor Toolkit `v1.1.0`
 
 Odin 스타일 커스텀 Attribute + 에디터 프레임워크
 
@@ -19,7 +19,7 @@ Odin 스타일 커스텀 Attribute + 에디터 프레임워크
 | SceneBookmark | 씬 즐겨찾기 툴바 + 게임 속도 조절 |
 
 ```json
-"com.tjdtjq5.editor-toolkit": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.editor-toolkit#editor-toolkit/v1.0.0"
+"com.tjdtjq5.editor-toolkit": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.editor-toolkit#editor-toolkit/v1.1.0"
 ```
 
 ---
