@@ -1,9 +1,12 @@
 {
   "name": "com.tjdtjq5.ui-framework",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "displayName": "UI Framework",
   "description": "모바일 게임 UI 프레임워크 — UIStateBinder, UIPopup 스택, SafeArea, NumberCounter, ButtonClickEffect, UIShake, UITransition, UIFlyEffect",
   "unity": "6000.1",
   "author": { "name": "tjdtjq5" },
+  "dependencies": {
+    "com.tjdtjq5.editor-toolkit": "1.1.0"
+  },
   "keywords": ["ui", "popup", "safe-area", "mobile", "tween", "state-binder"]
 }
