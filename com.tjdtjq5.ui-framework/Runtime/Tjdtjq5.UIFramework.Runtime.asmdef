@@ -1,7 +1,12 @@
 {
     "name": "Tjdtjq5.UIFramework.Runtime",
     "rootNamespace": "Tjdtjq5.UIFramework",
-    "references": [],
+    "references": [
+        "DOTween.Modules",
+        "Unity.TextMeshPro",
+        "VContainer",
+        "Tjdtjq5.EditorToolkit.Runtime"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

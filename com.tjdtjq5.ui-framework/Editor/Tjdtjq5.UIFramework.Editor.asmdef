@@ -1,0 +1,16 @@
+{
+    "name": "Tjdtjq5.UIFramework.Editor",
+    "rootNamespace": "Tjdtjq5.UIFramework.Editor",
+    "references": [
+        "Tjdtjq5.UIFramework.Runtime",
+        "DOTween.Modules"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "autoReferenced": true,
+    "noEngineReferences": false
+}

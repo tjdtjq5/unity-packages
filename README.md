@@ -60,20 +60,23 @@ Unity Gaming Services CLI 래핑 에디터 윈도우
 
 ---
 
-### UI Framework `v0.1.0`
+### UI Framework `v1.0.0`
 
-모바일 게임 UI 프레임워크
+모바일 게임 UI 프레임워크 (DOTween + VContainer + EditorToolkit)
 
-| 기능 | 내용 |
-|------|------|
-| UIPopup | 팝업 스택 관리 (열기, 닫기, 히스토리) |
-| SafeArea | 노치 / 홈바 안전 영역 자동 적용 |
-| NumberCounter | 숫자 롤링 애니메이션 |
-| ButtonClickEffect | 버튼 터치 피드백 (스케일, 색상) |
+| 카테고리 | 컴포넌트 |
+|----------|----------|
+| Components | SafeAreaFitter, ButtonClickEffect, UIShake, NumberCounter, UIStateBinder, UIFlyEffect, UIFollowWorld, UIProgressBar, UITabGroup, UIToast, UITutorialMask |
+| Popup | UITransition, UIPopup (스택/큐), UIManager, UIDialog (확인/취소) |
+| DI | UILifetimeScope (VContainer 자동 등록) |
+| Editor | UIStateBinderEditor (커스텀 Inspector) |
+| Shaders | TutorialMask (Stencil 기반 하이라이트) |
 
 ```json
-"com.tjdtjq5.ui-framework": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ui-framework#ui-framework/v0.1.0"
+"com.tjdtjq5.ui-framework": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ui-framework#ui-framework/v1.0.0"
 ```
+
+> 의존: `editor-toolkit >= 1.0.0`, DOTween, VContainer
 
 ---
 
@@ -96,10 +99,10 @@ Unity 에디터에서 Claude Code CLI 실행 + git worktree 자동 관리
 
 ```
 editor-toolkit (독립)
-  └── editor-windows
-  └── ugs-manager
+  ├── editor-windows
+  ├── ugs-manager
+  └── ui-framework (+ DOTween, VContainer)
 
-ui-framework   (독립)
 claude-launcher (독립)
 ```
 
