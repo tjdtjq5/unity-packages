@@ -1,0 +1,12 @@
+{
+  "name": "com.tjdtjq5.claude",
+  "version": "0.2.0",
+  "displayName": "Claude",
+  "description": "Unity 에디터에서 Claude Code CLI 실행 + git worktree 자동 관리",
+  "unity": "6000.1",
+  "author": { "name": "tjdtjq5" },
+  "keywords": ["claude", "ai", "worktree", "terminal"],
+  "dependencies": {
+    "com.tjdtjq5.editor-toolkit": "1.0.0"
+  }
+}

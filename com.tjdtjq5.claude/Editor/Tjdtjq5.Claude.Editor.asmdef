@@ -1,7 +1,7 @@
 {
-    "name": "Tjdtjq5.ClaudeLauncher.Editor",
-    "rootNamespace": "Tjdtjq5.ClaudeLauncher",
-    "references": [],
+    "name": "Tjdtjq5.Claude.Editor",
+    "rootNamespace": "Tjdtjq5.Claude",
+    "references": ["Tjdtjq5.EditorToolkit.Editor"],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
