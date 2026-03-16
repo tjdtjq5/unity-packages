@@ -37,23 +37,6 @@ Odin 스타일 커스텀 Attribute + 에디터 프레임워크
 
 ---
 
-### Editor Windows `v0.1.0`
-
-TableWindow / TestWindow 탭 기반 에디터 윈도우
-
-| 기능 | 내용 |
-|------|------|
-| TableWindow | 데이터 테이블 SO 일괄 관리 (`Ctrl+Shift+D`) |
-| TestWindow | Play 모드 테스트 도구 (`Ctrl+Shift+T`) |
-
-```json
-"com.tjdtjq5.editor-windows": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.editor-windows#editor-windows/v0.1.0"
-```
-
-> 의존: `editor-toolkit >= 1.0.0`
-
----
-
 ### UGS Manager `v1.3.0`
 
 Unity Gaming Services CLI 래핑 에디터 윈도우 (`Tools > UGS Manager` 또는 `Ctrl+Shift+U`)
@@ -133,7 +116,6 @@ Unity 에디터에서 Claude Code CLI 실행 + git worktree 자동 관리
 
 ```
 editor-toolkit (독립)
-  ├── editor-windows
   ├── ugs-manager
   └── ui-framework (+ DOTween, VContainer)
 
