@@ -84,11 +84,10 @@ namespace Tjdtjq5.Claude
             EditorGUILayout.Space(4);
 
             // 리셋
-            if (GUILayout.Button("세션 상태 리셋 (메인 미실행으로)"))
+            if (GUILayout.Button("런처 상태 리셋 (메인 미실행으로)"))
             {
-                SessionState.SetBool("ClaudeCode_MainLaunched", false);
-                SessionState.SetInt("ClaudeCode_WtCount", 0);
-                Debug.Log("[Claude Code] 세션 상태 리셋 완료");
+                EditorPrefs.SetBool(ClaudeCodeLauncher.MainLaunchedKey, false);
+                Debug.Log("[Claude Code] 런처 상태 리셋 완료");
             }
         }
     }

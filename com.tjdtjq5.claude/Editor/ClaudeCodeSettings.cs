@@ -33,7 +33,7 @@ namespace Tjdtjq5.Claude
         // ── Windows Terminal 윈도우 이름 ──
         public static string WindowName
         {
-            get => EditorPrefs.GetString(Prefix + "WinName", "ClaudeDuo");
+            get => EditorPrefs.GetString(Prefix + "WinName", "Claude");
             set => EditorPrefs.SetString(Prefix + "WinName", value);
         }
 

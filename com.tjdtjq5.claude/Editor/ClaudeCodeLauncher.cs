@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -14,29 +15,28 @@ namespace Tjdtjq5.Claude
     /// </summary>
     public static class ClaudeCodeLauncher
     {
-        // SessionState: 에디터 세션 동안만 유지, 재시작 시 리셋
-        const string MainLaunchedKey = "ClaudeCode_MainLaunched";
-        const string WorktreeCountKey = "ClaudeCode_WtCount";
+        // EditorPrefs: 에디터 재시작에도 유지 (SessionState는 세션 종료 시 리셋됨)
+        internal const string MainLaunchedKey = "ClaudeCode_MainLaunched";
+
+        static bool _launching;
 
         static bool MainLaunched
         {
-            get => SessionState.GetBool(MainLaunchedKey, false);
-            set => SessionState.SetBool(MainLaunchedKey, value);
-        }
-
-        static int WorktreeCount
-        {
-            get => SessionState.GetInt(WorktreeCountKey, 0);
-            set => SessionState.SetInt(WorktreeCountKey, value);
+            get => EditorPrefs.GetBool(MainLaunchedKey, false);
+            set => EditorPrefs.SetBool(MainLaunchedKey, value);
         }
 
         static string ProjectPath =>
             Path.GetDirectoryName(Application.dataPath)!.Replace('\\', '/');
 
+        // wt 존재 여부 캐시 (에디터 세션당 1회만 확인)
+        static bool? _hasWt;
+
         static bool HasWindowsTerminal
         {
             get
             {
+                if (_hasWt.HasValue) return _hasWt.Value;
                 try
                 {
                     var psi = new ProcessStartInfo
@@ -48,10 +48,12 @@ namespace Tjdtjq5.Claude
                         CreateNoWindow = true
                     };
                     using var p = Process.Start(psi);
-                    p!.WaitForExit(3000);
-                    return p.ExitCode == 0;
+                    p!.StandardOutput.ReadToEnd(); // 버퍼 소비하여 데드락 방지
+                    p.WaitForExit(3000);
+                    _hasWt = p.ExitCode == 0;
                 }
-                catch { return false; }
+                catch { _hasWt = false; }
+                return _hasWt.Value;
             }
         }
 
@@ -60,10 +62,12 @@ namespace Tjdtjq5.Claude
         [MenuItem("Tools/Claude Code/Open")]
         public static void Open()
         {
+            if (_launching) return; // 연타 방지
+
             if (!MainLaunched)
                 LaunchMain();
             else
-                LaunchWorktree();
+                LaunchWorktreeAsync();
         }
 
         [MenuItem("Tools/Claude Code/Settings")]
@@ -97,69 +101,85 @@ namespace Tjdtjq5.Claude
             Debug.Log($"[Claude Code] 메인 실행 — {ProjectPath}");
         }
 
-        // ── 워크트리 실행 ──
+        // ── 워크트리 실행 (백그라운드) ──
 
-        static void LaunchWorktree()
+        static void LaunchWorktreeAsync()
         {
-            // 기존 worktree 목록을 확인하여 사용 가능한 번호 찾기
-            var count = FindNextAvailableWorktreeNumber();
-            WorktreeCount = count;
+            _launching = true;
 
-            var wtName = $"wt-{count}";
-            var wtPath = Path.GetFullPath(
-                Path.Combine(ProjectPath, "..", $"{Path.GetFileName(ProjectPath)}-{wtName}"))
-                .Replace('\\', '/');
-            var branchName = $"wt/{count}";
-
-            // 이미 존재하는 worktree면 그대로 재사용 (새 터미널만 열기)
-            bool worktreeExists = Directory.Exists(wtPath);
-            if (!worktreeExists)
-            {
-                var gitResult = RunGit($"worktree add \"{wtPath}\" -b \"{branchName}\"", ProjectPath);
-                if (gitResult.exitCode != 0)
-                {
-                    // 브랜치가 이미 있으면 브랜치 없이 재시도
-                    if (gitResult.output.Contains("already exists"))
-                        gitResult = RunGit($"worktree add \"{wtPath}\"", ProjectPath);
-
-                    if (gitResult.exitCode != 0)
-                    {
-                        Debug.LogError($"[Claude Code] 워크트리 생성 실패: {gitResult.output}");
-                        wtPath = ProjectPath;
-                    }
-                }
-            }
-
+            // UI 스레드에서 필요한 값을 미리 캡처
+            var projectPath = ProjectPath;
             var args = BuildClaudeCommand();
             var colorHex = ClaudeCodeSettings.ColorToHex(ClaudeCodeSettings.WorktreeTabColor);
+            var windowName = ClaudeCodeSettings.WindowName;
+            bool hasWt = HasWindowsTerminal;
 
-            if (HasWindowsTerminal)
-            {
-                var wtArgs = $"-w {ClaudeCodeSettings.WindowName} new-tab " +
-                             $"-d \"{wtPath}\" " +
-                             $"--tabColor \"{colorHex}\" " +
-                             $"--title \"Claude {wtName}\" " +
-                             $"powershell -NoExit -Command \"{args}\"";
-                StartProcess("wt", wtArgs);
-            }
-            else
-            {
-                StartProcess("powershell", $"-NoExit -Command \"{args}\"", wtPath);
-            }
+            Debug.Log("[Claude Code] 워크트리 준비 중...");
 
-            Debug.Log($"[Claude Code] 워크트리 실행 — {wtPath} (branch: {branchName})");
+            // git 작업을 백그라운드 스레드에서 실행하여 UI 차단 방지
+            Task.Run(() =>
+            {
+                try
+                {
+                    var count = FindNextAvailableWorktreeNumber(projectPath);
+
+                    var wtName = $"wt-{count}";
+                    var wtPath = Path.GetFullPath(
+                        Path.Combine(projectPath, "..", $"{Path.GetFileName(projectPath)}-{wtName}"))
+                        .Replace('\\', '/');
+                    var branchName = $"wt/{count}";
+
+                    bool worktreeExists = Directory.Exists(wtPath);
+                    if (!worktreeExists)
+                    {
+                        var gitResult = RunGit($"worktree add \"{wtPath}\" -b \"{branchName}\"", projectPath);
+                        if (gitResult.exitCode != 0)
+                        {
+                            if (gitResult.output.Contains("already exists"))
+                                gitResult = RunGit($"worktree add \"{wtPath}\"", projectPath);
+
+                            if (gitResult.exitCode != 0)
+                            {
+                                Debug.LogError($"[Claude Code] 워크트리 생성 실패: {gitResult.output}");
+                                wtPath = projectPath;
+                            }
+                        }
+                    }
+
+                    // 터미널 실행
+                    if (hasWt)
+                    {
+                        var wtArgs = $"-w {windowName} new-tab " +
+                                     $"-d \"{wtPath}\" " +
+                                     $"--tabColor \"{colorHex}\" " +
+                                     $"--title \"Claude {wtName}\" " +
+                                     $"powershell -NoExit -Command \"{args}\"";
+                        StartProcess("wt", wtArgs);
+                    }
+                    else
+                    {
+                        StartProcess("powershell", $"-NoExit -Command \"{args}\"", wtPath);
+                    }
+
+                    Debug.Log($"[Claude Code] 워크트리 실행 — {wtPath} (branch: {branchName})");
+                }
+                finally
+                {
+                    _launching = false;
+                }
+            });
         }
 
         // ── 헬퍼 ──
 
         /// <summary>git worktree list를 파싱하여 다음 사용 가능한 번호를 반환</summary>
-        static int FindNextAvailableWorktreeNumber()
+        static int FindNextAvailableWorktreeNumber(string projectPath)
         {
-            var result = RunGit("worktree list --porcelain", ProjectPath);
+            var result = RunGit("worktree list --porcelain", projectPath);
             int maxNum = 0;
             if (result.exitCode == 0)
             {
-                var projectName = Path.GetFileName(ProjectPath);
+                var projectName = Path.GetFileName(projectPath);
                 var prefix = $"{projectName}-wt-";
                 foreach (var line in result.output.Split('\n'))
                 {
@@ -207,6 +227,9 @@ namespace Tjdtjq5.Claude
             }
         }
 
+        /// <summary>
+        /// git 명령 실행. stderr를 병렬로 읽어 데드락을 방지한다.
+        /// </summary>
         static (int exitCode, string output) RunGit(string arguments, string workDir)
         {
             try
@@ -222,10 +245,15 @@ namespace Tjdtjq5.Claude
                     CreateNoWindow = true
                 };
                 using var p = Process.Start(psi);
+
+                // stderr를 병렬로 읽어 버퍼 풀 데드락 방지
+                string stderr = null;
+                var stderrTask = Task.Run(() => stderr = p!.StandardError.ReadToEnd());
                 var stdout = p!.StandardOutput.ReadToEnd();
-                var stderr = p.StandardError.ReadToEnd();
+                stderrTask.Wait(30000);
+
                 p.WaitForExit(30000);
-                return (p.ExitCode, stdout + stderr);
+                return (p.ExitCode, stdout + (stderr ?? ""));
             }
             catch (Exception ex)
             {
