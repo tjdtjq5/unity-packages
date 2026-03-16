@@ -86,7 +86,8 @@ namespace Tjdtjq5.EditorToolkit.Editor.Tools
             var container = BuildContainer();
             var parent = playZone.parent;
             var playIndex = parent.IndexOf(playZone);
-            parent.Insert(playIndex, container);
+            // PlayMode Overlay 왼쪽에 삽입 (playIndex 위치)
+            parent.Insert(Mathf.Max(0, playIndex), container);
 
             _injected = true;
             EditorApplication.update -= PollInject;

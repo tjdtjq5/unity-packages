@@ -10,7 +10,7 @@ namespace Tjdtjq5.EditorToolkit.Editor.Tools
     /// Unity 6에서 Toolbar는 GUIView → ScriptableObject를 상속하므로
     /// EditorWindow.rootVisualElement 대신 GUIView.visualTree 리플렉션 사용.
     /// </summary>
-    static class ToolbarHelper
+    public static class ToolbarHelper
     {
         static PropertyInfo _visualTreeProp;
 
@@ -34,24 +34,43 @@ namespace Tjdtjq5.EditorToolkit.Editor.Tools
             return _visualTreeProp?.GetValue(toolbar) as VisualElement;
         }
 
-        /// <summary>Play 모드 영역(ToolbarZonePlayMode)을 찾는다. 다단계 폴백.</summary>
+        /// <summary>Play 모드 영역을 찾는다. Unity 6 Overlay 시스템 + 레거시 다단계 폴백.</summary>
         public static VisualElement FindPlayZone(VisualElement root)
         {
-            // 1차: 이름
-            var zone = root.Q("ToolbarZonePlayMode");
+            // Unity 6: Overlay 기반 — name='PlayMode'
+            var zone = root.Q("PlayMode");
             if (zone != null) return zone;
 
-            // 2차: USS 클래스
+            // 레거시 폴백
+            zone = root.Q("ToolbarZonePlayMode");
+            if (zone != null) return zone;
+
             zone = root.Q(className: "unity-toolbar-zone-play-mode");
             if (zone != null) return zone;
 
-            // 3차: Play 버튼 부모
             zone = root.Q("Play");
             if (zone?.parent != null) return zone.parent;
 
-            // 4차: 좌측 영역
             zone = root.Q("ToolbarZoneLeftAlign");
             return zone;
+        }
+
+        /// <summary>Unity 6 Overlay 기반 middle 컨테이너를 찾는다.</summary>
+        public static VisualElement FindMiddleContainer(VisualElement root)
+        {
+            return root.Q(className: "unity-overlay-container__middle-container");
+        }
+
+        /// <summary>Unity 6 Overlay 기반 before-spacer(좌측) 컨테이너를 찾는다.</summary>
+        public static VisualElement FindBeforeSpacerContainer(VisualElement root)
+        {
+            return root.Q(className: "unity-overlay-container__before-spacer-container");
+        }
+
+        /// <summary>Unity 6 Overlay 기반 after-spacer(우측) 컨테이너를 찾는다.</summary>
+        public static VisualElement FindAfterSpacerContainer(VisualElement root)
+        {
+            return root.Q(className: "unity-overlay-container__after-spacer-container");
         }
     }
 }
