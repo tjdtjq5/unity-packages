@@ -37,6 +37,13 @@ namespace Tjdtjq5.Claude
             set => EditorPrefs.SetString(Prefix + "WinName", value);
         }
 
+        // ── 워크트리 자동 실행 ──
+        public static bool AutoLaunch
+        {
+            get => EditorPrefs.GetBool(Prefix + "AutoLaunch", false);
+            set => EditorPrefs.SetBool(Prefix + "AutoLaunch", value);
+        }
+
         // ── 유틸 ──
         public static string ColorToHex(Color c)
         {

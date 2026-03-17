@@ -7,7 +7,8 @@ namespace Tjdtjq5.Claude
 {
     /// <summary>
     /// 메인 툴바 우측에 Claude 버튼을 삽입한다.
-    /// 클릭 시 ClaudeCodeLauncher.Open() 호출 → 터미널 실행.
+    /// 좌클릭: Manager 윈도우, 우클릭: 설정.
+    /// 활성 워크트리 수를 벳지로 표시.
     /// </summary>
     [InitializeOnLoad]
     static class ClaudeToolbar
@@ -23,6 +24,11 @@ namespace Tjdtjq5.Claude
         static int _pollCount;
         static bool _injected;
 
+        // 벳지
+        static Label _badgeLabel;
+        static double _lastBadgeCheck;
+        static int _cachedWtCount = -1;
+
         static ClaudeToolbar()
         {
             _injected = false;
@@ -30,6 +36,8 @@ namespace Tjdtjq5.Claude
 
             EditorApplication.delayCall += TryInject;
             EditorApplication.update += PollInject;
+            EditorApplication.update += BadgePoll;
+            EditorApplication.delayCall += RefreshBadge;
         }
 
         static void PollInject()
@@ -41,6 +49,26 @@ namespace Tjdtjq5.Claude
             }
             _pollCount++;
             TryInject();
+        }
+
+        static void BadgePoll()
+        {
+            if (EditorApplication.timeSinceStartup - _lastBadgeCheck < 10.0) return;
+            _lastBadgeCheck = EditorApplication.timeSinceStartup;
+            RefreshBadge();
+        }
+
+        internal static void RefreshBadge()
+        {
+            ClaudeCodeLauncher.GetActiveWorktreesAsync(list =>
+            {
+                int count = list?.Count ?? 0;
+                if (count == _cachedWtCount) return;
+                _cachedWtCount = count;
+
+                if (_badgeLabel != null)
+                    _badgeLabel.text = count > 0 ? $"Claude [{count}]" : "Claude";
+            });
         }
 
         static void TryInject()
@@ -78,7 +106,7 @@ namespace Tjdtjq5.Claude
             var container = new VisualElement
             {
                 name = ContainerId,
-                tooltip = "Claude Code 터미널 열기\n(첫 클릭: 메인, 이후: worktree 새 탭)",
+                tooltip = "Claude Code Manager\n(우클릭: 설정)",
                 style =
                 {
                     flexDirection = FlexDirection.Row,
@@ -120,7 +148,7 @@ namespace Tjdtjq5.Claude
             icon.pickingMode = PickingMode.Ignore;
             btn.Add(icon);
 
-            var label = new Label("Claude")
+            _badgeLabel = new Label("Claude")
             {
                 style =
                 {
@@ -134,8 +162,8 @@ namespace Tjdtjq5.Claude
                     paddingBottom = 0,
                 }
             };
-            label.pickingMode = PickingMode.Ignore;
-            btn.Add(label);
+            _badgeLabel.pickingMode = PickingMode.Ignore;
+            btn.Add(_badgeLabel);
 
             // 호버
             btn.RegisterCallback<PointerEnterEvent>(_ =>
@@ -143,11 +171,11 @@ namespace Tjdtjq5.Claude
             btn.RegisterCallback<PointerLeaveEvent>(_ =>
                 btn.style.backgroundColor = BtnColor);
 
-            // 클릭 → 터미널 실행
+            // 좌클릭 → Manager 윈도우
             btn.RegisterCallback<PointerUpEvent>(evt =>
             {
                 if (evt.button == 0)
-                    ClaudeCodeLauncher.Open();
+                    ClaudeCodeManagerWindow.Open();
             });
 
             // 우클릭 → 설정
