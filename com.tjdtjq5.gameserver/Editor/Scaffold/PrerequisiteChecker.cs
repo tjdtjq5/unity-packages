@@ -80,7 +80,8 @@ namespace Tjdtjq5.GameServer.Editor
                 s.LoggedIn = c2 == 0;
                 if (s.LoggedIn)
                 {
-                    var m2 = Regex.Match(o2, @"Logged in to .+ as (\S+)");
+                    // "Logged in to github.com account tjdtjq5" 또는 "Logged in to ... as tjdtjq5"
+                    var m2 = Regex.Match(o2, @"Logged in to \S+ (?:account|as) (\S+)");
                     s.Account = m2.Success ? m2.Groups[1].Value : "";
                 }
             }

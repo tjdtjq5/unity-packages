@@ -10,9 +10,8 @@ namespace Tjdtjq5.GameServer.Editor
         readonly GameServerDashboard _dashboard;
         Vector2 _scrollPos;
         bool _foldSupabase = true;
-        bool _foldGcp = true;
-        bool _foldGitHub = true;
-        bool _foldDev = true;
+        bool _foldDeploy = true;
+        bool _foldLog = true;
 
         public SettingsView(GameServerDashboard dashboard) => _dashboard = dashboard;
 
@@ -26,14 +25,11 @@ namespace Tjdtjq5.GameServer.Editor
 
             DrawSupabase(settings, so);
             GUILayout.Space(4);
-            DrawGcp(settings, so);
+            DrawDeploy(settings, so);
             GUILayout.Space(4);
-            DrawGitHub(settings, so);
-            GUILayout.Space(4);
-            DrawDevMode(so);
+            DrawLog(so);
             GUILayout.Space(8);
 
-            // 하단 버튼
             EditorTabBase.DrawActionBar(new (string, Color, Action)[]
             {
                 ("저장", EditorTabBase.COL_SUCCESS, () =>
@@ -46,7 +42,7 @@ namespace Tjdtjq5.GameServer.Editor
                 {
                     settings.setupCompleted = false;
                     settings.Save();
-                    _dashboard.BackToDashboard(); // mode 재판정 트리거
+                    _dashboard.BackToDashboard();
                 }),
             });
 
@@ -86,31 +82,47 @@ namespace Tjdtjq5.GameServer.Editor
             EditorTabBase.EndBody();
         }
 
-        void DrawGcp(GameServerSettings settings, SerializedObject so)
+        void DrawDeploy(GameServerSettings settings, SerializedObject so)
         {
-            var status = settings.IsGcpConfigured ? "● 설정됨" : "○ 미설정";
-            if (!EditorTabBase.DrawSectionFoldout(ref _foldGcp,
-                $"Google Cloud  {status}", GameServerDashboard.COL_GCP))
+            var status = settings.IsDeployConfigured ? "● 설정됨" : "○ 미설정";
+            if (!EditorTabBase.DrawSectionFoldout(ref _foldDeploy,
+                $"배포 설정  {status}", GameServerDashboard.COL_PRIMARY))
                 return;
 
             EditorTabBase.BeginBody();
+
+            // GitHub
+            EditorTabBase.DrawSubLabel("GitHub");
+            var token = EditorGUILayout.PasswordField("Token", GameServerSettings.GithubToken);
+            if (token != GameServerSettings.GithubToken)
+                GameServerSettings.GithubToken = token;
+            EditorGUILayout.PropertyField(so.FindProperty("githubRepoName"), new GUIContent("Repo Name"));
+            var gh = PrerequisiteChecker.CheckGh();
+            EditorTabBase.DrawToolStatus("gh", gh.Installed, gh.Version, gh.LoggedIn, gh.Account);
+
+            if (gh.LoggedIn && !string.IsNullOrEmpty(gh.Account) && !string.IsNullOrEmpty(settings.githubRepoName))
+            {
+                if (EditorTabBase.DrawLinkButton($"GitHub에서 보기 ({gh.Account}/{settings.githubRepoName})"))
+                    Application.OpenURL($"https://github.com/{gh.Account}/{settings.githubRepoName}");
+            }
+
+            GUILayout.Space(8);
+
+            // GCP
+            EditorTabBase.DrawSubLabel("Google Cloud");
             EditorGUILayout.PropertyField(so.FindProperty("gcpProjectId"), new GUIContent("Project ID"));
             EditorGUILayout.PropertyField(so.FindProperty("gcpRegion"), new GUIContent("Region"));
             EditorGUILayout.PropertyField(so.FindProperty("gcpServiceName"), new GUIContent("Service Name"));
             EditorGUILayout.PropertyField(so.FindProperty("gcpMinInstances"), new GUIContent("Min Instances"));
-
             var minInst = so.FindProperty("gcpMinInstances").intValue;
-            EditorTabBase.DrawCellLabel(
+            EditorTabBase.DrawDescription(
                 minInst == 0
-                    ? "  ⓘ 0 = 콜드스타트 2~5초 지연 (무료)"
-                    : $"  ⓘ {minInst} = 항상 켜짐 (~{minInst * 5}만원/월 추가)",
-                0, minInst == 0 ? EditorTabBase.COL_WARN : EditorTabBase.COL_INFO);
+                    ? "ⓘ 0 = 콜드스타트 2~5초 지연 (무료)"
+                    : $"ⓘ {minInst} = 항상 켜짐 (~{minInst * 5}만원/월 추가)");
+            var gcloud = PrerequisiteChecker.CheckGcloud();
+            EditorTabBase.DrawToolStatus("gcloud", gcloud.Installed, gcloud.Version, gcloud.LoggedIn, gcloud.Account);
 
             GUILayout.Space(4);
-            var gcloud = PrerequisiteChecker.CheckGcloud();
-            EditorTabBase.DrawToolStatus("gcloud", gcloud.Installed, gcloud.Version,
-                gcloud.LoggedIn, gcloud.Account);
-
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
             if (EditorTabBase.DrawLinkButton("Cloud Run 콘솔"))
@@ -119,43 +131,14 @@ namespace Tjdtjq5.GameServer.Editor
             EditorTabBase.EndBody();
         }
 
-        void DrawGitHub(GameServerSettings settings, SerializedObject so)
+        void DrawLog(SerializedObject so)
         {
-            var status = settings.IsGitHubConfigured ? "● 설정됨" : "○ 미설정";
-            if (!EditorTabBase.DrawSectionFoldout(ref _foldGitHub,
-                $"GitHub  {status}", GameServerDashboard.COL_GITHUB))
+            if (!EditorTabBase.DrawSectionFoldout(ref _foldLog, "서버 로그", EditorTabBase.COL_INFO))
                 return;
 
             EditorTabBase.BeginBody();
-
-            var token = EditorGUILayout.PasswordField("Token", GameServerSettings.GithubToken);
-            if (token != GameServerSettings.GithubToken)
-                GameServerSettings.GithubToken = token;
-
-            EditorGUILayout.PropertyField(so.FindProperty("githubRepoName"), new GUIContent("Repo Name"));
-
-            GUILayout.Space(4);
-            var gh = PrerequisiteChecker.CheckGh();
-            EditorTabBase.DrawToolStatus("gh", gh.Installed, gh.Version, gh.LoggedIn, gh.Account);
-
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            if (EditorTabBase.DrawLinkButton("GitHub"))
-                Application.OpenURL("https://github.com");
-            EditorGUILayout.EndHorizontal();
-            EditorTabBase.EndBody();
-        }
-
-        void DrawDevMode(SerializedObject so)
-        {
-            if (!EditorTabBase.DrawSectionFoldout(ref _foldDev, "개발 모드", EditorTabBase.COL_WARN))
-                return;
-
-            EditorTabBase.BeginBody();
-            EditorGUILayout.PropertyField(so.FindProperty("devMode"),
-                new GUIContent("개발 모드", "ON: LocalGameDB로 Unity 내 직접 실행 (서버 불필요)\nOFF: Cloud Run 서버에 연결"));
             EditorGUILayout.PropertyField(so.FindProperty("serverLogToConsole"),
-                new GUIContent("서버 로그 → Console", "개발 모드: LocalGameDB 로그 표시\n프로덕션: Cloud Run 로그 표시"));
+                new GUIContent("Cloud Run 로그 → Console", "배포된 서버의 로그를 Unity Console에 표시합니다."));
             EditorTabBase.EndBody();
         }
     }

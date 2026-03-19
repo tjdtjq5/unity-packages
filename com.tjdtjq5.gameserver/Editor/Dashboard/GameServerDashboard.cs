@@ -18,10 +18,11 @@ namespace Tjdtjq5.GameServer.Editor
         Mode _mode;
 
         // ── 대시보드 탭 ──
-        static readonly string[] DashboardTabs = { "Status", "Deploy", "Cost" };
+        static readonly string[] DashboardTabs = { "Status", "ServerLogic", "Deploy", "Cost" };
         static readonly Color[] DashboardTabColors =
         {
             EditorTabBase.COL_SUCCESS,
+            COL_PRIMARY,
             EditorTabBase.COL_WARN,
             EditorTabBase.COL_MUTED
         };
@@ -31,6 +32,7 @@ namespace Tjdtjq5.GameServer.Editor
         // ── 인스턴스 ──
         SetupWizard _setupWizard;
         SettingsView _settingsView;
+        ServerLogicTab _serverLogicTab;
 
         // ── 알림 ──
         string _notification;
@@ -47,6 +49,7 @@ namespace Tjdtjq5.GameServer.Editor
         {
             _setupWizard = new SetupWizard(this);
             _settingsView = new SettingsView(this);
+            _serverLogicTab = new ServerLogicTab();
             _mode = GameServerSettings.Instance.setupCompleted ? Mode.Dashboard : Mode.Setup;
         }
 
@@ -95,8 +98,9 @@ namespace Tjdtjq5.GameServer.Editor
             switch (_activeTab)
             {
                 case 0: EditorTabBase.DrawPlaceholder("Status — 구현 예정"); break;
-                case 1: EditorTabBase.DrawPlaceholder("Deploy — 구현 예정"); break;
-                case 2: EditorTabBase.DrawPlaceholder("Cost — 구현 예정"); break;
+                case 1: _serverLogicTab.OnDraw(); break;
+                case 2: EditorTabBase.DrawPlaceholder("Deploy — 구현 예정"); break;
+                case 3: EditorTabBase.DrawPlaceholder("Cost — 구현 예정"); break;
             }
 
             EditorGUILayout.EndScrollView();

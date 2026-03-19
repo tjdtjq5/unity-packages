@@ -12,6 +12,7 @@ namespace Tjdtjq5.GameServer
         readonly ServerConfig _config;
         const int MaxRetries = 3;
 
+        /// <summary>인증 세션. Phase 3 (Auth)에서 SupabaseAuth가 설정. 그 전까지 null.</summary>
         public AuthSession Session { get; internal set; }
 
         public GameServerClient(ServerConfig config)

@@ -7,30 +7,22 @@ namespace Tjdtjq5.GameServer.Editor
     public class SetupWizard
     {
         readonly GameServerDashboard _dashboard;
-        readonly ISetupStep[] _steps;
-        int _currentStep;
+        readonly SupabaseSetup _supabaseSetup;
+        readonly DeploySetup _deploySetup;
+        int _currentStep; // 0=Supabase, 1=Deploy
         bool _showCompletion;
         Vector2 _scrollPos;
 
-        static readonly string[] StepLabels = { "Supabase", "GCP", "GitHub" };
+        static readonly string[] StepLabels = { "Supabase", "배포 설정" };
 
         public SetupWizard(GameServerDashboard dashboard)
         {
             _dashboard = dashboard;
-            _steps = new ISetupStep[]
-            {
-                new SupabaseSetupStep(dashboard),
-                new GcpSetupStep(dashboard),
-                new GitHubSetupStep(dashboard),
-            };
+            _supabaseSetup = new SupabaseSetup(dashboard);
+            _deploySetup = new DeploySetup(dashboard);
         }
 
-        public void Cleanup()
-        {
-            foreach (var step in _steps)
-                if (step is SupabaseSetupStep supabase)
-                    supabase.Cleanup();
-        }
+        public void Cleanup() => _supabaseSetup.Cleanup();
 
         public void OnDraw()
         {
@@ -48,16 +40,24 @@ namespace Tjdtjq5.GameServer.Editor
                 DrawStepIndicator();
                 GUILayout.Space(8);
 
-                // Step 제목 + 설명
-                var step = _steps[_currentStep];
-                EditorTabBase.DrawSubLabel(
-                    $"Step {_currentStep + 1}/{_steps.Length}: {step.Title}" +
-                    (step.IsRequired ? " (필수)" : " (선택)"));
-                GUILayout.Space(2);
-                EditorTabBase.DrawDescription(step.Description);
+                // Step 제목
+                string stepTitle = _currentStep == 0
+                    ? "Step 1/2: Supabase 연결 (필수)"
+                    : "Step 2/2: 배포 설정 (선택)";
+                EditorTabBase.DrawSubLabel(stepTitle);
+
+                string desc = _currentStep == 0
+                    ? "게임 데이터를 저장할 데이터베이스입니다. 무료로 시작할 수 있습니다."
+                    : "서버를 Cloud Run에 배포할 때 필요합니다. 개발은 LocalGameDB로 가능합니다.";
+                EditorTabBase.DrawDescription(desc);
+
                 GUILayout.Space(8);
 
-                step.OnDraw();
+                if (_currentStep == 0)
+                    _supabaseSetup.OnDraw();
+                else
+                    _deploySetup.OnDraw();
+
                 GUILayout.Space(12);
                 DrawNavigation();
             }
@@ -67,96 +67,85 @@ namespace Tjdtjq5.GameServer.Editor
 
         void DrawStepIndicator()
         {
-            var states = new int[_steps.Length];
-            for (int i = 0; i < _steps.Length; i++)
-            {
-                if (_steps[i].IsCompleted) states[i] = 2;
-                else if (_steps[i].IsSkipped) states[i] = 3;
-                else if (i == _currentStep) states[i] = 1;
-                else states[i] = 0;
-            }
+            var states = new int[2];
+            // Supabase
+            states[0] = _supabaseSetup.IsCompleted ? 2 : (_currentStep == 0 ? 1 : 0);
+            // Deploy
+            states[1] = _deploySetup.IsSkipped ? 3 : (_currentStep == 1 ? 1 : 0);
+
             EditorTabBase.DrawStepIndicator(StepLabels, states);
         }
 
         void DrawNavigation()
         {
-            var step = _steps[_currentStep];
-
             EditorGUILayout.BeginHorizontal();
 
             // ← 이전
             if (_currentStep > 0)
             {
                 if (EditorTabBase.DrawColorBtn("← 이전", EditorTabBase.COL_MUTED, 28))
-                    _currentStep--;
+                    _currentStep = 0;
             }
 
             GUILayout.FlexibleSpace();
 
-            // 건너뛰기 (선택 Step만)
-            if (!step.IsRequired)
+            if (_currentStep == 0)
             {
+                // Step 1: 다음 (연결 테스트 통과 필요)
+                using (new UnityEditor.EditorGUI.DisabledGroupScope(!_supabaseSetup.IsCompleted))
+                {
+                    if (EditorTabBase.DrawColorBtn("다음 →", GameServerDashboard.COL_PRIMARY, 28))
+                        _currentStep = 1;
+                }
+                if (!_supabaseSetup.IsCompleted)
+                    EditorTabBase.DrawDescription("연결 테스트를 통과해야 다음으로 진행할 수 있습니다.", EditorTabBase.COL_WARN);
+            }
+            else
+            {
+                // Step 2: 건너뛰기 + 완료
                 if (EditorTabBase.DrawColorBtn("건너뛰기", EditorTabBase.COL_WARN, 28))
                 {
-                    step.OnSkip();
-                    GoNext();
+                    _deploySetup.OnSkip();
+                    _showCompletion = true;
                 }
                 GUILayout.Space(8);
-            }
-
-            // 다음 → / 완료
-            bool isLast = _currentStep >= _steps.Length - 1;
-            string nextLabel = isLast ? "완료" : "다음 →";
-            Color nextColor = isLast ? EditorTabBase.COL_SUCCESS : GameServerDashboard.COL_PRIMARY;
-
-            // 필수 Step은 완료되어야 다음 가능
-            bool canProceed = !step.IsRequired || step.IsCompleted;
-
-            using (new EditorGUI.DisabledGroupScope(!canProceed))
-            {
-                if (EditorTabBase.DrawColorBtn(nextLabel, nextColor, 28))
-                    GoNext();
+                if (EditorTabBase.DrawColorBtn("완료", EditorTabBase.COL_SUCCESS, 28))
+                    _showCompletion = true;
             }
 
             EditorGUILayout.EndHorizontal();
-
-            if (step.IsRequired && !step.IsCompleted)
-                EditorTabBase.DrawDescription("ⓘ 연결 테스트를 통과해야 다음으로 진행할 수 있습니다.",
-                    EditorTabBase.COL_WARN);
-        }
-
-        void GoNext()
-        {
-            if (_currentStep < _steps.Length - 1)
-                _currentStep++;
-            else
-                _showCompletion = true;
         }
 
         void DrawCompletion()
         {
+            var settings = GameServerSettings.Instance;
+
             GUILayout.Space(20);
             EditorTabBase.DrawSectionHeader("✅ 설정 완료!", EditorTabBase.COL_SUCCESS);
             GUILayout.Space(12);
 
-            var settings = GameServerSettings.Instance;
-
             EditorTabBase.BeginBody();
-            DrawCompletionRow("Supabase",
-                settings.IsSupabaseConfigured ? "Connected" : "미설정",
-                settings.IsSupabaseConfigured);
-            DrawCompletionRow("Google Cloud",
-                settings.IsGcpConfigured ? $"Project: {settings.gcpProjectId}" : "건너뜀",
-                settings.IsGcpConfigured);
+            DrawCompletionRow("Supabase", "Connected", true);
             DrawCompletionRow("GitHub",
                 settings.IsGitHubConfigured ? $"Repo: {settings.githubRepoName}" : "건너뜀",
                 settings.IsGitHubConfigured);
+            DrawCompletionRow("Google Cloud",
+                settings.IsGcpConfigured ? $"Project: {settings.gcpProjectId}" : "건너뜀",
+                settings.IsGcpConfigured);
             EditorTabBase.EndBody();
 
             GUILayout.Space(4);
             EditorTabBase.DrawDescription("건너뛴 항목은 ⚙ 버튼에서 언제든 설정할 수 있습니다.");
-            GUILayout.Space(16);
 
+            GUILayout.Space(8);
+            EditorTabBase.BeginBody();
+            EditorTabBase.DrawDescription(
+                "지금 바로 Unity Play를 눌러보세요!\n" +
+                "[TableData]와 [ServerLogic]을 작성하면\n" +
+                "LocalGameDB로 즉시 테스트됩니다.", EditorTabBase.COL_INFO);
+            EditorTabBase.EndBody();
+
+            GUILayout.Space(16);
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
             if (EditorTabBase.DrawColorBtn("  대시보드 열기  ", GameServerDashboard.COL_PRIMARY, 32))

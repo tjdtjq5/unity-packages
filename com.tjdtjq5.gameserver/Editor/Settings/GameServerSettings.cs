@@ -21,8 +21,7 @@ namespace Tjdtjq5.GameServer.Editor
         [Header("GitHub")]
         public string githubRepoName;
 
-        [Header("개발 모드")]
-        public bool devMode = true;
+        [Header("서버 로그")]
         public bool serverLogToConsole = true;
 
         [Header("상태")]
@@ -63,6 +62,9 @@ namespace Tjdtjq5.GameServer.Editor
         public bool IsGitHubConfigured =>
             !string.IsNullOrEmpty(GithubToken) &&
             !string.IsNullOrEmpty(githubRepoName);
+
+        public bool IsDeployConfigured =>
+            IsGcpConfigured && IsGitHubConfigured;
 
         // ── Supabase 프로젝트 ID 추출 ──
 
