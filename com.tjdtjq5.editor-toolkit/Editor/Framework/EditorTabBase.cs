@@ -18,10 +18,10 @@ namespace Tjdtjq5.EditorToolkit.Editor
     public abstract class EditorTabBase
     {
         // ─── Colors (public static) ───────────────────
-        public static readonly Color BG_WINDOW  = new(0.15f, 0.15f, 0.19f);
-        public static readonly Color BG_SECTION = new(0.19f, 0.19f, 0.23f);
-        public static readonly Color BG_CARD    = new(0.14f, 0.14f, 0.18f);
-        public static readonly Color BG_HEADER  = new(0.18f, 0.18f, 0.22f);
+        public static readonly Color BG_WINDOW  = new(0.18f, 0.18f, 0.20f);
+        public static readonly Color BG_SECTION = new(0.14f, 0.14f, 0.16f);
+        public static readonly Color BG_CARD    = new(0.12f, 0.12f, 0.14f);
+        public static readonly Color BG_HEADER  = new(0.11f, 0.11f, 0.13f);
 
         public static readonly Color COL_SUCCESS = new(0.30f, 0.80f, 0.40f);
         public static readonly Color COL_WARN    = new(0.95f, 0.75f, 0.20f);
@@ -47,23 +47,29 @@ namespace Tjdtjq5.EditorToolkit.Editor
         public virtual  void OnEnable()  { }
         public virtual  void OnDisable() { }
 
-        // ─── 알림 시스템 (instance — virtual) ────────
+        // ─── 알림 시스템 (instance) ──────────────────
 
-        /// <summary>알림 표시 설정</summary>
         public virtual void ShowNotification(string message, NotificationType type)
         {
             _notification = message;
             _notificationType = type;
         }
 
-        /// <summary>알림 박스 그리기 (Error=빨강, Success=초록, Info=파랑)</summary>
         public virtual void DrawNotifications()
         {
             if (string.IsNullOrEmpty(_notification)) return;
+            DrawNotificationBar(ref _notification, _notificationType);
+        }
+
+        // ─── 알림 시스템 (static) ────────────────────
+
+        public static void DrawNotificationBar(ref string notification, NotificationType type)
+        {
+            if (string.IsNullOrEmpty(notification)) return;
 
             Color bgColor, labelColor, textColor;
             string label;
-            switch (_notificationType)
+            switch (type)
             {
                 case NotificationType.Error:
                     bgColor = new Color(0.35f, 0.12f, 0.12f);
@@ -92,21 +98,20 @@ namespace Tjdtjq5.EditorToolkit.Editor
                 { normal = { textColor = labelColor } }, GUILayout.Width(55));
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("Copy", EditorStyles.miniButton, GUILayout.Width(36), GUILayout.Height(16)))
-                EditorGUIUtility.systemCopyBuffer = _notification;
+                EditorGUIUtility.systemCopyBuffer = notification;
             if (GUILayout.Button("\u2715", EditorStyles.miniButton, GUILayout.Width(18), GUILayout.Height(16)))
-                _notification = null;
+                notification = null;
             EditorGUILayout.EndHorizontal();
 
-            if (!string.IsNullOrEmpty(_notification))
-                EditorGUILayout.LabelField(_notification, new GUIStyle(EditorStyles.wordWrappedLabel)
+            if (!string.IsNullOrEmpty(notification))
+                EditorGUILayout.LabelField(notification, new GUIStyle(EditorStyles.wordWrappedLabel)
                     { normal = { textColor = textColor } });
 
             EditorGUILayout.EndVertical();
         }
 
-        // ─── 로딩 (static) ────────────────────────────
+        // ─── 로딩 (static) ──────────────────────────
 
-        /// <summary>로딩 스피너 표시</summary>
         public static void DrawLoading(bool isLoading, string message = "로딩 중...")
         {
             if (!isLoading) return;
@@ -119,88 +124,123 @@ namespace Tjdtjq5.EditorToolkit.Editor
             GUILayout.Space(8);
         }
 
-        // ─── 테이블 유틸 (static) ─────────────────────
+        // ─── 테이블 유틸 (static) ───────────────────
 
-        // 헤더·셀 동일 base + padding/margin → 컬럼 정렬 보장, 캐싱으로 GC 방지
-        static GUIStyle _tblHeaderStyle;
-        static GUIStyle _tblCellStyle;
-
-        static GUIStyle EnsureTblHeaderStyle(TextAnchor alignment)
-        {
-            _tblHeaderStyle ??= new GUIStyle(EditorStyles.miniLabel)
-            {
-                fontStyle = FontStyle.Bold,
-                normal    = { textColor = COL_MUTED },
-                fontSize  = 10,
-                padding   = new RectOffset(2, 2, 0, 0),
-                margin    = new RectOffset(0, 0, 0, 0),
-            };
-            _tblHeaderStyle.alignment = alignment;
-            return _tblHeaderStyle;
-        }
-
-        static GUIStyle EnsureTblCellStyle(TextAnchor alignment, Color textColor)
-        {
-            _tblCellStyle ??= new GUIStyle(EditorStyles.miniLabel)
-            {
-                padding = new RectOffset(2, 2, 0, 0),
-                margin  = new RectOffset(0, 0, 0, 0),
-            };
-            _tblCellStyle.alignment = alignment;
-            _tblCellStyle.normal.textColor = textColor;
-            return _tblCellStyle;
-        }
-
-        /// <summary>테이블 헤더 라벨</summary>
         public static void DrawHeaderLabel(string text, float width = 0,
             TextAnchor alignment = TextAnchor.MiddleCenter)
         {
-            var style = EnsureTblHeaderStyle(alignment);
+            var style = new GUIStyle(EditorStyles.boldLabel)
+            {
+                alignment = alignment,
+                normal = { textColor = COL_MUTED },
+                fontSize = 10
+            };
             if (width > 0)
                 EditorGUILayout.LabelField(text, style, GUILayout.Width(width));
             else
                 EditorGUILayout.LabelField(text, style);
         }
 
-        /// <summary>테이블 셀 라벨</summary>
         public static void DrawCellLabel(string text, float width = 0, Color? color = null,
-            TextAnchor alignment = TextAnchor.MiddleCenter)
+            TextAnchor alignment = TextAnchor.MiddleLeft)
         {
-            var style = EnsureTblCellStyle(alignment, color ?? Color.white);
+            var style = new GUIStyle(EditorStyles.label)
+                { normal = { textColor = color ?? Color.white }, alignment = alignment };
             if (width > 0)
                 EditorGUILayout.LabelField(text ?? "", style, GUILayout.Width(width));
             else
                 EditorGUILayout.LabelField(text ?? "", style);
         }
 
-        /// <summary>하이퍼링크 스타일 버튼</summary>
+        public static void DrawDescription(string text, Color? color = null)
+        {
+            var style = new GUIStyle(EditorStyles.wordWrappedLabel)
+            {
+                fontSize = 11,
+                normal = { textColor = color ?? new Color(0.72f, 0.72f, 0.78f) },
+                padding = new RectOffset(4, 4, 2, 2)
+            };
+            EditorGUILayout.LabelField(text, style, GUILayout.ExpandWidth(true));
+        }
+
         public static bool DrawLinkButton(string text)
         {
             var style = new GUIStyle(EditorStyles.miniLabel)
             {
                 normal = { textColor = COL_LINK },
                 hover = { textColor = Color.white },
-                alignment = TextAnchor.MiddleRight,
+                alignment = TextAnchor.MiddleLeft,
+                stretchWidth = false,
             };
-            var content = new GUIContent($"  {text} \u2197");
-            var rect = GUILayoutUtility.GetRect(content, style);
+            var content = new GUIContent($"{text} \u2197");
+            float w = style.CalcSize(content).x + 8;
+            var rect = GUILayoutUtility.GetRect(w, 18);
 
-            EditorGUI.DrawRect(new Rect(rect.x + 2, rect.yMax - 2, rect.width - 4, 1),
+            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 2, w - 4, 1),
                 new Color(COL_LINK.r, COL_LINK.g, COL_LINK.b, 0.4f));
             EditorGUIUtility.AddCursorRect(rect, MouseCursor.Link);
 
             return GUI.Button(rect, content, style);
         }
 
-        // ─── 탭 바 (instance — virtual) ───────────────
+        public static bool DrawLinkBtn(string text, Color? color = null)
+        {
+            var c = color ?? COL_LINK;
+            var prev = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(c.r, c.g, c.b, 0.3f);
+            var content = new GUIContent($"{text} \u2197");
+            bool clicked = GUILayout.Button(content, GUILayout.Height(22));
+            GUI.backgroundColor = prev;
+            return clicked;
+        }
+
+        // ─── 탭 바 (static) ─────────────────────────
+
+        public static int DrawTabBar(string[] labels, int activeIdx, Color[] colors,
+            Color defaultColor)
+        {
+            if (labels == null || labels.Length == 0) return 0;
+            if (activeIdx >= labels.Length) activeIdx = 0;
+
+            var rect = GUILayoutUtility.GetRect(0, 26, GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(rect, BG_HEADER);
+
+            float tabW = rect.width / labels.Length;
+            for (int i = 0; i < labels.Length; i++)
+            {
+                var tr = new Rect(rect.x + tabW * i, rect.y, tabW, rect.height);
+                bool active = activeIdx == i;
+                Color c = colors != null && i < colors.Length ? colors[i] : defaultColor;
+
+                if (active)
+                {
+                    EditorGUI.DrawRect(tr, new Color(c.r, c.g, c.b, 0.15f));
+                    EditorGUI.DrawRect(new Rect(tr.x, tr.yMax - 2, tr.width, 2), c);
+                }
+
+                var st = new GUIStyle(EditorStyles.miniLabel)
+                {
+                    fontSize = 11, alignment = TextAnchor.MiddleCenter,
+                    fontStyle = active ? FontStyle.Bold : FontStyle.Normal,
+                    normal = { textColor = active ? c : COL_MUTED }
+                };
+                EditorGUI.LabelField(tr, labels[i], st);
+
+                if (Event.current.type == EventType.MouseDown && tr.Contains(Event.current.mousePosition))
+                {
+                    activeIdx = i;
+                    Event.current.Use();
+                }
+            }
+
+            return activeIdx;
+        }
+
+        // ─── 탭 바 (instance — 기존 호환) ───────────
 
         int _tabEditIdx = -1;
         string _tabEditName;
 
-        /// <summary>
-        /// 스타일 탭 바. 반환값: 선택된 인덱스.
-        /// onAdd: + 탭 표시, onRename: 더블클릭 이름 편집
-        /// </summary>
         public virtual int DrawTabBar(string[] labels, int activeIdx, Color[] colors = null,
             Action onAdd = null, Action<int, string> onRename = null)
         {
@@ -281,9 +321,8 @@ namespace Tjdtjq5.EditorToolkit.Editor
             { onAdd.Invoke(); Event.current.Use(); }
         }
 
-        // ─── 툴바 (static) ───────────────────────────
+        // ─── 툴바 (static) ──────────────────────────
 
-        /// <summary>액션 버튼 툴바 (왼쪽: 버튼들, 오른쪽: 텍스트)</summary>
         public static void DrawActionBar(
             (string label, Color color, Action action)[] buttons,
             string rightText = null)
@@ -308,56 +347,227 @@ namespace Tjdtjq5.EditorToolkit.Editor
             EditorGUILayout.EndHorizontal();
         }
 
-        // ─── 기존 유틸 (public static) ────────────────
+        // ─── 섹션/카드/유틸 (static) ────────────────
 
-        /// <summary>폴드아웃 섹션 헤더 (accent bar + 삼각형 + 제목)</summary>
         public static bool DrawSectionFoldout(ref bool foldout, string title, Color color)
         {
-            var rect = GUILayoutUtility.GetRect(0, 26, GUILayout.ExpandWidth(true));
+            GUILayout.Space(4);
+            var rect = GUILayoutUtility.GetRect(0, 28, GUILayout.ExpandWidth(true));
             EditorGUI.DrawRect(rect, BG_HEADER);
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y, 4, rect.height), color);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, 3, rect.height), color);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1),
+                new Color(color.r, color.g, color.b, 0.3f));
 
             var triStyle = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = color } };
-            EditorGUI.LabelField(new Rect(rect.x + 10, rect.y + 3, 16, 16), foldout ? "\u25BC" : "\u25B6", triStyle);
+            EditorGUI.LabelField(new Rect(rect.x + 12, rect.y + 4, 16, 16), foldout ? "\u25BC" : "\u25B6", triStyle);
 
             var titleStyle = new GUIStyle(EditorStyles.boldLabel)
                 { fontSize = 12, normal = { textColor = color } };
-            EditorGUI.LabelField(new Rect(rect.x + 26, rect.y, rect.width - 26, rect.height), title, titleStyle);
+            EditorGUI.LabelField(new Rect(rect.x + 28, rect.y, rect.width - 28, rect.height), title, titleStyle);
 
             if (Event.current.type == EventType.MouseDown && rect.Contains(Event.current.mousePosition))
             { foldout = !foldout; Event.current.Use(); }
             return foldout;
         }
 
-        /// <summary>섹션 헤더 (폴드아웃 없이 accent bar + 제목만)</summary>
         public static void DrawSectionHeader(string title, Color color)
         {
-            var rect = GUILayoutUtility.GetRect(0, 24, GUILayout.ExpandWidth(true));
+            GUILayout.Space(4);
+            var rect = GUILayoutUtility.GetRect(0, 28, GUILayout.ExpandWidth(true));
             EditorGUI.DrawRect(rect, BG_HEADER);
             EditorGUI.DrawRect(new Rect(rect.x, rect.y, 3, rect.height), color);
-
+            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1),
+                new Color(color.r, color.g, color.b, 0.3f));
             var titleStyle = new GUIStyle(EditorStyles.boldLabel)
                 { fontSize = 12, normal = { textColor = color } };
-            EditorGUI.LabelField(
-                new Rect(rect.x + 10, rect.y, rect.width - 10, rect.height),
-                title, titleStyle);
+            EditorGUI.LabelField(new Rect(rect.x + 12, rect.y, rect.width - 12, rect.height), title, titleStyle);
         }
 
-        /// <summary>섹션 본문 시작 (BG_SECTION 배경)</summary>
-        public static void BeginBody()
+        public static void DrawWindowHeader(string title, string version, Color accentColor)
         {
-            EditorGUILayout.BeginVertical(GetBgStyle(BG_SECTION));
+            var rect = GUILayoutUtility.GetRect(0, 34, GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(rect, BG_HEADER);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 2, rect.width, 2), accentColor);
+
+            var style = new GUIStyle(EditorStyles.boldLabel) { fontSize = 15, fixedHeight = 30 };
+            style.normal.textColor = Color.white;
+            EditorGUI.LabelField(new Rect(rect.x + 10, rect.y + 2, rect.width - 80, rect.height), title, style);
+
+            if (!string.IsNullOrEmpty(version))
+            {
+                var verStyle = new GUIStyle(EditorStyles.miniLabel);
+                verStyle.normal.textColor = COL_MUTED;
+                EditorGUI.LabelField(new Rect(rect.xMax - 60, rect.y + 2, 50, rect.height), version, verStyle);
+            }
+        }
+
+        public static bool DrawWindowHeaderWithGear(string title, string version, Color accentColor,
+            (string name, int state)[] badges = null)
+        {
+            var rect = GUILayoutUtility.GetRect(0, 34, GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(rect, BG_HEADER);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 2, rect.width, 2), accentColor);
+
+            var titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 15, fixedHeight = 30 };
+            titleStyle.normal.textColor = Color.white;
+            EditorGUI.LabelField(new Rect(rect.x + 10, rect.y + 2, 120, rect.height), title, titleStyle);
+
+            if (badges != null)
+            {
+                float bx = rect.x + 130;
+                var dotColors = new[] { COL_MUTED, COL_SUCCESS, COL_ERROR };
+                var badgeStyle = new GUIStyle(EditorStyles.miniLabel) { fontSize = 10 };
+
+                foreach (var (name, state) in badges)
+                {
+                    var col = dotColors[Mathf.Clamp(state, 0, 2)];
+                    badgeStyle.normal.textColor = col;
+                    var content = new GUIContent($"\u25CF {name}");
+                    float w = badgeStyle.CalcSize(content).x + 4;
+                    EditorGUI.LabelField(new Rect(bx, rect.y + 9, w, 16), content, badgeStyle);
+                    bx += w + 4;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(version))
+            {
+                var verStyle = new GUIStyle(EditorStyles.miniLabel);
+                verStyle.normal.textColor = COL_MUTED;
+                EditorGUI.LabelField(new Rect(rect.xMax - 80, rect.y + 2, 36, rect.height), version, verStyle);
+            }
+
+            bool gearClicked = false;
+            var gearRect = new Rect(rect.xMax - 34, rect.y + 7, 20, 20);
+            var gearStyle = new GUIStyle(EditorStyles.miniLabel)
+                { fontSize = 16, alignment = TextAnchor.MiddleCenter };
+            gearStyle.normal.textColor = COL_MUTED;
+            EditorGUI.LabelField(gearRect, "\u2699", gearStyle);
+            EditorGUIUtility.AddCursorRect(gearRect, MouseCursor.Link);
+            if (Event.current.type == EventType.MouseDown && gearRect.Contains(Event.current.mousePosition))
+            {
+                gearClicked = true;
+                Event.current.Use();
+            }
+
+            return gearClicked;
+        }
+
+        public static bool DrawBackButton(string text = "\u2190 돌아가기")
+        {
+            var style = new GUIStyle(EditorStyles.miniLabel)
+            {
+                fontSize = 12, normal = { textColor = COL_LINK }
+            };
+
+            EditorGUILayout.BeginHorizontal();
+            bool clicked = GUILayout.Button(text, style, GUILayout.Width(100), GUILayout.Height(24));
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            return clicked;
+        }
+
+        public static void DrawWindowBackground(Rect position)
+        {
+            EditorGUI.DrawRect(new Rect(0, 0, position.width, position.height), BG_WINDOW);
+        }
+
+        public static void DrawStepIndicator(string[] labels, int[] stepStates)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+
+            for (int i = 0; i < labels.Length; i++)
+            {
+                Color col;
+                string dot;
+                switch (stepStates[i])
+                {
+                    case 2: col = COL_SUCCESS; dot = "\u2713"; break;
+                    case 3: col = COL_WARN;    dot = "\u25B3"; break;
+                    case 1: col = COL_INFO;    dot = "\u25CF"; break;
+                    default: col = COL_MUTED;  dot = "\u25CB"; break;
+                }
+
+                var style = new GUIStyle(EditorStyles.miniLabel)
+                    { alignment = TextAnchor.MiddleCenter, normal = { textColor = col } };
+                GUILayout.Label($"{dot}\n{labels[i]}", style, GUILayout.Width(70), GUILayout.Height(30));
+
+                if (i < labels.Length - 1)
+                {
+                    var lineStyle = new GUIStyle(EditorStyles.miniLabel)
+                        { alignment = TextAnchor.MiddleCenter, normal = { textColor = COL_MUTED } };
+                    GUILayout.Label("\u2501\u2501\u2501", lineStyle, GUILayout.Width(30), GUILayout.Height(30));
+                }
+            }
+
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+        }
+
+        public static void DrawInfoBox(string[] benefits, string[] drawbacks)
+        {
+            EditorGUILayout.BeginVertical(GetBgStyle(BG_CARD));
             GUILayout.Space(4);
-        }
 
-        /// <summary>섹션 본문 끝</summary>
-        public static void EndBody()
-        {
+            var bStyle = new GUIStyle(EditorStyles.label) { normal = { textColor = COL_SUCCESS }, fontSize = 11 };
+            var dStyle = new GUIStyle(EditorStyles.label) { normal = { textColor = COL_MUTED }, fontSize = 11 };
+            var hStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 11 };
+
+            hStyle.normal.textColor = COL_SUCCESS;
+            GUILayout.Label("설정하면?", hStyle);
+            foreach (var b in benefits)
+                GUILayout.Label($"  \u2713 {b}", bStyle);
+
+            GUILayout.Space(4);
+            hStyle.normal.textColor = COL_MUTED;
+            GUILayout.Label("안 하면?", hStyle);
+            foreach (var d in drawbacks)
+                GUILayout.Label($"  \u00B7 {d}", dStyle);
+
             GUILayout.Space(4);
             EditorGUILayout.EndVertical();
         }
 
-        /// <summary>통계 카드 (라벨 + 큰 값)</summary>
+        public static void DrawToolStatus(string name, bool installed, string version,
+            bool loggedIn = false, string account = null)
+        {
+            EditorGUILayout.BeginHorizontal();
+
+            if (installed)
+            {
+                var col = loggedIn ? COL_SUCCESS : COL_WARN;
+                var verText = !string.IsNullOrEmpty(version) ? $" ({version})" : "";
+                var accountText = !string.IsNullOrEmpty(account) ? $" \u2014 {account}" : "";
+                var loginText = loggedIn ? $"\u2713 로그인됨{accountText}" : "\u2717 로그인 안 됨";
+
+                var s = new GUIStyle(EditorStyles.label) { normal = { textColor = col }, fontSize = 11 };
+                GUILayout.Label($"  \u2713 {name} 설치됨{verText}  |  {loginText}", s);
+            }
+            else
+            {
+                var s = new GUIStyle(EditorStyles.label) { normal = { textColor = COL_ERROR }, fontSize = 11 };
+                GUILayout.Label($"  \u2717 {name} 미설치", s);
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        public static void BeginBody()
+        {
+            GUILayout.Space(2);
+            var style = GetBgStyle(BG_SECTION);
+            style.margin = new RectOffset(4, 4, 0, 0);
+            style.padding = new RectOffset(10, 10, 6, 6);
+            EditorGUILayout.BeginVertical(style);
+        }
+
+        public static void EndBody()
+        {
+            EditorGUILayout.EndVertical();
+            GUILayout.Space(2);
+        }
+
         public static void DrawStatCard(string label, string value, Color valueColor)
         {
             EditorGUILayout.BeginVertical(GetBgStyle(BG_CARD), GUILayout.MinHeight(44));
@@ -370,14 +580,12 @@ namespace Tjdtjq5.EditorToolkit.Editor
             EditorGUILayout.EndVertical();
         }
 
-        /// <summary>구분선 라벨 (── text ──)</summary>
         public static void DrawSubLabel(string text)
         {
             EditorGUILayout.LabelField($"\u2500\u2500  {text}  \u2500\u2500",
                 new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(0.50f, 0.50f, 0.56f) } });
         }
 
-        /// <summary>색상 배경 버튼</summary>
         public static bool DrawColorBtn(string text, Color color, float height = 24)
         {
             var prev = GUI.backgroundColor;
@@ -387,7 +595,15 @@ namespace Tjdtjq5.EditorToolkit.Editor
             return clicked;
         }
 
-        /// <summary>단색 배경 GUIStyle 캐시 (Color → GUIStyle)</summary>
+        public static void DrawPlaceholder(string text)
+        {
+            GUILayout.FlexibleSpace();
+            var style = new GUIStyle(EditorStyles.centeredGreyMiniLabel) { fontSize = 12 };
+            style.normal.textColor = COL_MUTED;
+            GUILayout.Label(text, style);
+            GUILayout.FlexibleSpace();
+        }
+
         public static GUIStyle GetBgStyle(Color bg)
         {
             if (_bgStyles.TryGetValue(bg, out var style) && style?.normal?.background != null)
@@ -408,7 +624,6 @@ namespace Tjdtjq5.EditorToolkit.Editor
 
         // ─── 리사이저블 컬럼 ────────────────────────
 
-        /// <summary>컬럼 정의</summary>
         public struct ColumnDef
         {
             public string Name;
@@ -422,10 +637,6 @@ namespace Tjdtjq5.EditorToolkit.Editor
             }
         }
 
-        /// <summary>
-        /// Rect 기반 리사이저블 컬럼 헤더. EditorPrefs 자동 저장/복원.
-        /// width=0 컬럼은 나머지 공간 사용 (flex).
-        /// </summary>
         public class ResizableColumns
         {
             readonly string _prefsPrefix;
