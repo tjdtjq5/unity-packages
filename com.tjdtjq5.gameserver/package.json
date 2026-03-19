@@ -1,0 +1,21 @@
+{
+  "name": "com.tjdtjq5.gameserver",
+  "version": "0.1.0",
+  "displayName": "GameServer",
+  "description": "Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. ASP.NET + Supabase + Cloud Run 자동 배포.",
+  "unity": "6000.1",
+  "author": {
+    "name": "tjdtjq5"
+  },
+  "dependencies": {
+    "com.tjdtjq5.editor-toolkit": "1.2.0"
+  },
+  "keywords": [
+    "server",
+    "backend",
+    "supabase",
+    "cloud-run",
+    "gameserver",
+    "deployment"
+  ]
+}
