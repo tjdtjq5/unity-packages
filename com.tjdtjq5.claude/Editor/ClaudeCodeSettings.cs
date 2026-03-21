@@ -1,5 +1,4 @@
 using System;
-using System.Security.Cryptography;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
@@ -118,17 +117,18 @@ namespace Tjdtjq5.Claude
             EditorPrefs.SetString(Prefix + key, "#" + ColorUtility.ToHtmlStringRGB(value));
         }
 
-        // ── 토큰 암호화 (DPAPI) ──
+        // ── 토큰 난독화 (Base64 + XOR) ──
+        // EditorPrefs는 로컬 전용이므로 네트워크 노출 없음.
+        // 평문 저장을 방지하는 수준의 난독화.
+        static readonly byte[] ObfuscateKey = { 0xC1, 0xA0, 0xDE, 0x42, 0x7F, 0x3B, 0x91, 0x55 };
+
         static string EncryptToken(string token)
         {
             if (string.IsNullOrEmpty(token)) return "";
-            try
-            {
-                var bytes = Encoding.UTF8.GetBytes(token);
-                var encrypted = ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser);
-                return Convert.ToBase64String(encrypted);
-            }
-            catch { return ""; }
+            var bytes = Encoding.UTF8.GetBytes(token);
+            for (int i = 0; i < bytes.Length; i++)
+                bytes[i] ^= ObfuscateKey[i % ObfuscateKey.Length];
+            return Convert.ToBase64String(bytes);
         }
 
         static string DecryptToken(string encrypted)
@@ -137,8 +137,9 @@ namespace Tjdtjq5.Claude
             try
             {
                 var bytes = Convert.FromBase64String(encrypted);
-                var decrypted = ProtectedData.Unprotect(bytes, null, DataProtectionScope.CurrentUser);
-                return Encoding.UTF8.GetString(decrypted);
+                for (int i = 0; i < bytes.Length; i++)
+                    bytes[i] ^= ObfuscateKey[i % ObfuscateKey.Length];
+                return Encoding.UTF8.GetString(bytes);
             }
             catch { return ""; }
         }

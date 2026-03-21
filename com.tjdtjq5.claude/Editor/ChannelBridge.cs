@@ -230,18 +230,19 @@ namespace Tjdtjq5.Claude
                 }
 
                 // [N5] 세대가 바뀌었으면 이 스레드는 무효 — 상태 변경하지 않음
-                if (generation != _connectGeneration) return;
+                if (generation == _connectGeneration)
+                {
+                    // [C2] 연결된 적이 있으면 failCount 리셋 (정상 종료)
+                    if (wasConnected)
+                        _connectFailCount = 0;
+                    else
+                        _connectFailCount++;
 
-                // [C2] 연결된 적이 있으면 failCount 리셋 (정상 종료)
-                if (wasConnected)
-                    _connectFailCount = 0;
-                else
-                    _connectFailCount++;
+                    // [M2] 메인 스레드에서 timeSinceStartup 접근하도록 신호만 보냄
+                    _needsReconnectSchedule = true;
 
-                // [M2] 메인 스레드에서 timeSinceStartup 접근하도록 신호만 보냄
-                _needsReconnectSchedule = true;
-
-                if (_running) SetState(State.Error);
+                    if (_running) SetState(State.Error);
+                }
             }
         }
 

@@ -5,8 +5,7 @@
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
-    "overrideReferences": true,
-    "precompiledReferences": ["System.Security.dll"],
+    "overrideReferences": false,
     "autoReferenced": true,
     "noEngineReferences": false
 }
