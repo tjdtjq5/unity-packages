@@ -2,6 +2,8 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { PipeServer } from './pipe-server.js';
 import { McpChannel } from './mcp-channel.js';
+import { DiscordClient } from './discord-client.js';
+import { EventRouter } from './event-router.js';
 
 // ── 설정 ──
 const PIPE_HASH = process.env.CLAUDE_UNITY_PIPE_HASH || 'default';
@@ -11,7 +13,7 @@ const PIPE_NAME = process.platform === 'win32'
 
 console.error(`[bridge] 시작 — pipe: ${PIPE_NAME}`);
 
-// ── Discord 상태 (Phase 2에서 확장) ──
+// ── Discord 상태 ──
 let discordClient = null;
 let eventRouter = null;
 
@@ -20,18 +22,16 @@ const mcpChannel = new McpChannel({
   onToolCall: async (name, args) => {
     switch (name) {
       case 'reply': {
-        // Phase 2: Discord reply
         if (eventRouter) {
-          eventRouter.handleClaudeReply(args.text);
+          await eventRouter.handleClaudeReply(args.text);
           return '메시지 전송됨';
         }
         return 'Discord 미연결 — 메시지를 보낼 수 없습니다';
       }
 
       case 'send_notification': {
-        // Phase 2: Discord notification
         if (eventRouter) {
-          eventRouter.handleClaudeNotification(args.text, args.category || 'info');
+          await eventRouter.handleClaudeNotification(args.text, args.category || 'info');
           return '알림 전송됨';
         }
         return 'Discord 미연결';
@@ -68,16 +68,14 @@ pipeServer.on('message', async (msg) => {
   try {
     switch (msg.type) {
       case 'unity_event':
-        // Unity 이벤트 → Claude에 전달
         if (eventRouter) {
-          eventRouter.handleUnityEvent(msg);
+          await eventRouter.handleUnityEvent(msg);
         } else {
           await mcpChannel.sendToClaudeFromUnity(msg);
         }
         break;
 
       case 'config':
-        // Discord 설정 수신 (Phase 2에서 구현)
         console.error('[bridge] 설정 수신:', msg.discordMode || 'no-discord');
         await handleConfig(msg);
         break;
@@ -90,25 +88,78 @@ pipeServer.on('message', async (msg) => {
   }
 });
 
-// ── Discord 설정 처리 (Phase 2 스텁) ──
+// ── Discord 설정 처리 ──
 async function handleConfig(config) {
-  // Phase 2에서 discord-client.js + event-router.js 연동
-  // 현재는 상태만 Unity에 전달
-  pipeServer.sendToUnity({
-    type: 'bridge_status',
-    status: 'connected',
-    message: 'Bridge 연결됨 (Discord: Phase 2)',
+  // Discord 비활성 또는 토큰 없음
+  if (config.discordMode === 'off' || !config.discordBotToken) {
+    if (discordClient) {
+      await discordClient.disconnect();
+      discordClient = null;
+      eventRouter = null;
+      console.error('[bridge] Discord 연결 해제');
+    }
+    pipeServer.sendToUnity({
+      type: 'bridge_status',
+      status: 'connected',
+      message: 'Discord OFF',
+    });
+    return;
+  }
+
+  // Discord (재)연결
+  if (discordClient) {
+    await discordClient.disconnect();
+    discordClient = null;
+    eventRouter = null;
+  }
+
+  discordClient = new DiscordClient({
+    token: config.discordBotToken,
+    channelId: config.discordChannelId,
+    allowedUsers: (config.discordAllowedUsers || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean),
   });
+
+  eventRouter = new EventRouter({ mcpChannel, discordClient, pipeServer });
+  eventRouter.setMode(config.discordMode);
+
+  discordClient.on('message', (msg) => eventRouter.handleDiscordMessage(msg));
+  discordClient.on('command', (cmd) => eventRouter.handleDiscordCommand(cmd));
+
+  discordClient.on('connected', () => {
+    console.error('[bridge] Discord 연결됨');
+    pipeServer.sendToUnity({ type: 'bridge_status', status: 'discord_connected' });
+  });
+
+  discordClient.on('disconnected', () => {
+    console.error('[bridge] Discord 연결 끊김');
+    pipeServer.sendToUnity({ type: 'bridge_status', status: 'discord_disconnected' });
+  });
+
+  try {
+    await discordClient.connect();
+  } catch (err) {
+    console.error('[bridge] Discord 연결 실패:', err.message);
+    pipeServer.sendToUnity({
+      type: 'bridge_status',
+      status: 'error',
+      message: `Discord 연결 실패: ${err.message}`,
+    });
+    discordClient = null;
+    eventRouter = null;
+  }
 }
 
 // ── 시작 ──
 async function main() {
-  // [H1] MCP 먼저 연결 — Pipe 이벤트가 오기 전에 transport 준비
+  // MCP 먼저 연결 — Pipe 이벤트가 오기 전에 transport 준비
   const transport = new StdioServerTransport();
   await mcpChannel.server.connect(transport);
   console.error('[bridge] MCP Channel 준비 완료');
 
-  // Named Pipe 서버 시작 (이제 이벤트 수신해도 안전)
+  // Named Pipe 서버 시작
   await pipeServer.start();
 }
 
@@ -120,11 +171,13 @@ main().catch((err) => {
 // ── 종료 처리 ──
 process.on('SIGINT', () => {
   console.error('[bridge] 종료 중...');
+  if (discordClient) discordClient.disconnect();
   pipeServer.stop();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
+  if (discordClient) discordClient.disconnect();
   pipeServer.stop();
   process.exit(0);
 });

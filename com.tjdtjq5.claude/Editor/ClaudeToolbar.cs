@@ -26,6 +26,7 @@ namespace Tjdtjq5.Claude
 
         // 벳지
         static Label _badgeLabel;
+        static Label _statusDot;
         static double _lastBadgeCheck;
         static int _cachedWtCount = -1;
 
@@ -69,6 +70,29 @@ namespace Tjdtjq5.Claude
                 if (_badgeLabel != null)
                     _badgeLabel.text = count > 0 ? $"Claude [{count}]" : "Claude";
             });
+
+            UpdateStatusDot();
+        }
+
+        static void UpdateStatusDot()
+        {
+            if (_statusDot == null) return;
+
+            if (!ClaudeCodeSettings.MonitorEnabled)
+            {
+                _statusDot.style.color = new StyleColor(Color.clear);
+                return;
+            }
+
+            var dotColor = ChannelBridge.CurrentState switch
+            {
+                ChannelBridge.State.Connected => new Color(0.3f, 0.85f, 0.4f),   // 초록
+                ChannelBridge.State.Connecting => new Color(0.9f, 0.8f, 0.2f),   // 노랑
+                ChannelBridge.State.Error => new Color(0.9f, 0.3f, 0.3f),        // 빨강
+                _ => new Color(0.5f, 0.5f, 0.5f),                                 // 회색
+            };
+
+            _statusDot.style.color = new StyleColor(dotColor);
         }
 
         static void TryInject()
@@ -164,6 +188,20 @@ namespace Tjdtjq5.Claude
             };
             _badgeLabel.pickingMode = PickingMode.Ignore;
             btn.Add(_badgeLabel);
+
+            // ● 상태 인디케이터
+            _statusDot = new Label("\u25CF")
+            {
+                style =
+                {
+                    color = Color.clear, // 초기: 숨김
+                    fontSize = 8,
+                    unityTextAlign = TextAnchor.MiddleCenter,
+                    marginLeft = 4,
+                }
+            };
+            _statusDot.pickingMode = PickingMode.Ignore;
+            btn.Add(_statusDot);
 
             // 호버
             btn.RegisterCallback<PointerEnterEvent>(_ =>

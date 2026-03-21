@@ -43,6 +43,7 @@ namespace Tjdtjq5.Claude
         void OnEnable()
         {
             RefreshWorktrees();
+            _discordModeLocal = ClaudeCodeSettings.DiscordMode; // [P2-2] 초기값 동기화
             EditorApplication.update += OnUpdate;
         }
 
@@ -80,6 +81,8 @@ namespace Tjdtjq5.Claude
             GUILayout.Space(6);
             DrawMainLaunchSection();
             GUILayout.Space(6);
+            DrawChannelStatusSection();
+            GUILayout.Space(6);
             DrawWorktreeSection();
             DrawStatusMessage();
 
@@ -108,6 +111,106 @@ namespace Tjdtjq5.Claude
                 ClaudeCodeLauncher.LaunchMain();
                 SetStatus("메인 Claude 실행됨");
             }
+        }
+
+        // ── Channel 상태 섹션 ──
+
+        static readonly string[] DiscordModeLabels = { "없음", "알림", "적극적 사용" };
+        static string _discordStatus = "off"; // off, connected, disconnected, error
+        int _discordModeLocal;
+
+        void DrawChannelStatusSection()
+        {
+            EditorTabBase.DrawSectionHeader("Channel", EditorTabBase.COL_SUCCESS);
+            EditorGUILayout.BeginVertical(EditorTabBase.GetBgStyle(EditorTabBase.BG_SECTION));
+            GUILayout.Space(4);
+
+            // Bridge 상태
+            var bridgeState = ChannelBridge.CurrentState;
+            var bridgeColor = bridgeState switch
+            {
+                ChannelBridge.State.Connected => EditorTabBase.COL_SUCCESS,
+                ChannelBridge.State.Connecting => EditorTabBase.COL_WARN,
+                ChannelBridge.State.Error => EditorTabBase.COL_ERROR,
+                _ => EditorTabBase.COL_MUTED,
+            };
+            var bridgeLabel = bridgeState switch
+            {
+                ChannelBridge.State.Connected => "연결됨",
+                ChannelBridge.State.Connecting => "연결 중...",
+                ChannelBridge.State.Error => "에러",
+                _ => "중지",
+            };
+
+            EditorGUILayout.BeginHorizontal();
+            EditorTabBase.DrawCellLabel($"\u25CF Bridge: {bridgeLabel}", 0, bridgeColor);
+            GUILayout.FlexibleSpace();
+
+            bool monitorOn = ClaudeCodeSettings.MonitorEnabled;
+            if (GUILayout.Button(monitorOn ? "ON" : "OFF", EditorStyles.miniButton, GUILayout.Width(36)))
+            {
+                ClaudeCodeSettings.MonitorEnabled = !monitorOn;
+                if (!monitorOn)
+                    ChannelBridge.Connect();
+                else
+                    ChannelBridge.Disconnect();
+            }
+            EditorGUILayout.EndHorizontal();
+
+            // Discord 상태
+            var discordColor = _discordStatus switch
+            {
+                "connected" => EditorTabBase.COL_SUCCESS,
+                "disconnected" => EditorTabBase.COL_ERROR,
+                _ => EditorTabBase.COL_MUTED,
+            };
+            var discordLabel = _discordStatus switch
+            {
+                "connected" => DiscordModeLabels[ClaudeCodeSettings.DiscordMode],
+                "disconnected" => "연결 끊김",
+                _ => "미사용",
+            };
+
+            EditorGUILayout.BeginHorizontal();
+            EditorTabBase.DrawCellLabel($"\u25CF Discord: {discordLabel}", 0, discordColor);
+            GUILayout.FlexibleSpace();
+
+            EditorGUI.BeginChangeCheck();
+            _discordModeLocal = EditorGUILayout.Popup(_discordModeLocal, DiscordModeLabels,
+                GUILayout.Width(90));
+            if (EditorGUI.EndChangeCheck())
+            {
+                ClaudeCodeSettings.DiscordMode = _discordModeLocal;
+                ChannelBridge.SendConfig();
+            }
+            EditorGUILayout.EndHorizontal();
+
+            // 모니터 심각도 표시
+            var sevLabels = new[] { "Error만", "Warning+", "All" };
+            var sevIdx = ClaudeCodeSettings.MonitorSeverity;
+            var monColor = monitorOn ? EditorTabBase.COL_SUCCESS : EditorTabBase.COL_MUTED;
+            EditorTabBase.DrawCellLabel(
+                $"\u25CF 모니터: {(monitorOn ? sevLabels[sevIdx] : "비활성")}", 0, monColor);
+
+            GUILayout.Space(4);
+            EditorGUILayout.EndVertical();
+        }
+
+        [InitializeOnLoadMethod]
+        static void ListenBridgeStatus()
+        {
+            ChannelBridge.OnMessageReceived += json =>
+            {
+                try
+                {
+                    // bridge_status 메시지에서 Discord 상태 추출
+                    if (json.Contains("discord_connected")) _discordStatus = "connected";
+                    else if (json.Contains("discord_disconnected")) _discordStatus = "disconnected";
+                    else if (json.Contains("\"status\":\"error\"")) _discordStatus = "error";
+                    else if (json.Contains("Discord OFF")) _discordStatus = "off";
+                }
+                catch { /* ignore */ }
+            };
         }
 
         // ── 워크트리 통합 섹션 ──

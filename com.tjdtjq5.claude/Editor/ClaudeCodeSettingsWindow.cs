@@ -38,6 +38,10 @@ namespace Tjdtjq5.Claude
             "--ide",
         };
 
+        // ── 드롭다운 라벨 ──
+        static readonly string[] SeverityLabels = { "Error만", "Warning+Error", "All" };
+        static readonly string[] DiscordModeLabels = { "없음", "알림", "적극적 사용" };
+
         // ── 상태 ──
         List<string> _selectedArgs = new();
         Color _mainColor;
@@ -45,6 +49,18 @@ namespace Tjdtjq5.Claude
         string _windowName;
         bool _autoLaunch;
         int _dropdownIdx;
+
+        // Channel 설정 상태
+        bool _monitorEnabled;
+        int _monitorSeverity;
+        int _cooldownSeconds;
+        int _discordMode;
+        string _discordBotToken = "";
+        string _discordChannelId = "";
+        string _discordAllowedUsers = "";
+        bool _remoteControlEnabled;
+        bool _showToken;
+        Vector2 _scrollPos;
 
         // ── GUIStyle 캐시 ──
         GUIStyle _titleStyle;
@@ -65,6 +81,15 @@ namespace Tjdtjq5.Claude
             _wtColor = ClaudeCodeSettings.WorktreeTabColor;
             _windowName = ClaudeCodeSettings.WindowName;
             _autoLaunch = ClaudeCodeSettings.AutoLaunch;
+
+            _monitorEnabled = ClaudeCodeSettings.MonitorEnabled;
+            _monitorSeverity = ClaudeCodeSettings.MonitorSeverity;
+            _cooldownSeconds = ClaudeCodeSettings.CooldownSeconds;
+            _discordMode = ClaudeCodeSettings.DiscordMode;
+            _discordBotToken = ClaudeCodeSettings.DiscordBotToken;
+            _discordChannelId = ClaudeCodeSettings.DiscordChannelId;
+            _discordAllowedUsers = ClaudeCodeSettings.DiscordAllowedUsers;
+            _remoteControlEnabled = ClaudeCodeSettings.RemoteControlEnabled;
         }
 
         void EnsureStyles()
@@ -107,6 +132,7 @@ namespace Tjdtjq5.Claude
                 "Claude Code Settings", _titleStyle);
 
             GUILayout.Space(6);
+            _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
 
             // ── Claude 명령어 ──
             EditorTabBase.DrawSectionHeader("Claude 명령어", COL_PRIMARY);
@@ -171,6 +197,104 @@ namespace Tjdtjq5.Claude
             GUILayout.Space(4);
             EditorGUILayout.EndVertical();
 
+            GUILayout.Space(4);
+
+            // ── 모니터 설정 ──
+            EditorTabBase.DrawSectionHeader("모니터 설정", EditorTabBase.COL_SUCCESS);
+            EditorGUILayout.BeginVertical(EditorTabBase.GetBgStyle(EditorTabBase.BG_SECTION));
+            GUILayout.Space(4);
+
+            EditorGUI.BeginChangeCheck();
+            _monitorEnabled = EditorGUILayout.Toggle("모니터 활성화", _monitorEnabled);
+            if (EditorGUI.EndChangeCheck())
+                ClaudeCodeSettings.MonitorEnabled = _monitorEnabled;
+
+            EditorGUI.BeginDisabledGroup(!_monitorEnabled);
+
+            EditorGUI.BeginChangeCheck();
+            _monitorSeverity = EditorGUILayout.Popup("전달 심각도", _monitorSeverity, SeverityLabels);
+            if (EditorGUI.EndChangeCheck())
+                ClaudeCodeSettings.MonitorSeverity = _monitorSeverity;
+
+            EditorGUI.BeginChangeCheck();
+            _cooldownSeconds = EditorGUILayout.IntSlider("쿨다운 (초)", _cooldownSeconds, 5, 120);
+            if (EditorGUI.EndChangeCheck())
+                ClaudeCodeSettings.CooldownSeconds = _cooldownSeconds;
+
+            EditorGUILayout.LabelField("에러 수정 중 같은 파일의 재전달을 방지합니다.", _hintStyle);
+
+            EditorGUI.EndDisabledGroup();
+
+            GUILayout.Space(4);
+            EditorGUILayout.EndVertical();
+
+            GUILayout.Space(4);
+
+            // ── Discord 설정 ──
+            EditorTabBase.DrawSectionHeader("Discord 설정", EditorTabBase.COL_INFO);
+            EditorGUILayout.BeginVertical(EditorTabBase.GetBgStyle(EditorTabBase.BG_SECTION));
+            GUILayout.Space(4);
+
+            EditorGUI.BeginChangeCheck();
+            _discordMode = EditorGUILayout.Popup("모드", _discordMode, DiscordModeLabels);
+            if (EditorGUI.EndChangeCheck())
+                ClaudeCodeSettings.DiscordMode = _discordMode;
+
+            bool discordActive = _discordMode > 0;
+            EditorGUI.BeginDisabledGroup(!discordActive);
+
+            GUILayout.Space(4);
+            EditorGUILayout.LabelField("Bot Token", _hintStyle);
+            EditorGUILayout.BeginHorizontal();
+            if (_showToken)
+                _discordBotToken = EditorGUILayout.TextField(_discordBotToken);
+            else
+                _discordBotToken = EditorGUILayout.PasswordField(_discordBotToken);
+            if (GUILayout.Button(_showToken ? "숨김" : "표시", EditorStyles.miniButton, GUILayout.Width(40)))
+                _showToken = !_showToken;
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(2);
+            EditorGUILayout.LabelField("Channel ID", _hintStyle);
+            _discordChannelId = EditorGUILayout.TextField(_discordChannelId);
+
+            GUILayout.Space(2);
+            EditorGUILayout.LabelField("허용 사용자 (쉼표 구분 Discord ID)", _hintStyle);
+            _discordAllowedUsers = EditorGUILayout.TextField(_discordAllowedUsers);
+
+            GUILayout.Space(6);
+            if (GUILayout.Button("설정 적용", GUILayout.Height(24)))
+            {
+                ClaudeCodeSettings.DiscordBotToken = _discordBotToken;
+                ClaudeCodeSettings.DiscordChannelId = _discordChannelId;
+                ClaudeCodeSettings.DiscordAllowedUsers = _discordAllowedUsers;
+                ChannelBridge.SendConfig();
+            }
+
+            EditorGUI.EndDisabledGroup();
+
+            GUILayout.Space(4);
+            EditorGUILayout.EndVertical();
+
+            GUILayout.Space(4);
+
+            // ── Remote Control ──
+            EditorTabBase.DrawSectionHeader("Remote Control", COL_PRIMARY);
+            EditorGUILayout.BeginVertical(EditorTabBase.GetBgStyle(EditorTabBase.BG_SECTION));
+            GUILayout.Space(4);
+
+            EditorGUI.BeginChangeCheck();
+            _remoteControlEnabled = EditorGUILayout.Toggle("기본 활성화", _remoteControlEnabled);
+            if (EditorGUI.EndChangeCheck())
+                ClaudeCodeSettings.RemoteControlEnabled = _remoteControlEnabled;
+
+            EditorGUILayout.LabelField(
+                "claude.ai/code나 모바일 앱에서 세션에 접속할 수 있습니다.",
+                _hintStyle);
+
+            GUILayout.Space(4);
+            EditorGUILayout.EndVertical();
+
             GUILayout.Space(8);
 
             // ── 사용법 안내 ──
@@ -187,6 +311,8 @@ namespace Tjdtjq5.Claude
                     { normal = { textColor = new Color(0.70f, 0.70f, 0.75f) } });
             GUILayout.Space(4);
             EditorGUILayout.EndVertical();
+
+            EditorGUILayout.EndScrollView();
         }
 
         // ── 인자 선택 UI ──
