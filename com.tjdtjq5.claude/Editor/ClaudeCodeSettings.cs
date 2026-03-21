@@ -1,3 +1,6 @@
+using System;
+using System.Security.Cryptography;
+using System.Text;
 using UnityEditor;
 using UnityEngine;
 
@@ -44,6 +47,59 @@ namespace Tjdtjq5.Claude
             set => EditorPrefs.SetBool(Prefix + "AutoLaunch", value);
         }
 
+        // ── 모니터 ──
+        public static bool MonitorEnabled
+        {
+            get => EditorPrefs.GetBool(Prefix + "MonitorEnabled", false);
+            set => EditorPrefs.SetBool(Prefix + "MonitorEnabled", value);
+        }
+
+        /// <summary>0=Error만, 1=Warning+Error, 2=All</summary>
+        public static int MonitorSeverity
+        {
+            get => EditorPrefs.GetInt(Prefix + "MonitorSev", 0);
+            set => EditorPrefs.SetInt(Prefix + "MonitorSev", value);
+        }
+
+        public static int CooldownSeconds
+        {
+            get => EditorPrefs.GetInt(Prefix + "Cooldown", 30);
+            set => EditorPrefs.SetInt(Prefix + "Cooldown", value);
+        }
+
+        // ── Discord ──
+        /// <summary>0=Off, 1=Notify, 2=Interactive</summary>
+        public static int DiscordMode
+        {
+            get => EditorPrefs.GetInt(Prefix + "DiscordMode", 0);
+            set => EditorPrefs.SetInt(Prefix + "DiscordMode", value);
+        }
+
+        public static string DiscordBotToken
+        {
+            get => DecryptToken(EditorPrefs.GetString(Prefix + "DiscordToken", ""));
+            set => EditorPrefs.SetString(Prefix + "DiscordToken", EncryptToken(value));
+        }
+
+        public static string DiscordChannelId
+        {
+            get => EditorPrefs.GetString(Prefix + "DiscordChId", "");
+            set => EditorPrefs.SetString(Prefix + "DiscordChId", value);
+        }
+
+        public static string DiscordAllowedUsers
+        {
+            get => EditorPrefs.GetString(Prefix + "DiscordUsers", "");
+            set => EditorPrefs.SetString(Prefix + "DiscordUsers", value);
+        }
+
+        // ── Remote Control ──
+        public static bool RemoteControlEnabled
+        {
+            get => EditorPrefs.GetBool(Prefix + "RC", false);
+            set => EditorPrefs.SetBool(Prefix + "RC", value);
+        }
+
         // ── 유틸 ──
         public static string ColorToHex(Color c)
         {
@@ -60,6 +116,31 @@ namespace Tjdtjq5.Claude
         static void SaveColor(string key, Color value)
         {
             EditorPrefs.SetString(Prefix + key, "#" + ColorUtility.ToHtmlStringRGB(value));
+        }
+
+        // ── 토큰 암호화 (DPAPI) ──
+        static string EncryptToken(string token)
+        {
+            if (string.IsNullOrEmpty(token)) return "";
+            try
+            {
+                var bytes = Encoding.UTF8.GetBytes(token);
+                var encrypted = ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser);
+                return Convert.ToBase64String(encrypted);
+            }
+            catch { return ""; }
+        }
+
+        static string DecryptToken(string encrypted)
+        {
+            if (string.IsNullOrEmpty(encrypted)) return "";
+            try
+            {
+                var bytes = Convert.FromBase64String(encrypted);
+                var decrypted = ProtectedData.Unprotect(bytes, null, DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString(decrypted);
+            }
+            catch { return ""; }
         }
     }
 }

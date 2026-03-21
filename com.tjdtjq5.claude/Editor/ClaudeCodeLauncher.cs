@@ -67,7 +67,8 @@ namespace Tjdtjq5.Claude
 
         public static void LaunchMain()
         {
-            var args = BuildClaudeCommand();
+            var envPrefix = BuildEnvPrefix();
+            var args = envPrefix + BuildClaudeCommand();
             var colorHex = ClaudeCodeSettings.ColorToHex(ClaudeCodeSettings.MainTabColor);
 
             if (HasWindowsTerminal)
@@ -84,12 +85,17 @@ namespace Tjdtjq5.Claude
                 StartProcess("powershell", $"-NoExit -Command \"{args}\"", ProjectPath);
             }
 
+            // 모니터 활성이면 Pipe 연결 시작
+            if (ClaudeCodeSettings.MonitorEnabled)
+                ChannelBridge.Connect();
+
             Debug.Log($"[Claude Code] 메인 실행 — {ProjectPath}");
         }
 
         public static void LaunchClaudeAt(string path, string title)
         {
-            var args = BuildClaudeCommand();
+            var envPrefix = BuildEnvPrefix();
+            var args = envPrefix + BuildClaudeCommand();
             var colorHex = ClaudeCodeSettings.ColorToHex(ClaudeCodeSettings.WorktreeTabColor);
 
             if (HasWindowsTerminal)
@@ -334,7 +340,107 @@ namespace Tjdtjq5.Claude
             var extra = ClaudeCodeSettings.AdditionalArgs.Trim();
             if (!string.IsNullOrEmpty(extra))
                 sb.Append(' ').Append(extra);
+
+            // [C3][N1] Channel — .mcp.json에 서버 등록 후 커스텀 채널 플래그로 참조
+            // --dangerously-load-development-channels만 사용 (--channels는 허용목록 전용)
+            if (ClaudeCodeSettings.MonitorEnabled)
+            {
+                EnsureMcpConfig();
+                sb.Append(" --dangerously-load-development-channels server:claude-unity-bridge");
+            }
+
+            // Remote Control 플래그
+            if (ClaudeCodeSettings.RemoteControlEnabled)
+                sb.Append(" --rc");
+
             return sb.ToString();
+        }
+
+        /// <summary>Bridge~/src/index.js 경로를 찾는다</summary>
+        static string GetBridgePath()
+        {
+            var candidates = new[]
+            {
+                Path.GetFullPath(Path.Combine("Packages", "com.tjdtjq5.claude", "Bridge~", "src", "index.js")),
+                Path.GetFullPath(Path.Combine(ProjectPath, "Packages", "com.tjdtjq5.claude", "Bridge~", "src", "index.js")),
+            };
+
+            foreach (var candidate in candidates)
+            {
+                if (File.Exists(candidate))
+                    return candidate.Replace('\\', '/');
+            }
+
+            Debug.LogWarning("[Claude Code] Bridge~/src/index.js를 찾을 수 없습니다");
+            return null;
+        }
+
+        /// <summary>
+        /// [C3][N2] 프로젝트 루트에 .mcp.json을 생성/갱신하여
+        /// Claude Code가 Bridge를 Channel 서버로 인식하게 한다.
+        /// 기존 .mcp.json이 있으면 다른 서버 설정을 보존하면서 머지한다.
+        /// </summary>
+        static void EnsureMcpConfig()
+        {
+            var bridgePath = GetBridgePath();
+            if (string.IsNullOrEmpty(bridgePath)) return;
+
+            var mcpJsonPath = Path.Combine(ProjectPath, ".mcp.json");
+            var escapedPath = bridgePath.Replace("\\", "\\\\");
+            var bridgeEntry =
+                $"\"claude-unity-bridge\": {{\n" +
+                $"      \"command\": \"node\",\n" +
+                $"      \"args\": [\"{escapedPath}\"],\n" +
+                $"      \"env\": {{\n" +
+                $"        \"CLAUDE_UNITY_PIPE_HASH\": \"{ChannelBridge.PipeHash}\"\n" +
+                $"      }}\n" +
+                $"    }}";
+
+            if (File.Exists(mcpJsonPath))
+            {
+                var current = File.ReadAllText(mcpJsonPath);
+                if (current.Contains("claude-unity-bridge")) return; // 이미 등록됨
+
+                // 기존 파일에 머지: "mcpServers": { 뒤에 삽입
+                var insertPos = current.IndexOf("\"mcpServers\"");
+                if (insertPos >= 0)
+                {
+                    // "mcpServers": { 다음 위치를 찾아서 엔트리 삽입
+                    var bracePos = current.IndexOf('{', insertPos + 12);
+                    if (bracePos >= 0)
+                    {
+                        var merged = current.Substring(0, bracePos + 1) +
+                                     "\n    " + bridgeEntry + "," +
+                                     current.Substring(bracePos + 1);
+                        File.WriteAllText(mcpJsonPath, merged);
+                        Debug.Log("[Claude Code] .mcp.json에 Channel Bridge 추가됨");
+                        return;
+                    }
+                }
+
+                // mcpServers 구조가 없으면 새로 작성 (기존 파일 백업 후 덮어쓰기)
+                Debug.LogWarning("[Claude Code] 기존 .mcp.json 구조를 파싱할 수 없어 새로 생성합니다");
+            }
+
+            // 새 파일 생성
+            var content =
+                "{\n" +
+                "  \"mcpServers\": {\n" +
+                "    " + bridgeEntry + "\n" +
+                "  }\n" +
+                "}";
+            File.WriteAllText(mcpJsonPath, content);
+            Debug.Log("[Claude Code] .mcp.json 생성됨 (Channel Bridge 등록)");
+        }
+
+        /// <summary>
+        /// PowerShell 환경변수 설정 prefix.
+        /// .mcp.json의 env로도 전달하지만, 직접 실행 시 fallback으로 사용.
+        /// </summary>
+        internal static string BuildEnvPrefix()
+        {
+            if (!ClaudeCodeSettings.MonitorEnabled) return "";
+            return $"$env:CLAUDE_UNITY_PIPE_HASH='{ChannelBridge.PipeHash}'; ";
         }
 
         internal static void StartProcess(string fileName, string arguments, string workDir = null)
