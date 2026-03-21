@@ -37,6 +37,27 @@ Odin 스타일 커스텀 Attribute + 에디터 프레임워크
 
 ---
 
+### CI/CD `v0.3.0`
+
+GameCI 기반 Unity CI/CD 파이프라인 자동 생성
+
+| 기능 | 내용 |
+|------|------|
+| SetupWizard | 6단계 초기 설정 (gh CLI, Unity 라이선스, 플랫폼, 배포, Secrets) |
+| WorkflowGenerator | GitHub Actions yml 자동 생성 (GameCI unity-builder) |
+| Release | 에디터에서 버전 태그 + 빌드 트리거 + 상태 모니터링 |
+| Secret 자동 등록 | gh secret set으로 자동 등록 |
+| 버전 관리 | git tag 기반 자동 버전 (IPreprocessBuildWithReport) |
+| 알림 | Discord / Slack / Custom 웹훅 |
+
+```json
+"com.tjdtjq5.cicd": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.cicd#cicd/v0.3.0"
+```
+
+> 의존: `editor-toolkit >= 1.3.0`
+
+---
+
 ### UGS Manager `v1.3.0`
 
 Unity Gaming Services CLI 래핑 에디터 윈도우 (`Tools > UGS Manager` 또는 `Ctrl+Shift+U`)
@@ -149,6 +170,7 @@ https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.gameserver#gamese
 
 ```
 editor-toolkit (독립)
+  ├── cicd
   ├── ugs-manager
   ├── ui-framework (+ DOTween, VContainer)
   ├── gameserver
