@@ -26,13 +26,15 @@ namespace Tjdtjq5.CICD.Editor
             var yml = WorkflowGenerator.Generate(settings);
             WorkflowGenerator.SaveToProject(yml);
 
-            // 5. 변경사항 commit + push
+            // 5. 원격 최신화 + 변경사항 commit + push
+            var releaseBranch = settings.releaseBranch;
+            GitHelper.RunGitWithCode($"pull origin {releaseBranch} --rebase");
+
             GitHelper.RunGit("add .github/workflows/build-and-deploy.yml");
             var (commitCode, commitOutput) = GitHelper.RunGitWithCode(
                 $"commit -m \"Update CI/CD workflow for {version}\" --allow-empty");
-            // commit 실패해도 진행 (nothing to commit일 수 있음)
 
-            var (pushCode, pushOutput) = GitHelper.RunGitWithCode("push");
+            var (pushCode, pushOutput) = GitHelper.RunGitWithCode($"push origin {releaseBranch}");
             if (pushCode != 0)
                 return (false, $"Push 실패: {pushOutput}");
 
