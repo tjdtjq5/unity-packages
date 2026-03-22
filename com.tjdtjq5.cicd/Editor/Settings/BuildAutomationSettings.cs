@@ -46,6 +46,14 @@ namespace Tjdtjq5.CICD.Editor
         [Header("릴리스")]
         public string releaseBranch = "main";
 
+        // ── 캐시 ──
+
+        [Header("캐시")]
+        public bool enableLibraryCache = true;
+
+        [System.NonSerialized]
+        public bool forceCleanBuild;
+
         // ── 상태 ──
 
         [Header("상태")]

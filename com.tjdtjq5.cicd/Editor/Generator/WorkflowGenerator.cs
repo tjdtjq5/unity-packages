@@ -13,7 +13,7 @@ namespace Tjdtjq5.CICD.Editor
         {
             var sb = new StringBuilder();
 
-            AppendHeader(sb);
+            AppendHeader(sb, settings);
             AppendBuildJob(sb, settings);
 
             if (settings.deployGitHubReleases)
@@ -70,7 +70,7 @@ namespace Tjdtjq5.CICD.Editor
         // yml 조각 생성
         // ─────────────────────────────────────────────
 
-        static void AppendHeader(StringBuilder sb)
+        static void AppendHeader(StringBuilder sb, BuildAutomationSettings settings)
         {
             sb.AppendLine("# 이 파일은 Build Automation 패키지가 자동 생성했습니다.");
             sb.AppendLine("# 수동 편집하지 마세요. 설정 변경 후 재생성하세요.");
@@ -81,6 +81,14 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("  push:");
             sb.AppendLine("    tags:");
             sb.AppendLine("      - 'v*'");
+
+            // 캐시 스코프 해결: main 브랜치 푸시 시 캐시가 default branch 스코프에 저장됨
+            // → 태그 빌드에서 해당 캐시를 복원 가능
+            var branch = string.IsNullOrEmpty(settings.releaseBranch)
+                ? "main" : settings.releaseBranch;
+            sb.AppendLine("    branches:");
+            sb.AppendLine($"      - '{branch}'");
+
             sb.AppendLine();
         }
 
@@ -120,7 +128,7 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("        uses: jlumbroso/free-disk-space@main");
             sb.AppendLine("        with:");
             sb.AppendLine("          tool-cache: false");
-            sb.AppendLine("          large-packages: true");
+            sb.AppendLine("          large-packages: false");
             sb.AppendLine("          docker-images: true");
             sb.AppendLine("          swap-storage: true");
             sb.AppendLine();
@@ -133,21 +141,31 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("          lfs: true");
             sb.AppendLine();
 
-            // 버전 추출
-            sb.AppendLine("      - name: Extract version from tag");
+            // 버전 추출 (태그 빌드: 태그에서 추출, 브랜치 빌드: dev 버전)
+            sb.AppendLine("      - name: Extract version");
             sb.AppendLine("        id: extract_version");
-            sb.AppendLine("        run: echo \"version=${GITHUB_REF_NAME#v}\" >> $GITHUB_OUTPUT");
+            sb.AppendLine("        run: |");
+            sb.AppendLine("          if [[ \"$GITHUB_REF\" == refs/tags/v* ]]; then");
+            sb.AppendLine("            echo \"version=${GITHUB_REF_NAME#v}\" >> $GITHUB_OUTPUT");
+            sb.AppendLine("          else");
+            sb.AppendLine("            echo \"version=0.0.0-dev\" >> $GITHUB_OUTPUT");
+            sb.AppendLine("          fi");
             sb.AppendLine();
 
             // Library 캐싱
-            sb.AppendLine("      - name: Cache Library");
-            sb.AppendLine("        uses: actions/cache@v4");
-            sb.AppendLine("        with:");
-            sb.AppendLine("          path: Library");
-            sb.AppendLine("          key: Library-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}");
-            sb.AppendLine("          restore-keys: |");
-            sb.AppendLine("            Library-${{ matrix.targetPlatform }}-");
-            sb.AppendLine();
+            bool useCache = settings.enableLibraryCache && !settings.forceCleanBuild;
+            if (useCache)
+            {
+                sb.AppendLine("      - name: Cache Library");
+                sb.AppendLine("        uses: actions/cache@v4");
+                sb.AppendLine("        with:");
+                sb.AppendLine("          path: Library");
+                sb.AppendLine("          key: Library-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}");
+                sb.AppendLine("          restore-keys: |");
+                sb.AppendLine("            Library-${{ matrix.targetPlatform }}-");
+                sb.AppendLine("          save-always: true");
+                sb.AppendLine();
+            }
 
             // Unity 빌드
             sb.AppendLine("      - name: Build Unity project");
@@ -178,8 +196,9 @@ namespace Tjdtjq5.CICD.Editor
 
             sb.AppendLine();
 
-            // 아티팩트 업로드
+            // 아티팩트 업로드 (태그 빌드에서만 — 브랜치 빌드는 캐시 워밍만)
             sb.AppendLine("      - name: Upload build artifact");
+            sb.AppendLine("        if: startsWith(github.ref, 'refs/tags/v')");
             sb.AppendLine("        uses: actions/upload-artifact@v4");
             sb.AppendLine("        with:");
             sb.AppendLine("          name: build-${{ matrix.targetPlatform }}");
@@ -193,6 +212,7 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("  release:");
             sb.AppendLine("    name: Create GitHub Release");
             sb.AppendLine("    needs: build");
+            sb.AppendLine("    if: startsWith(github.ref, 'refs/tags/v')");
             sb.AppendLine("    runs-on: ubuntu-latest");
             sb.AppendLine("    permissions:");
             sb.AppendLine("      contents: write");
@@ -314,7 +334,7 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("    name: Send Notification");
             sb.AppendLine($"    needs: [{string.Join(", ", needs)}]");
             sb.AppendLine("    runs-on: ubuntu-latest");
-            sb.AppendLine("    if: always()");
+            sb.AppendLine("    if: startsWith(github.ref, 'refs/tags/v') && always()");
             sb.AppendLine("    steps:");
 
             string secretName = settings.notifyChannel switch

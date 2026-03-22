@@ -26,6 +26,8 @@ namespace Tjdtjq5.CICD.Editor
 
         public void OnDraw()
         {
+            DrawCacheStatusSection();
+            GUILayout.Space(4);
             DrawReleaseSection();
             GUILayout.Space(4);
             DrawBuildStatusSection();
@@ -33,6 +35,99 @@ namespace Tjdtjq5.CICD.Editor
             DrawHistorySection();
             GUILayout.Space(4);
             DrawLinksSection();
+        }
+
+        // ── 캐시 상태 ──
+
+        void DrawCacheStatusSection()
+        {
+            EditorUI.DrawSectionHeader("캐시 상태", BuildAutomationWindow.COL_PRIMARY);
+            EditorUI.BeginBody();
+
+            var s = BuildAutomationSettings.Instance;
+            var alerts = CacheHealthChecker.GetAlerts();
+
+            // 캐시 활성 상태
+            if (s.enableLibraryCache)
+                EditorUI.DrawCellLabel("  ✅ Library 캐싱: 활성", 0, EditorUI.COL_SUCCESS);
+            else
+                EditorUI.DrawCellLabel("  ⬚ Library 캐싱: 비활성", 0, EditorUI.COL_MUTED);
+
+            // 마지막 빌드 정보
+            var lastTag = CacheHealthChecker.LastBuildTag;
+            var lastDate = CacheHealthChecker.LastBuildDate;
+            if (lastTag != null && lastDate != null)
+            {
+                var ago = System.DateTime.UtcNow - lastDate.Value;
+                string agoText;
+                if (ago.TotalMinutes < 60)
+                    agoText = $"{(int)ago.TotalMinutes}분 전";
+                else if (ago.TotalHours < 24)
+                    agoText = $"{(int)ago.TotalHours}시간 전";
+                else
+                    agoText = $"{(int)ago.TotalDays}일 전";
+
+                EditorUI.DrawCellLabel($"  마지막 빌드: v{lastTag} ({agoText})", 0, EditorUI.COL_MUTED);
+            }
+
+            // 감지된 경고
+            int cleanCount = 0;
+            bool hasError = false;
+
+            foreach (var alert in alerts)
+            {
+                string icon;
+                Color color;
+                switch (alert.Level)
+                {
+                    case CacheHealthChecker.Severity.Error:
+                        icon = "🚫"; color = EditorUI.COL_ERROR; hasError = true;
+                        break;
+                    case CacheHealthChecker.Severity.Warning:
+                        icon = "⚠"; color = EditorUI.COL_WARN;
+                        break;
+                    default:
+                        icon = "ℹ"; color = EditorUI.COL_INFO;
+                        break;
+                }
+
+                EditorUI.DrawCellLabel($"  {icon} {alert.Message}", 0, color);
+                if (alert.RecommendCleanBuild) cleanCount++;
+            }
+
+            // 경고 없으면 "캐시 히트 예상"
+            if (alerts.Length == 0 && s.enableLibraryCache && lastTag != null)
+                EditorUI.DrawCellLabel("  ✅ 캐시 히트 예상", 0, EditorUI.COL_SUCCESS);
+
+            // 클린 빌드 권장 메시지
+            if (cleanCount > 0 && !hasError)
+            {
+                GUILayout.Space(4);
+                EditorUI.DrawDescription(
+                    $"  💡 클린 빌드를 권장합니다 ({cleanCount}건)", EditorUI.COL_WARN);
+            }
+
+            // 하단 컨트롤: 클린 빌드 토글 + 새로고침
+            GUILayout.Space(2);
+            EditorUI.BeginRow();
+
+            if (s.enableLibraryCache)
+            {
+                bool newClean = GUILayout.Toggle(s.forceCleanBuild, " 클린 빌드",
+                    GUILayout.Width(100));
+                if (newClean != s.forceCleanBuild)
+                {
+                    s.forceCleanBuild = newClean;
+                    _window.Repaint();
+                }
+            }
+
+            EditorUI.FlexSpace();
+            if (EditorUI.DrawMiniButton("새로고침"))
+                CacheHealthChecker.Invalidate();
+            EditorUI.EndRow();
+
+            EditorUI.EndBody();
         }
 
         // ── Release ──
