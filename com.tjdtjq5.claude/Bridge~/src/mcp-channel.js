@@ -64,6 +64,8 @@ export class McpChannel {
       lines.push('\n경고입니다. 반복되는 패턴이면 근본 원인을 분석해주세요.');
     } else if (event.severity === 'info') {
       // 반복 요약 등 — 별도 지시 불필요
+    } else if (event.severity === 'log') {
+      // 일반 로그 — 참고용, 수정 지시 불필요
     } else {
       lines.push('\n이 에러를 분석하고 수정해주세요.');
     }

@@ -85,8 +85,8 @@ namespace Tjdtjq5.Claude
                 StartProcess("powershell", $"-NoExit -Command \"{args}\"", ProjectPath);
             }
 
-            // 모니터 활성이면 Pipe 연결 시작
-            if (ClaudeCodeSettings.MonitorEnabled)
+            // Discord 모드 활성이면 Pipe 연결 시작
+            if (ClaudeCodeSettings.DiscordMode > 0)
                 ChannelBridge.Connect();
 
             Debug.Log($"[Claude Code] 메인 실행 — {ProjectPath}");
@@ -341,9 +341,8 @@ namespace Tjdtjq5.Claude
             if (!string.IsNullOrEmpty(extra))
                 sb.Append(' ').Append(extra);
 
-            // [C3][N1] Channel — .mcp.json에 서버 등록 후 커스텀 채널 플래그로 참조
-            // --dangerously-load-development-channels만 사용 (--channels는 허용목록 전용)
-            if (ClaudeCodeSettings.MonitorEnabled)
+            // Channel — Discord 모드가 활성이면 Bridge 연결
+            if (ClaudeCodeSettings.DiscordMode > 0)
             {
                 EnsureMcpConfig();
                 sb.Append(" --dangerously-load-development-channels server:claude-unity-bridge");
@@ -439,7 +438,7 @@ namespace Tjdtjq5.Claude
         /// </summary>
         internal static string BuildEnvPrefix()
         {
-            if (!ClaudeCodeSettings.MonitorEnabled) return "";
+            if (ClaudeCodeSettings.DiscordMode == 0) return "";
             return $"$env:CLAUDE_UNITY_PIPE_HASH='{ChannelBridge.PipeHash}'; ";
         }
 

@@ -142,20 +142,7 @@ namespace Tjdtjq5.Claude
                 _ => "중지",
             };
 
-            EditorGUILayout.BeginHorizontal();
             EditorTabBase.DrawCellLabel($"\u25CF Bridge: {bridgeLabel}", 0, bridgeColor);
-            GUILayout.FlexibleSpace();
-
-            bool monitorOn = ClaudeCodeSettings.MonitorEnabled;
-            if (GUILayout.Button(monitorOn ? "ON" : "OFF", EditorStyles.miniButton, GUILayout.Width(36)))
-            {
-                ClaudeCodeSettings.MonitorEnabled = !monitorOn;
-                if (!monitorOn)
-                    ChannelBridge.Connect();
-                else
-                    ChannelBridge.Disconnect();
-            }
-            EditorGUILayout.EndHorizontal();
 
             // Discord 상태
             var discordColor = _discordStatus switch
@@ -184,13 +171,6 @@ namespace Tjdtjq5.Claude
                 ChannelBridge.SendConfig();
             }
             EditorGUILayout.EndHorizontal();
-
-            // 모니터 심각도 표시
-            var sevLabels = new[] { "Error만", "Warning+", "All" };
-            var sevIdx = ClaudeCodeSettings.MonitorSeverity;
-            var monColor = monitorOn ? EditorTabBase.COL_SUCCESS : EditorTabBase.COL_MUTED;
-            EditorTabBase.DrawCellLabel(
-                $"\u25CF 모니터: {(monitorOn ? sevLabels[sevIdx] : "비활성")}", 0, monColor);
 
             GUILayout.Space(4);
             EditorGUILayout.EndVertical();

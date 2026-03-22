@@ -46,26 +46,6 @@ namespace Tjdtjq5.Claude
             set => EditorPrefs.SetBool(Prefix + "AutoLaunch", value);
         }
 
-        // ── 모니터 ──
-        public static bool MonitorEnabled
-        {
-            get => EditorPrefs.GetBool(Prefix + "MonitorEnabled", false);
-            set => EditorPrefs.SetBool(Prefix + "MonitorEnabled", value);
-        }
-
-        /// <summary>0=Error만, 1=Warning+Error, 2=All</summary>
-        public static int MonitorSeverity
-        {
-            get => EditorPrefs.GetInt(Prefix + "MonitorSev", 0);
-            set => EditorPrefs.SetInt(Prefix + "MonitorSev", value);
-        }
-
-        public static int CooldownSeconds
-        {
-            get => EditorPrefs.GetInt(Prefix + "Cooldown", 30);
-            set => EditorPrefs.SetInt(Prefix + "Cooldown", value);
-        }
-
         // ── Discord ──
         /// <summary>0=Off, 1=Notify, 2=Interactive</summary>
         public static int DiscordMode

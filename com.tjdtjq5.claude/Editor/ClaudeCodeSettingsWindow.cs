@@ -39,7 +39,6 @@ namespace Tjdtjq5.Claude
         };
 
         // ── 드롭다운 라벨 ──
-        static readonly string[] SeverityLabels = { "Error만", "Warning+Error", "All" };
         static readonly string[] DiscordModeLabels = { "없음", "알림", "적극적 사용" };
 
         // ── 상태 ──
@@ -51,9 +50,6 @@ namespace Tjdtjq5.Claude
         int _dropdownIdx;
 
         // Channel 설정 상태
-        bool _monitorEnabled;
-        int _monitorSeverity;
-        int _cooldownSeconds;
         int _discordMode;
         string _discordBotToken = "";
         string _discordChannelId = "";
@@ -82,9 +78,6 @@ namespace Tjdtjq5.Claude
             _windowName = ClaudeCodeSettings.WindowName;
             _autoLaunch = ClaudeCodeSettings.AutoLaunch;
 
-            _monitorEnabled = ClaudeCodeSettings.MonitorEnabled;
-            _monitorSeverity = ClaudeCodeSettings.MonitorSeverity;
-            _cooldownSeconds = ClaudeCodeSettings.CooldownSeconds;
             _discordMode = ClaudeCodeSettings.DiscordMode;
             _discordBotToken = ClaudeCodeSettings.DiscordBotToken;
             _discordChannelId = ClaudeCodeSettings.DiscordChannelId;
@@ -193,37 +186,6 @@ namespace Tjdtjq5.Claude
             EditorGUILayout.LabelField(
                 "활성화하면 워크트리 생성 직후 자동으로 Claude를 실행합니다.",
                 _hintStyle);
-
-            GUILayout.Space(4);
-            EditorGUILayout.EndVertical();
-
-            GUILayout.Space(4);
-
-            // ── 모니터 설정 ──
-            EditorTabBase.DrawSectionHeader("모니터 설정", EditorTabBase.COL_SUCCESS);
-            EditorGUILayout.BeginVertical(EditorTabBase.GetBgStyle(EditorTabBase.BG_SECTION));
-            GUILayout.Space(4);
-
-            EditorGUI.BeginChangeCheck();
-            _monitorEnabled = EditorGUILayout.Toggle("모니터 활성화", _monitorEnabled);
-            if (EditorGUI.EndChangeCheck())
-                ClaudeCodeSettings.MonitorEnabled = _monitorEnabled;
-
-            EditorGUI.BeginDisabledGroup(!_monitorEnabled);
-
-            EditorGUI.BeginChangeCheck();
-            _monitorSeverity = EditorGUILayout.Popup("전달 심각도", _monitorSeverity, SeverityLabels);
-            if (EditorGUI.EndChangeCheck())
-                ClaudeCodeSettings.MonitorSeverity = _monitorSeverity;
-
-            EditorGUI.BeginChangeCheck();
-            _cooldownSeconds = EditorGUILayout.IntSlider("쿨다운 (초)", _cooldownSeconds, 5, 120);
-            if (EditorGUI.EndChangeCheck())
-                ClaudeCodeSettings.CooldownSeconds = _cooldownSeconds;
-
-            EditorGUILayout.LabelField("에러 수정 중 같은 파일의 재전달을 방지합니다.", _hintStyle);
-
-            EditorGUI.EndDisabledGroup();
 
             GUILayout.Space(4);
             EditorGUILayout.EndVertical();
