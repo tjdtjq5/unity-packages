@@ -73,6 +73,7 @@ namespace Tjdtjq5.CICD.Editor
             GitHelper.InvalidateCache();
             GitVersionResolver.InvalidateCache();
             WorkflowGenerator.InvalidateCache();
+            CacheHealthChecker.Invalidate();
             GhChecker.WarmCacheAsync();
 
             _setupWizard = new SetupWizard(this);

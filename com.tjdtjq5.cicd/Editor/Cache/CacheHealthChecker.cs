@@ -15,10 +15,10 @@ namespace Tjdtjq5.CICD.Editor
         const string PREF_UNITY_VERSION = PREF + "UnityVersion";
         const string PREF_LAST_BUILD_DATE = PREF + "LastBuildDate";
         const string PREF_LAST_BUILD_TAG = PREF + "LastBuildTag";
-        const string PREF_LAST_BUILD_SUCCESS = PREF + "LastBuildSuccess";
         const string PREF_PLATFORMS = PREF + "Platforms";
         const string PREF_KEYSTORE = PREF + "Keystore";
         const string PREF_SCRIPTING_BACKEND = PREF + "ScriptingBackend";
+        const string PREF_PACKAGE_NAME = PREF + "PackageName";
 
         public enum Severity { Error, Warning, Info }
 
@@ -38,29 +38,34 @@ namespace Tjdtjq5.CICD.Editor
         }
 
         static Alert[] _cached;
-        static bool _loading;
 
-        /// <summary>감지 결과 반환. 첫 호출 시 비동기 로드.</summary>
+        /// <summary>감지 결과 반환. 첫 호출 시 동기 실행 (EditorPrefs 메인 스레드 필수).</summary>
         public static Alert[] GetAlerts()
         {
             if (_cached != null) return _cached;
-            if (_loading) return Array.Empty<Alert>();
 
-            _loading = true;
-            var unityVersion = Application.unityVersion;
-            var buildHistory = BuildTracker.GetHistory(1);
-
-            System.Threading.Tasks.Task.Run(() =>
+            var snapshot = new MainThreadSnapshot
             {
-                var alerts = RunAllChecks(unityVersion, buildHistory);
-                EditorApplication.delayCall += () =>
-                {
-                    _cached = alerts;
-                    _loading = false;
-                };
-            });
+                unityVersion = Application.unityVersion,
+                buildHistory = BuildTracker.GetHistory(1),
+                packageName = PlayerSettings.applicationIdentifier,
+                platforms = GetCurrentPlatformString(),
+                keystore = GetCurrentKeystoreString(),
+                scriptingBackend = GetCurrentScriptingBackend(),
+            };
 
-            return Array.Empty<Alert>();
+            _cached = RunAllChecks(snapshot);
+            return _cached;
+        }
+
+        struct MainThreadSnapshot
+        {
+            public string unityVersion;
+            public BuildTracker.HistoryEntry[] buildHistory;
+            public string packageName;
+            public string platforms;
+            public string keystore;
+            public string scriptingBackend;
         }
 
         public static void Invalidate() => _cached = null;
@@ -70,10 +75,10 @@ namespace Tjdtjq5.CICD.Editor
             EditorPrefs.SetString(PREF_UNITY_VERSION, Application.unityVersion);
             EditorPrefs.SetString(PREF_LAST_BUILD_DATE, DateTime.UtcNow.ToString("o"));
             EditorPrefs.SetString(PREF_LAST_BUILD_TAG, tag.TrimStart('v'));
-            EditorPrefs.SetBool(PREF_LAST_BUILD_SUCCESS, true);
             EditorPrefs.SetString(PREF_PLATFORMS, GetCurrentPlatformString());
             EditorPrefs.SetString(PREF_KEYSTORE, GetCurrentKeystoreString());
             EditorPrefs.SetString(PREF_SCRIPTING_BACKEND, GetCurrentScriptingBackend());
+            EditorPrefs.SetString(PREF_PACKAGE_NAME, PlayerSettings.applicationIdentifier);
             Invalidate();
         }
 
@@ -94,23 +99,48 @@ namespace Tjdtjq5.CICD.Editor
 
         // ── 전체 검사 ──
 
-        static Alert[] RunAllChecks(string unityVersion, BuildTracker.HistoryEntry[] buildHistory)
+        static Alert[] RunAllChecks(MainThreadSnapshot s)
         {
+            EnsureBaselineSnapshot(s);
+
             var alerts = new List<Alert>();
 
             CheckManifestLocalPaths(alerts);
             CheckFirstBuild(alerts);
-            CheckPreviousBuildFailure(alerts, buildHistory);
-            CheckUnityVersionChange(alerts, unityVersion);
-            CheckPlatformChange(alerts);
+            CheckPreviousBuildFailure(alerts, s.buildHistory);
+            CheckUnityVersionChange(alerts, s.unityVersion);
+            CheckPlatformChange(alerts, s.platforms);
             CheckCacheExpiry(alerts);
-            CheckKeystoreChange(alerts);
-            CheckScriptingBackendChange(alerts);
+            CheckKeystoreChange(alerts, s.keystore);
+            CheckScriptingBackendChange(alerts, s.scriptingBackend);
+            CheckPackageNameChange(alerts, s.packageName);
             CheckGradleConfigChange(alerts);
-            CheckUnusedCaches(alerts);
+            CheckUnusedCaches(alerts, s);
             CheckGitChanges(alerts);
 
             return alerts.ToArray();
+        }
+
+        static void EnsureBaselineSnapshot(MainThreadSnapshot s)
+        {
+            bool isNew = !EditorPrefs.HasKey(PREF_UNITY_VERSION);
+
+            // 완전 새 스냅샷
+            if (isNew)
+            {
+                EditorPrefs.SetString(PREF_UNITY_VERSION, s.unityVersion);
+                EditorPrefs.SetString(PREF_PLATFORMS, s.platforms);
+                EditorPrefs.SetString(PREF_KEYSTORE, s.keystore);
+                EditorPrefs.SetString(PREF_SCRIPTING_BACKEND, s.scriptingBackend);
+                EditorPrefs.SetString(PREF_PACKAGE_NAME, s.packageName);
+                return;
+            }
+
+            // 기존 스냅샷에 누락된 키만 보충 (버전 업그레이드 시)
+            if (!EditorPrefs.HasKey(PREF_PACKAGE_NAME))
+                EditorPrefs.SetString(PREF_PACKAGE_NAME, s.packageName);
+            if (!EditorPrefs.HasKey(PREF_SCRIPTING_BACKEND))
+                EditorPrefs.SetString(PREF_SCRIPTING_BACKEND, s.scriptingBackend);
         }
 
         // ── 기존 검사 (영향 캐시 명시) ──
@@ -154,14 +184,13 @@ namespace Tjdtjq5.CICD.Editor
                     CacheTypes.Library, CacheTypes.IL2CPP, CacheTypes.Docker));
         }
 
-        static void CheckPlatformChange(List<Alert> alerts)
+        static void CheckPlatformChange(List<Alert> alerts, string currentPlatforms)
         {
             var saved = EditorPrefs.GetString(PREF_PLATFORMS, "");
             if (string.IsNullOrEmpty(saved)) return;
-            var current = GetCurrentPlatformString();
-            if (saved != current)
+            if (saved != currentPlatforms)
                 alerts.Add(new Alert(Severity.Warning,
-                    $"빌드 플랫폼 변경 ({saved} → {current})",
+                    $"빌드 플랫폼 변경 ({saved} → {currentPlatforms})",
                     CacheTypes.Library, CacheTypes.Gradle, CacheTypes.IL2CPP));
         }
 
@@ -176,11 +205,11 @@ namespace Tjdtjq5.CICD.Editor
                     CacheTypes.Library, CacheTypes.Gradle, CacheTypes.IL2CPP));
         }
 
-        static void CheckKeystoreChange(List<Alert> alerts)
+        static void CheckKeystoreChange(List<Alert> alerts, string currentKeystore)
         {
             var saved = EditorPrefs.GetString(PREF_KEYSTORE, "");
             if (string.IsNullOrEmpty(saved)) return;
-            if (saved != GetCurrentKeystoreString())
+            if (saved != currentKeystore)
                 alerts.Add(new Alert(Severity.Info,
                     "Android 서명 설정 변경 — Gradle 캐시 영향 가능",
                     CacheTypes.Gradle));
@@ -188,15 +217,25 @@ namespace Tjdtjq5.CICD.Editor
 
         // ── 신규 검사 ──
 
-        static void CheckScriptingBackendChange(List<Alert> alerts)
+        static void CheckScriptingBackendChange(List<Alert> alerts, string currentBackend)
         {
             var saved = EditorPrefs.GetString(PREF_SCRIPTING_BACKEND, "");
             if (string.IsNullOrEmpty(saved)) return;
-            var current = GetCurrentScriptingBackend();
-            if (saved != current)
+            if (saved != currentBackend)
                 alerts.Add(new Alert(Severity.Warning,
-                    $"스크립팅 백엔드 변경 ({saved} → {current}) — 전체 재컴파일 필요",
+                    $"스크립팅 백엔드 변경 ({saved} → {currentBackend}) — 전체 재컴파일 필요",
                     CacheTypes.Library, CacheTypes.IL2CPP));
+        }
+
+        /// <summary>패키지명(Bundle ID) 변경 — Gradle 캐시 무효화 필요.</summary>
+        static void CheckPackageNameChange(List<Alert> alerts, string currentPackageName)
+        {
+            var saved = EditorPrefs.GetString(PREF_PACKAGE_NAME, "");
+            if (string.IsNullOrEmpty(saved)) return;
+            if (saved != currentPackageName)
+                alerts.Add(new Alert(Severity.Warning,
+                    $"패키지명 변경 ({saved} → {currentPackageName})",
+                    CacheTypes.Gradle, CacheTypes.Library));
         }
 
         static void CheckGradleConfigChange(List<Alert> alerts)
@@ -229,7 +268,7 @@ namespace Tjdtjq5.CICD.Editor
         }
 
         /// <summary>활성화된 캐시가 현재 설정과 맞지 않는 경우 안내.</summary>
-        static void CheckUnusedCaches(List<Alert> alerts)
+        static void CheckUnusedCaches(List<Alert> alerts, MainThreadSnapshot snap)
         {
             var s = BuildAutomationSettings.Instance;
 
@@ -240,7 +279,7 @@ namespace Tjdtjq5.CICD.Editor
                     CacheTypes.Gradle));
 
             // Mono 백엔드인데 IL2CPP 캐시 있음
-            if (GetCurrentScriptingBackend() == "Mono" && s.HasCache(CacheTypes.IL2CPP))
+            if (snap.scriptingBackend == "Mono" && s.HasCache(CacheTypes.IL2CPP))
                 alerts.Add(new Alert(Severity.Info,
                     "Mono 백엔드 — IL2CPP 캐시 불필요",
                     CacheTypes.IL2CPP));

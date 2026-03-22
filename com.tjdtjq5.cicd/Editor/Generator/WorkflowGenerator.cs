@@ -81,13 +81,8 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("  push:");
             sb.AppendLine("    tags:");
             sb.AppendLine("      - 'v*'");
-
-            // 캐시 스코프 해결: main 브랜치 푸시 시 캐시가 default branch 스코프에 저장됨
-            // → 태그 빌드에서 해당 캐시를 복원 가능
-            var branch = string.IsNullOrEmpty(settings.releaseBranch)
-                ? "main" : settings.releaseBranch;
-            sb.AppendLine("    branches:");
-            sb.AppendLine($"      - '{branch}'");
+            // branches 트리거 제거: save-always로 태그 빌드에서도 캐시 저장됨
+            // branches를 넣으면 태그+브랜치 동시 push 시 중복 빌드 발생
 
             sb.AppendLine();
         }
