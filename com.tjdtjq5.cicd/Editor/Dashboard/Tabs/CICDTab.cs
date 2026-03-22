@@ -13,11 +13,8 @@ namespace Tjdtjq5.CICD.Editor
         string _nextVersion;
         string _currentBranch;
         string[] _remoteBranches;
-        string _ymlPreview;
-        Vector2 _previewScroll;
+        int? _unpushedCount;
         Vector2 _logScroll;
-        bool _showWorkflow;
-        bool _showSecrets;
         bool _showHistory;
 
         public CICDTab(BuildAutomationWindow window)
@@ -34,10 +31,6 @@ namespace Tjdtjq5.CICD.Editor
             DrawBuildStatusSection();
             GUILayout.Space(4);
             DrawHistorySection();
-            GUILayout.Space(4);
-            DrawWorkflowSection();
-            GUILayout.Space(4);
-            DrawSecretsSection();
             GUILayout.Space(4);
             DrawLinksSection();
         }
@@ -150,12 +143,22 @@ namespace Tjdtjq5.CICD.Editor
             _nextVersion = EditorUI.DrawTextField("새 버전", _nextVersion);
             GUILayout.Space(4);
 
+            // 미push 커밋 경고 (캐싱)
+            if (_unpushedCount == null)
+            {
+                var ahead = GitHelper.RunGit($"rev-list origin/{s.releaseBranch}..HEAD --count");
+                int.TryParse(ahead.Trim(), out int count);
+                _unpushedCount = count;
+            }
+
             var isPolling = BuildTracker.CurrentStatus == BuildTracker.Status.Polling;
             bool onReleaseBranch = currentBranch == s.releaseBranch;
-            bool canRelease = !isPolling && !string.IsNullOrEmpty(_nextVersion) && ymlExists && onReleaseBranch;
+            bool canRelease = !isPolling && !string.IsNullOrEmpty(_nextVersion)
+                && ymlExists && onReleaseBranch;
             EditorUI.BeginDisabled(!canRelease);
             if (EditorUI.DrawColorButton("Release", EditorUI.COL_SUCCESS, 24))
             {
+                // 사전 검증 (CreateRelease 내부에서도 하지만 UI 피드백용)
                 var (success, error) = ReleaseManager.CreateRelease(_nextVersion);
                 if (success)
                 {
@@ -164,12 +167,13 @@ namespace Tjdtjq5.CICD.Editor
                         EditorUI.NotificationType.Success);
                     BuildTracker.StartTracking(_nextVersion);
                     BuildTracker.InvalidateHistory();
-                    _currentBranch = null; // 캐시 리셋
+                    _currentBranch = null;
+                    _unpushedCount = null;
                     _nextVersion = ReleaseManager.SuggestNextVersion();
                 }
                 else
                 {
-                    _window.ShowNotification($"Release 실패: {error}",
+                    _window.ShowNotification($"Release 실패:\n{error}",
                         EditorUI.NotificationType.Error);
                 }
             }
@@ -177,7 +181,14 @@ namespace Tjdtjq5.CICD.Editor
 
             EditorUI.EndRow();
 
-            // 비활성 사유 표시
+            // 경고 표시
+            if (_unpushedCount > 0)
+            {
+                EditorUI.DrawDescription(
+                    $"  ⚠ push되지 않은 커밋 {_unpushedCount}개가 있습니다. Release 시 함께 push됩니다.",
+                    EditorUI.COL_WARN);
+            }
+
             if (!canRelease)
             {
                 if (!onReleaseBranch)
@@ -345,96 +356,6 @@ namespace Tjdtjq5.CICD.Editor
                         }
 
                         EditorUI.EndRow();
-                        EditorUI.EndBody();
-                    }
-                }
-            }
-        }
-
-        // ── 워크플로우 ──
-
-        void DrawWorkflowSection()
-        {
-            if (EditorUI.DrawSectionFoldout(ref _showWorkflow, "워크플로우",
-                BuildAutomationWindow.COL_PRIMARY))
-            {
-                var settings = BuildAutomationSettings.Instance;
-                bool exists = WorkflowGenerator.WorkflowExists();
-
-                EditorUI.BeginBody();
-                EditorUI.DrawCellLabel(
-                    exists
-                        ? "  ✓ build-and-deploy.yml 존재"
-                        : "  ✗ 워크플로우 파일 없음",
-                    0,
-                    exists ? EditorUI.COL_SUCCESS : EditorUI.COL_WARN);
-                EditorUI.EndBody();
-
-                GUILayout.Space(2);
-
-                EditorUI.DrawActionBar(new[]
-                {
-                    ("생성 / 재생성", EditorUI.COL_SUCCESS, (System.Action)(() =>
-                    {
-                        var yml = WorkflowGenerator.Generate(settings);
-                        var path = WorkflowGenerator.SaveToProject(yml);
-                        _ymlPreview = yml;
-                        UnityEditor.AssetDatabase.Refresh();
-                        _window.ShowNotification($"생성됨: {path}",
-                            EditorUI.NotificationType.Success);
-                    })),
-                    ("미리보기", EditorUI.COL_INFO, (System.Action)(() =>
-                    {
-                        _ymlPreview = WorkflowGenerator.Generate(settings);
-                    }))
-                });
-
-                if (!string.IsNullOrEmpty(_ymlPreview))
-                {
-                    GUILayout.Space(2);
-                    EditorUI.BeginRow();
-                    EditorUI.FlexSpace();
-                    if (EditorUI.DrawMiniButton("복사"))
-                        EditorGUIUtility.systemCopyBuffer = _ymlPreview;
-                    if (EditorUI.DrawMiniButton("닫기"))
-                        _ymlPreview = null;
-                    EditorUI.EndRow();
-
-                    if (!string.IsNullOrEmpty(_ymlPreview))
-                        _previewScroll = EditorUI.DrawLogArea(_ymlPreview, _previewScroll, 300);
-                }
-            }
-        }
-
-        // ── Secrets ──
-
-        void DrawSecretsSection()
-        {
-            if (EditorUI.DrawSectionFoldout(ref _showSecrets, "GitHub Secrets",
-                BuildAutomationWindow.COL_PRIMARY))
-            {
-                var settings = BuildAutomationSettings.Instance;
-                var secrets = SecretsChecklist.GetRequired(settings);
-
-                if (secrets.Count == 0)
-                {
-                    EditorUI.BeginBody();
-                    EditorUI.DrawDescription("등록할 Secret이 없습니다.", EditorUI.COL_MUTED);
-                    EditorUI.EndBody();
-                }
-                else
-                {
-                    EditorUI.BeginRow();
-                    EditorUI.FlexSpace();
-                    if (EditorUI.DrawLinkButton("GitHub Secrets 열기"))
-                        Application.OpenURL(GitHelper.GetSecretsPageUrl());
-                    EditorUI.EndRow();
-
-                    foreach (var secret in secrets)
-                    {
-                        EditorUI.BeginBody();
-                        EditorUI.DrawCellLabel($"  {secret.Name}", 0, EditorUI.COL_INFO);
-                        EditorUI.DrawDescription($"  {secret.Description}", EditorUI.COL_MUTED);
                         EditorUI.EndBody();
                     }
                 }

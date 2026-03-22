@@ -38,12 +38,13 @@ namespace Tjdtjq5.CICD.Editor
 
         // ── 시작/중지 ──
 
-        /// <summary>Release 후 폴링 시작</summary>
+        /// <summary>Release 후 폴링 시작 (30초 지연 — Actions 시작 대기)</summary>
         public static void StartTracking(string version)
         {
             CurrentVersion = version;
             _startTime = EditorApplication.timeSinceStartup;
-            _lastPollTime = 0;
+            // 첫 폴링을 30초 뒤로 지연 (Actions가 시작되기 전에 이전 run을 잡는 것 방지)
+            _lastPollTime = EditorApplication.timeSinceStartup + 15;
             CurrentStatus = Status.Polling;
             FailedLog = null;
             ReleaseUrl = null;
@@ -105,22 +106,44 @@ namespace Tjdtjq5.CICD.Editor
             if (string.IsNullOrEmpty(repo))
                 return new RunResult { status = "unknown" };
 
+            // displayTitle도 가져와서 현재 추적 버전과 일치하는지 확인
             var (code, output) = GhChecker.RunGh(
-                $"run list --repo {repo} --limit 1 --json databaseId,status,conclusion --jq \".[0]\"");
+                $"run list --repo {repo} --limit 3 --json databaseId,status,conclusion,displayTitle --jq \".[]\"");
 
             if (code != 0 || string.IsNullOrEmpty(output))
                 return new RunResult { status = "unknown" };
 
-            var result = new RunResult();
-            var idMatch = Regex.Match(output, "\"databaseId\":\\s*(\\d+)");
-            var statusMatch = Regex.Match(output, "\"status\":\\s*\"(\\w+)\"");
-            var conclusionMatch = Regex.Match(output, "\"conclusion\":\\s*\"(\\w+)\"");
+            // 현재 추적 버전의 태그가 포함된 run 찾기
+            var tag = CurrentVersion?.TrimStart('v') ?? "";
+            var blocks = output.Split('{');
 
-            if (idMatch.Success) result.runId = long.Parse(idMatch.Groups[1].Value);
-            if (statusMatch.Success) result.status = statusMatch.Groups[1].Value;
-            if (conclusionMatch.Success) result.conclusion = conclusionMatch.Groups[1].Value;
+            foreach (var block in blocks)
+            {
+                if (string.IsNullOrWhiteSpace(block)) continue;
+                var json = "{" + block;
 
-            return result;
+                // displayTitle에 현재 버전이 포함되어 있는지 확인
+                var titleMatch = Regex.Match(json, "\"displayTitle\":\\s*\"([^\"]+)\"");
+                if (titleMatch.Success && !string.IsNullOrEmpty(tag))
+                {
+                    var title = titleMatch.Groups[1].Value;
+                    if (!title.Contains(tag)) continue; // 다른 버전의 run → 건너뛰기
+                }
+
+                var result = new RunResult();
+                var idMatch = Regex.Match(json, "\"databaseId\":\\s*(\\d+)");
+                var statusMatch = Regex.Match(json, "\"status\":\\s*\"(\\w+)\"");
+                var conclusionMatch = Regex.Match(json, "\"conclusion\":\\s*\"(\\w+)\"");
+
+                if (idMatch.Success) result.runId = long.Parse(idMatch.Groups[1].Value);
+                if (statusMatch.Success) result.status = statusMatch.Groups[1].Value;
+                if (conclusionMatch.Success) result.conclusion = conclusionMatch.Groups[1].Value;
+
+                return result;
+            }
+
+            // 매칭되는 run이 없으면 아직 시작 안 된 것
+            return new RunResult { status = "queued" };
         }
 
         static void HandleResult(RunResult result)
