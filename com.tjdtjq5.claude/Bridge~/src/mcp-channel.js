@@ -8,7 +8,7 @@ import {
  * MCP Channel — Claude Code와 stdio로 통신하는 Channel 서버.
  *
  * - Unity 이벤트 / Discord 메시지 → Claude에 notification push
- * - Claude의 reply / send_notification / set_cooldown 도구 호출 처리
+ * - Claude의 reply / set_cooldown 도구 호출 처리
  */
 export class McpChannel {
   /**
@@ -29,14 +29,15 @@ export class McpChannel {
         instructions: [
           'Unity 에디터와 연결된 채널입니다.',
           '',
-          '## Unity 이벤트',
-          'Unity에서 발생하는 에러, 컴파일 결과를 <channel source="claude-unity-bridge" category="..."> 형태로 수신합니다.',
+          '## Discord 대화',
+          'Discord에서 사용자의 작업 지시가 전달됩니다.',
+          '터미널에서 직접 대화하는 것과 동일하게 응답해주세요.',
+          '작업 결과는 reply 도구로 Discord에 보내주세요.',
+          '',
+          '## Unity 이벤트 (향후)',
+          'Unity에서 발생하는 에러, 컴파일 결과를 수신할 수 있습니다.',
           '에러를 수신하면 해당 소스 파일을 분석하고 수정해주세요.',
           '수정 후 set_cooldown 도구로 해당 소스 파일의 쿨다운을 설정해주세요.',
-          '',
-          '## Discord 메시지',
-          'Discord에서 사용자의 작업 지시가 <channel source="claude-unity-bridge" category="discord" user="..."> 형태로 전달됩니다.',
-          '작업 완료 후 reply 도구로 결과를 응답해주세요.',
         ].join('\n'),
       },
     );
@@ -108,27 +109,11 @@ export class McpChannel {
       tools: [
         {
           name: 'reply',
-          description: 'Discord 채널에 메시지를 보냅니다 (Interactive 모드에서만 동작)',
+          description: 'Discord 채널에 메시지를 보냅니다. Discord에서 온 메시지에 응답할 때 사용하세요.',
           inputSchema: {
             type: 'object',
             properties: {
               text: { type: 'string', description: '보낼 메시지 내용' },
-            },
-            required: ['text'],
-          },
-        },
-        {
-          name: 'send_notification',
-          description: 'Discord에 알림을 보냅니다 (알림 모드에서도 동작)',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              text: { type: 'string', description: '알림 메시지 내용' },
-              category: {
-                type: 'string',
-                description: '알림 카테고리 (error, build, commit, info)',
-                enum: ['error', 'build', 'commit', 'info'],
-              },
             },
             required: ['text'],
           },

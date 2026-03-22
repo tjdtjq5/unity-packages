@@ -29,14 +29,6 @@ const mcpChannel = new McpChannel({
         return 'Discord 미연결 — 메시지를 보낼 수 없습니다';
       }
 
-      case 'send_notification': {
-        if (eventRouter) {
-          await eventRouter.handleClaudeNotification(args.text, args.category || 'info');
-          return '알림 전송됨';
-        }
-        return 'Discord 미연결';
-      }
-
       case 'set_cooldown': {
         const seconds = args.seconds || 30;
         pipeServer.sendToUnity({
@@ -76,7 +68,7 @@ pipeServer.on('message', async (msg) => {
         break;
 
       case 'config':
-        console.error('[bridge] 설정 수신:', msg.discordMode || 'no-discord');
+        console.error('[bridge] 설정 수신:', msg.discordEnabled ? 'enabled' : 'disabled');
         await handleConfig(msg);
         break;
 
@@ -91,7 +83,7 @@ pipeServer.on('message', async (msg) => {
 // ── Discord 설정 처리 ──
 async function handleConfig(config) {
   // Discord 비활성 또는 토큰 없음
-  if (config.discordMode === 'off' || !config.discordBotToken) {
+  if (!config.discordEnabled || !config.discordBotToken) {
     if (discordClient) {
       await discordClient.disconnect();
       discordClient = null;
@@ -116,14 +108,10 @@ async function handleConfig(config) {
   discordClient = new DiscordClient({
     token: config.discordBotToken,
     channelId: config.discordChannelId,
-    allowedUsers: (config.discordAllowedUsers || '')
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean),
+    allowedUsers: [],
   });
 
   eventRouter = new EventRouter({ mcpChannel, discordClient, pipeServer });
-  eventRouter.setMode(config.discordMode);
 
   discordClient.on('message', (msg) => eventRouter.handleDiscordMessage(msg));
   discordClient.on('command', (cmd) => eventRouter.handleDiscordCommand(cmd));
@@ -140,6 +128,7 @@ async function handleConfig(config) {
 
   try {
     await discordClient.connect();
+
   } catch (err) {
     console.error('[bridge] Discord 연결 실패:', err.message);
     pipeServer.sendToUnity({

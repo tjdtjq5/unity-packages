@@ -1,6 +1,6 @@
 {
   "name": "com.tjdtjq5.claude",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "displayName": "Claude",
   "description": "Unity 에디터에서 Claude Code CLI 실행 + Channel Bridge(MCP) + Discord 연동 + Remote Control + git worktree 관리",
   "unity": "6000.1",

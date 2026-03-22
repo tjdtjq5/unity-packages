@@ -47,11 +47,11 @@ namespace Tjdtjq5.Claude
         }
 
         // ── Discord ──
-        /// <summary>0=Off, 1=Notify, 2=Interactive</summary>
-        public static int DiscordMode
+        /// <summary>Discord에서 대화 기능 활성화 (Bot 연결)</summary>
+        public static bool DiscordEnabled
         {
-            get => EditorPrefs.GetInt(Prefix + "DiscordMode", 0);
-            set => EditorPrefs.SetInt(Prefix + "DiscordMode", value);
+            get => EditorPrefs.GetBool(Prefix + "DiscordEnabled", false);
+            set => EditorPrefs.SetBool(Prefix + "DiscordEnabled", value);
         }
 
         public static string DiscordBotToken
@@ -66,10 +66,24 @@ namespace Tjdtjq5.Claude
             set => EditorPrefs.SetString(Prefix + "DiscordChId", value);
         }
 
-        public static string DiscordAllowedUsers
+        // ── Discord 표시용 (위자드에서 설정) ──
+        public static string DiscordChannelName
         {
-            get => EditorPrefs.GetString(Prefix + "DiscordUsers", "");
-            set => EditorPrefs.SetString(Prefix + "DiscordUsers", value);
+            get => EditorPrefs.GetString(Prefix + "DiscordChName", "");
+            set => EditorPrefs.SetString(Prefix + "DiscordChName", value);
+        }
+
+        public static string DiscordServerName
+        {
+            get => EditorPrefs.GetString(Prefix + "DiscordServer", "");
+            set => EditorPrefs.SetString(Prefix + "DiscordServer", value);
+        }
+
+        /// <summary>위자드 완료 여부</summary>
+        public static bool DiscordSetupDone
+        {
+            get => EditorPrefs.GetBool(Prefix + "DiscordSetup", false);
+            set => EditorPrefs.SetBool(Prefix + "DiscordSetup", value);
         }
 
         // ── Remote Control ──
@@ -77,6 +91,13 @@ namespace Tjdtjq5.Claude
         {
             get => EditorPrefs.GetBool(Prefix + "RC", false);
             set => EditorPrefs.SetBool(Prefix + "RC", value);
+        }
+
+        /// <summary>첫 RC 설정 안내 완료 여부</summary>
+        public static bool RemoteControlSetupDone
+        {
+            get => EditorPrefs.GetBool(Prefix + "RC_Setup", false);
+            set => EditorPrefs.SetBool(Prefix + "RC_Setup", value);
         }
 
         // ── 유틸 ──

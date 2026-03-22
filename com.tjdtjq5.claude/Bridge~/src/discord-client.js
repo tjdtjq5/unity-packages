@@ -100,8 +100,6 @@ export class DiscordClient extends EventEmitter {
     this._client.on('shardReconnecting', (shardId) => {
       console.error(`[discord] 샤드 ${shardId} 재연결 중...`);
     });
-
-    await this._client.login(this._token);
   }
 
   /** 연결 해제 */

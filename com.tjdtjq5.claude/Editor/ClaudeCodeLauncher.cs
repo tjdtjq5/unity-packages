@@ -67,8 +67,7 @@ namespace Tjdtjq5.Claude
 
         public static void LaunchMain()
         {
-            var envPrefix = BuildEnvPrefix();
-            var args = envPrefix + BuildClaudeCommand();
+            var cmd = BuildClaudeCommand();
             var colorHex = ClaudeCodeSettings.ColorToHex(ClaudeCodeSettings.MainTabColor);
 
             if (HasWindowsTerminal)
@@ -77,25 +76,29 @@ namespace Tjdtjq5.Claude
                              $"-d \"{ProjectPath}\" " +
                              $"--tabColor \"{colorHex}\" " +
                              $"--title \"Claude Main\" " +
-                             $"powershell -NoExit -Command \"{args}\"";
+                             $"powershell -NoExit -Command \"{cmd}\"";
                 StartProcess("wt", wtArgs);
             }
             else
             {
-                StartProcess("powershell", $"-NoExit -Command \"{args}\"", ProjectPath);
+                StartProcess("powershell", $"-NoExit -Command \"{cmd}\"", ProjectPath);
             }
 
-            // Discord 모드 활성이면 Pipe 연결 시작
-            if (ClaudeCodeSettings.DiscordMode > 0)
+            // Discord 모드 활성이면 Pipe 연결 + Discord 설정 전송
+            if (ClaudeCodeSettings.DiscordEnabled)
+            {
                 ChannelBridge.Connect();
+                // 중복 등록 방지 후 콜백 등록
+                ChannelBridge.OnStateChanged -= OnBridgeConnectedSendConfig;
+                ChannelBridge.OnStateChanged += OnBridgeConnectedSendConfig;
+            }
 
             Debug.Log($"[Claude Code] 메인 실행 — {ProjectPath}");
         }
 
         public static void LaunchClaudeAt(string path, string title)
         {
-            var envPrefix = BuildEnvPrefix();
-            var args = envPrefix + BuildClaudeCommand();
+            var cmd = BuildClaudeCommand(title);
             var colorHex = ClaudeCodeSettings.ColorToHex(ClaudeCodeSettings.WorktreeTabColor);
 
             if (HasWindowsTerminal)
@@ -104,12 +107,12 @@ namespace Tjdtjq5.Claude
                              $"-d \"{path}\" " +
                              $"--tabColor \"{colorHex}\" " +
                              $"--title \"{title}\" " +
-                             $"powershell -NoExit -Command \"{args}\"";
+                             $"powershell -NoExit -Command \"{cmd}\"";
                 StartProcess("wt", wtArgs);
             }
             else
             {
-                StartProcess("powershell", $"-NoExit -Command \"{args}\"", path);
+                StartProcess("powershell", $"-NoExit -Command \"{cmd}\"", path);
             }
 
             Debug.Log($"[Claude Code] 실행 — {path}");
@@ -334,7 +337,7 @@ namespace Tjdtjq5.Claude
             return maxNum + 1;
         }
 
-        internal static string BuildClaudeCommand()
+        internal static string BuildClaudeCommand(string sessionLabel = null)
         {
             var sb = new StringBuilder("claude");
             var extra = ClaudeCodeSettings.AdditionalArgs.Trim();
@@ -342,15 +345,21 @@ namespace Tjdtjq5.Claude
                 sb.Append(' ').Append(extra);
 
             // Channel — Discord 모드가 활성이면 Bridge 연결
-            if (ClaudeCodeSettings.DiscordMode > 0)
+            if (ClaudeCodeSettings.DiscordEnabled)
             {
                 EnsureMcpConfig();
+                // 워크트리에서도 Bridge를 찾을 수 있도록 .mcp.json 경로를 명시적으로 전달
+                var mcpJsonPath = Path.Combine(ProjectPath, ".mcp.json").Replace('\\', '/');
+                sb.Append($" --mcp-config \"{mcpJsonPath}\"");
                 sb.Append(" --dangerously-load-development-channels server:claude-unity-bridge");
             }
 
-            // Remote Control 플래그
+            // Remote Control — 세션 이름 포함
             if (ClaudeCodeSettings.RemoteControlEnabled)
-                sb.Append(" --rc");
+            {
+                var sessionName = RemoteControlHelper.GetSessionName(sessionLabel);
+                sb.Append($" --remote-control '{sessionName}'");
+            }
 
             return sb.ToString();
         }
@@ -432,14 +441,15 @@ namespace Tjdtjq5.Claude
             Debug.Log("[Claude Code] .mcp.json 생성됨 (Channel Bridge 등록)");
         }
 
-        /// <summary>
-        /// PowerShell 환경변수 설정 prefix.
-        /// .mcp.json의 env로도 전달하지만, 직접 실행 시 fallback으로 사용.
-        /// </summary>
-        internal static string BuildEnvPrefix()
+        /// <summary>Bridge 연결 성공 시 Discord 설정을 자동 전송 (1회)</summary>
+        static void OnBridgeConnectedSendConfig(ChannelBridge.State state)
         {
-            if (ClaudeCodeSettings.DiscordMode == 0) return "";
-            return $"$env:CLAUDE_UNITY_PIPE_HASH='{ChannelBridge.PipeHash}'; ";
+            if (state == ChannelBridge.State.Connected)
+            {
+                ChannelBridge.OnStateChanged -= OnBridgeConnectedSendConfig;
+                ChannelBridge.SendConfig();
+                Debug.Log("[Claude Code] Discord 설정 자동 전송됨");
+            }
         }
 
         internal static void StartProcess(string fileName, string arguments, string workDir = null)

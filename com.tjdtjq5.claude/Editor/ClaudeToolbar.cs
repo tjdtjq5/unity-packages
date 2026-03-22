@@ -78,7 +78,7 @@ namespace Tjdtjq5.Claude
         {
             if (_statusDot == null) return;
 
-            if (ClaudeCodeSettings.DiscordMode == 0)
+            if (!ClaudeCodeSettings.DiscordEnabled)
             {
                 _statusDot.style.color = new StyleColor(Color.clear);
                 return;

@@ -71,6 +71,28 @@ namespace Tjdtjq5.Claude
         {
             EditorApplication.update += OnUpdate;
             EditorApplication.quitting += Disconnect;
+
+            // 도메인 리로드 후 Discord 모드 활성이면 자동 재연결
+            if (ClaudeCodeSettings.DiscordEnabled && !_running)
+            {
+                EditorApplication.delayCall += () =>
+                {
+                    Connect();
+                    OnStateChanged -= AutoSendConfigOnConnect;
+                    OnStateChanged += AutoSendConfigOnConnect;
+                };
+            }
+        }
+
+        /// <summary>도메인 리로드 후 자동 재연결 시 SendConfig 호출</summary>
+        static void AutoSendConfigOnConnect(State state)
+        {
+            if (state == State.Connected)
+            {
+                OnStateChanged -= AutoSendConfigOnConnect;
+                SendConfig();
+                Debug.Log("[ChannelBridge] 도메인 리로드 후 자동 재연결 + Discord 설정 전송");
+            }
         }
 
         // ── 공개 API ──
@@ -124,19 +146,18 @@ namespace Tjdtjq5.Claude
         /// <summary>Bridge에 설정 메시지 전송</summary>
         public static void SendConfig()
         {
+            var enabled = ClaudeCodeSettings.DiscordEnabled;
+            var token = ClaudeCodeSettings.DiscordBotToken;
+            var channelId = ClaudeCodeSettings.DiscordChannelId;
+
+            Debug.Log($"[ChannelBridge] SendConfig: discord={enabled}, token={(!string.IsNullOrEmpty(token) ? "있음" : "없음")}");
+
             var config = JsonUtility.ToJson(new ConfigMessage
             {
                 type = "config",
-                discordMode = ClaudeCodeSettings.DiscordMode switch
-                {
-                    0 => "off",
-                    1 => "notify",
-                    2 => "interactive",
-                    _ => "off"
-                },
-                discordBotToken = ClaudeCodeSettings.DiscordBotToken,
-                discordChannelId = ClaudeCodeSettings.DiscordChannelId,
-                discordAllowedUsers = ClaudeCodeSettings.DiscordAllowedUsers
+                discordEnabled = enabled,
+                discordBotToken = token,
+                discordChannelId = channelId
             });
             Send(config);
         }
@@ -277,10 +298,9 @@ namespace Tjdtjq5.Claude
         struct ConfigMessage
         {
             public string type;
-            public string discordMode;
+            public bool discordEnabled;
             public string discordBotToken;
             public string discordChannelId;
-            public string discordAllowedUsers;
         }
     }
 }
