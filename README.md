@@ -37,7 +37,7 @@ Odin 스타일 커스텀 Attribute + 에디터 프레임워크
 
 ---
 
-### CI/CD `v0.4.2`
+### CI/CD `v0.5.0`
 
 GameCI 기반 Unity CI/CD 파이프라인 자동 생성
 
@@ -51,7 +51,7 @@ GameCI 기반 Unity CI/CD 파이프라인 자동 생성
 | 알림 | Discord / Slack / Custom 웹훅 |
 
 ```json
-"com.tjdtjq5.cicd": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.cicd#cicd/v0.4.2"
+"com.tjdtjq5.cicd": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.cicd#cicd/v0.5.0"
 ```
 
 > 의존: `editor-toolkit >= 1.3.0`

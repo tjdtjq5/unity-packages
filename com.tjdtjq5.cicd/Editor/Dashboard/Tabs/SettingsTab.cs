@@ -34,22 +34,7 @@ namespace Tjdtjq5.CICD.Editor
 
             GUILayout.Space(8);
 
-            // ── 캐시 설정 ──
-            EditorUI.DrawSectionHeader("캐시", BuildAutomationWindow.COL_PRIMARY);
-            EditorUI.BeginBody();
-
-            bool newCache = EditorGUILayout.Toggle("Library 캐싱", s.enableLibraryCache);
-            if (newCache != s.enableLibraryCache)
-            {
-                s.enableLibraryCache = newCache;
-                s.Save();
-            }
-
-            EditorUI.DrawDescription(
-                "활성화 시 이전 빌드의 Library를 재사용하여 빌드 시간을 단축합니다.\n" +
-                "비활성화 시 매번 클린 빌드를 수행합니다. (빌드 시간 ~40분 증가)",
-                EditorUI.COL_MUTED);
-            EditorUI.EndBody();
+            // 캐시 설정은 CI/CD 탭에서 관리
 
             GUILayout.Space(8);
 

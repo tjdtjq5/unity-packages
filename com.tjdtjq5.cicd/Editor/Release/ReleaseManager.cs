@@ -103,9 +103,8 @@ namespace Tjdtjq5.CICD.Editor
             GitVersionResolver.InvalidateCache();
             WorkflowGenerator.InvalidateCache();
 
-            // 7. 캐시 헬스 체크 스냅샷 저장 + 클린 빌드 플래그 리셋
+            // 7. 캐시 헬스 체크 스냅샷 저장
             CacheHealthChecker.SaveBuildSnapshot(version);
-            BuildAutomationSettings.Instance.forceCleanBuild = false;
 
             return (true, null);
         }

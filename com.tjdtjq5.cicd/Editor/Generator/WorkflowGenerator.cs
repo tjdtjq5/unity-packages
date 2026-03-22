@@ -152,9 +152,10 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("          fi");
             sb.AppendLine();
 
-            // Library 캐싱
-            bool useCache = settings.enableLibraryCache && !settings.forceCleanBuild;
-            if (useCache)
+            // 캐시 (활성화된 캐시만 step 생성)
+            var caches = settings.enabledCaches;
+
+            if (caches.Contains(CacheTypes.Library))
             {
                 sb.AppendLine("      - name: Cache Library");
                 sb.AppendLine("        uses: actions/cache@v4");
@@ -164,6 +165,55 @@ namespace Tjdtjq5.CICD.Editor
                 sb.AppendLine("          restore-keys: |");
                 sb.AppendLine("            Library-${{ matrix.targetPlatform }}-");
                 sb.AppendLine("          save-always: true");
+                sb.AppendLine();
+            }
+
+            if (caches.Contains(CacheTypes.Gradle))
+            {
+                sb.AppendLine("      - name: Cache Gradle");
+                sb.AppendLine("        if: matrix.targetPlatform == 'Android'");
+                sb.AppendLine("        uses: actions/cache@v4");
+                sb.AppendLine("        with:");
+                sb.AppendLine("          path: |");
+                sb.AppendLine("            ~/.gradle/caches");
+                sb.AppendLine("            ~/.gradle/wrapper");
+                sb.AppendLine("          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}");
+                sb.AppendLine("          restore-keys: gradle-");
+                sb.AppendLine("          save-always: true");
+                sb.AppendLine();
+            }
+
+            if (caches.Contains(CacheTypes.IL2CPP))
+            {
+                sb.AppendLine("      - name: Cache IL2CPP");
+                sb.AppendLine("        uses: actions/cache@v4");
+                sb.AppendLine("        with:");
+                sb.AppendLine("          path: Library/Il2cppBuildCache");
+                sb.AppendLine("          key: il2cpp-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/Scripts/**', 'Packages/**') }}");
+                sb.AppendLine("          restore-keys: il2cpp-${{ matrix.targetPlatform }}-");
+                sb.AppendLine("          save-always: true");
+                sb.AppendLine();
+            }
+
+            if (caches.Contains(CacheTypes.Npm))
+            {
+                sb.AppendLine("      - name: Cache npm");
+                sb.AppendLine("        uses: actions/cache@v4");
+                sb.AppendLine("        with:");
+                sb.AppendLine("          path: ~/.npm");
+                sb.AppendLine("          key: npm-${{ hashFiles('**/package-lock.json') }}");
+                sb.AppendLine("          restore-keys: npm-");
+                sb.AppendLine();
+            }
+
+            if (caches.Contains(CacheTypes.Docker))
+            {
+                sb.AppendLine("      - name: Cache Docker layers");
+                sb.AppendLine("        uses: actions/cache@v4");
+                sb.AppendLine("        with:");
+                sb.AppendLine("          path: /tmp/.buildx-cache");
+                sb.AppendLine("          key: docker-${{ runner.os }}-${{ hashFiles('**/Dockerfile') }}");
+                sb.AppendLine("          restore-keys: docker-${{ runner.os }}-");
                 sb.AppendLine();
             }
 

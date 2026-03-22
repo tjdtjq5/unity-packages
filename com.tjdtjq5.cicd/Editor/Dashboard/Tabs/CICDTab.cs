@@ -39,93 +39,165 @@ namespace Tjdtjq5.CICD.Editor
 
         // ── 캐시 상태 ──
 
+        bool _showCacheDropdown;
+
         void DrawCacheStatusSection()
         {
-            EditorUI.DrawSectionHeader("캐시 상태", BuildAutomationWindow.COL_PRIMARY);
+            EditorUI.DrawSectionHeader("캐시", BuildAutomationWindow.COL_PRIMARY);
             EditorUI.BeginBody();
 
             var s = BuildAutomationSettings.Instance;
             var alerts = CacheHealthChecker.GetAlerts();
 
-            // 캐시 활성 상태
-            if (s.enableLibraryCache)
-                EditorUI.DrawCellLabel("  ✅ Library 캐싱: 활성", 0, EditorUI.COL_SUCCESS);
+            // 활성 캐시 목록 (X 버튼으로 개별 제거)
+            string toRemove = null;
+            if (s.enabledCaches.Count == 0)
+            {
+                EditorUI.DrawCellLabel("  캐시 없음 = 클린 빌드", 0, EditorUI.COL_WARN);
+            }
             else
-                EditorUI.DrawCellLabel("  ⬚ Library 캐싱: 비활성", 0, EditorUI.COL_MUTED);
+            {
+                foreach (var cacheId in s.enabledCaches)
+                {
+                    EditorUI.BeginRow();
+                    EditorUI.DrawCellLabel($"  {CacheTypes.GetLabel(cacheId)}", 120, EditorUI.COL_SUCCESS);
+
+                    // 해당 캐시에 경고가 있는지
+                    bool hasWarning = false;
+                    foreach (var alert in alerts)
+                    {
+                        if (alert.AffectedCaches == null) continue;
+                        foreach (var ac in alert.AffectedCaches)
+                        {
+                            if (ac == cacheId && alert.Level <= CacheHealthChecker.Severity.Warning)
+                            { hasWarning = true; break; }
+                        }
+                        if (hasWarning) break;
+                    }
+
+                    if (hasWarning)
+                        EditorUI.DrawCellLabel("⚠", 20, EditorUI.COL_WARN);
+
+                    EditorUI.FlexSpace();
+                    if (EditorUI.DrawRemoveButton())
+                        toRemove = cacheId;
+                    EditorUI.EndRow();
+                }
+            }
+
+            if (toRemove != null)
+            {
+                s.enabledCaches.Remove(toRemove);
+                s.Save();
+                CacheHealthChecker.Invalidate();
+            }
+
+            // 캐시 추가 드롭다운
+            GUILayout.Space(2);
+            if (_showCacheDropdown)
+            {
+                bool hasAvailable = false;
+                foreach (var c in CacheTypes.All)
+                {
+                    if (s.enabledCaches.Contains(c.Id)) continue;
+                    hasAvailable = true;
+                    if (EditorUI.DrawMiniButton($"{c.Label} — {c.Description}"))
+                    {
+                        s.enabledCaches.Add(c.Id);
+                        s.Save();
+                        _showCacheDropdown = false;
+                        CacheHealthChecker.Invalidate();
+                    }
+                }
+                if (!hasAvailable)
+                    EditorUI.DrawDescription("모든 캐시가 활성화되어 있습니다.", EditorUI.COL_MUTED);
+                GUILayout.Space(2);
+                if (EditorUI.DrawColorButton("닫기", EditorUI.COL_MUTED))
+                    _showCacheDropdown = false;
+            }
+            else
+            {
+                if (EditorUI.DrawColorButton("+ 캐시 추가", EditorUI.COL_MUTED))
+                    _showCacheDropdown = true;
+            }
 
             // 마지막 빌드 정보
+            GUILayout.Space(4);
             var lastTag = CacheHealthChecker.LastBuildTag;
             var lastDate = CacheHealthChecker.LastBuildDate;
             if (lastTag != null && lastDate != null)
             {
                 var ago = System.DateTime.UtcNow - lastDate.Value;
                 string agoText;
-                if (ago.TotalMinutes < 60)
-                    agoText = $"{(int)ago.TotalMinutes}분 전";
-                else if (ago.TotalHours < 24)
-                    agoText = $"{(int)ago.TotalHours}시간 전";
-                else
-                    agoText = $"{(int)ago.TotalDays}일 전";
-
+                if (ago.TotalMinutes < 60) agoText = $"{(int)ago.TotalMinutes}분 전";
+                else if (ago.TotalHours < 24) agoText = $"{(int)ago.TotalHours}시간 전";
+                else agoText = $"{(int)ago.TotalDays}일 전";
                 EditorUI.DrawCellLabel($"  마지막 빌드: v{lastTag} ({agoText})", 0, EditorUI.COL_MUTED);
             }
 
-            // 감지된 경고
-            int cleanCount = 0;
-            bool hasError = false;
+            // 경고 표시 — 활성 캐시에 영향 있는 것만
+            bool hasAny = false;
+            var recommendRemove = new System.Collections.Generic.HashSet<string>();
 
             foreach (var alert in alerts)
             {
+                // 영향받는 캐시 중 활성화된 것만 필터
+                var affected = new System.Collections.Generic.List<string>();
+                if (alert.AffectedCaches != null)
+                {
+                    foreach (var ac in alert.AffectedCaches)
+                    {
+                        if (s.enabledCaches.Contains(ac))
+                            affected.Add(ac);
+                    }
+                }
+
+                // 영향 캐시가 없으면 일반 경고로만 표시
                 string icon;
                 Color color;
                 switch (alert.Level)
                 {
                     case CacheHealthChecker.Severity.Error:
-                        icon = "🚫"; color = EditorUI.COL_ERROR; hasError = true;
-                        break;
+                        icon = "🚫"; color = EditorUI.COL_ERROR; break;
                     case CacheHealthChecker.Severity.Warning:
-                        icon = "⚠"; color = EditorUI.COL_WARN;
-                        break;
+                        icon = "⚠"; color = EditorUI.COL_WARN; break;
                     default:
-                        icon = "ℹ"; color = EditorUI.COL_INFO;
-                        break;
+                        icon = "ℹ"; color = EditorUI.COL_INFO; break;
                 }
 
-                EditorUI.DrawCellLabel($"  {icon} {alert.Message}", 0, color);
-                if (alert.RecommendCleanBuild) cleanCount++;
+                if (affected.Count > 0)
+                {
+                    var cacheNames = string.Join(", ", affected.ConvertAll(CacheTypes.GetLabel));
+                    EditorUI.DrawCellLabel($"  {icon} {alert.Message} → {cacheNames} 해제 권장", 0, color);
+                    foreach (var ac in affected) recommendRemove.Add(ac);
+                    hasAny = true;
+                }
+                else if (alert.AffectedCaches == null || alert.AffectedCaches.Length == 0)
+                {
+                    // 캐시와 무관한 일반 경고 (예: manifest file: 경로)
+                    EditorUI.DrawCellLabel($"  {icon} {alert.Message}", 0, color);
+                    hasAny = true;
+                }
             }
 
-            // 경고 없으면 "캐시 히트 예상"
-            if (alerts.Length == 0 && s.enableLibraryCache && lastTag != null)
-                EditorUI.DrawCellLabel("  ✅ 캐시 히트 예상", 0, EditorUI.COL_SUCCESS);
+            // 경고 없으면 정상
+            if (!hasAny && s.enabledCaches.Count > 0 && lastTag != null)
+                EditorUI.DrawCellLabel("  ✅ 모든 캐시 정상", 0, EditorUI.COL_SUCCESS);
 
-            // 클린 빌드 권장 메시지
-            if (cleanCount > 0 && !hasError)
+            // 권장 해제 버튼
+            if (recommendRemove.Count > 0)
             {
                 GUILayout.Space(4);
-                EditorUI.DrawDescription(
-                    $"  💡 클린 빌드를 권장합니다 ({cleanCount}건)", EditorUI.COL_WARN);
-            }
-
-            // 하단 컨트롤: 클린 빌드 토글 + 새로고침
-            GUILayout.Space(2);
-            EditorUI.BeginRow();
-
-            if (s.enableLibraryCache)
-            {
-                bool newClean = GUILayout.Toggle(s.forceCleanBuild, " 클린 빌드",
-                    GUILayout.Width(100));
-                if (newClean != s.forceCleanBuild)
+                var removeLabels = string.Join(", ",
+                    new System.Collections.Generic.List<string>(recommendRemove).ConvertAll(CacheTypes.GetLabel));
+                if (EditorUI.DrawColorButton($"권장: {removeLabels} 해제", EditorUI.COL_WARN, 24))
                 {
-                    s.forceCleanBuild = newClean;
-                    _window.Repaint();
+                    foreach (var id in recommendRemove)
+                        s.enabledCaches.Remove(id);
+                    s.Save();
+                    CacheHealthChecker.Invalidate();
                 }
             }
-
-            EditorUI.FlexSpace();
-            if (EditorUI.DrawMiniButton("새로고침"))
-                CacheHealthChecker.Invalidate();
-            EditorUI.EndRow();
 
             EditorUI.EndBody();
         }

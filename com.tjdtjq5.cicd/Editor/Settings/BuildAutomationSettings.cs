@@ -49,10 +49,13 @@ namespace Tjdtjq5.CICD.Editor
         // ── 캐시 ──
 
         [Header("캐시")]
-        public bool enableLibraryCache = true;
+        public System.Collections.Generic.List<string> enabledCaches = new() { "library" };
 
-        [System.NonSerialized]
-        public bool forceCleanBuild;
+        /// <summary>특정 캐시가 활성화되어있는지.</summary>
+        public bool HasCache(string cacheId) => enabledCaches.Contains(cacheId);
+
+        /// <summary>캐시가 하나도 없으면 클린 빌드.</summary>
+        public bool IsCleanBuild => enabledCaches.Count == 0;
 
         // ── 상태 ──
 
