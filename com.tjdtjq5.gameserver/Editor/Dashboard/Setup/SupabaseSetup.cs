@@ -8,10 +8,24 @@ namespace Tjdtjq5.GameServer.Editor
     public class SupabaseSetup
     {
         readonly GameServerDashboard _dashboard;
+
+        // 연결 테스트
         enum TestState { None, Testing, Success, Failed }
         TestState _testState;
         string _testError;
         UnityWebRequest _activeRequest;
+
+        // 프로젝트 목록
+        SupabaseManagementApi.ProjectInfo[] _projects;
+        string[] _projectLabels;
+        int _selectedProjectIndex = -1;
+        bool _loadingProjects;
+        string _projectsError;
+
+        // Anon Key 자동 조회
+        enum AnonKeyState { None, Loading, Done, Failed }
+        AnonKeyState _anonKeyState;
+        string _anonKeyError;
 
         public bool IsCompleted => _testState == TestState.Success;
 
@@ -20,108 +34,294 @@ namespace Tjdtjq5.GameServer.Editor
         public void OnDraw()
         {
             var settings = GameServerSettings.Instance;
-            var so = new SerializedObject(settings);
-            so.Update();
 
-            // ①
-            EditorTabBase.DrawSubLabel("① Supabase 프로젝트 만들기");
-            EditorTabBase.BeginBody();
-            EditorTabBase.DrawDescription(
-                "아직 계정이 없다면 가입 후 새 프로젝트를 만드세요.\n" +
-                "· 리전: Northeast Asia (ap-northeast-2) 추천\n" +
-                "· DB 비밀번호: 기억해두세요 (아래에서 입력합니다)");
-            GUILayout.Space(4);
-            if (EditorTabBase.DrawLinkBtn("Supabase 가입/로그인", GameServerDashboard.COL_SUPABASE))
-                Application.OpenURL("https://supabase.com/dashboard");
-            EditorTabBase.EndBody();
+            // ① 가입
+            DrawStep1_SignUp();
 
             GUILayout.Space(6);
 
-            // ②
-            EditorTabBase.DrawSubLabel("② Project URL 복사");
-            EditorTabBase.BeginBody();
-            EditorTabBase.DrawDescription(
-                "Supabase 대시보드 홈에 Project URL이 표시되어 있습니다.\nhttps://xxxxxxxx.supabase.co 형태입니다.");
-            if (EditorTabBase.DrawLinkBtn("Supabase 대시보드", GameServerDashboard.COL_SUPABASE))
-                Application.OpenURL("https://supabase.com/dashboard");
-            GUILayout.Space(4);
-            EditorGUILayout.PropertyField(so.FindProperty("supabaseUrl"), new GUIContent("Project URL"));
-            EditorTabBase.EndBody();
+            // ② Access Token
+            DrawStep2_AccessToken(settings);
 
             GUILayout.Space(6);
 
-            // ③
-            EditorTabBase.DrawSubLabel("③ Anon Key 복사");
-            EditorTabBase.BeginBody();
-            EditorTabBase.DrawDescription(
-                "Settings > API > \"anon public\" 키를 복사하세요.\n" +
-                "\"Project API keys\" 섹션에 2개의 키가 있습니다:\n" +
-                "  · anon (public) ← 이것을 복사\n" +
-                "  · service_role (secret) ← 이것은 아닙니다");
-            EditorTabBase.DrawDescription(
-                "eyJhbG... 으로 시작하는 긴 문자열입니다.", EditorTabBase.COL_MUTED);
+            // ③ 프로젝트 선택
+            DrawStep3_ProjectSelect(settings);
 
-            if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
+            GUILayout.Space(6);
+
+            // ④ DB Password
+            DrawStep4_DbPassword(settings);
+
+            GUILayout.Space(6);
+
+            // ⑤ 연결 테스트
+            EditorUI.DrawSubLabel("⑤ 연결 테스트");
+            EditorUI.BeginBody();
+            DrawConnectionTest(settings);
+            EditorUI.EndBody();
+        }
+
+        // ── ① 가입 ──
+
+        void DrawStep1_SignUp()
+        {
+            EditorUI.DrawSubLabel("① Supabase 가입 + 프로젝트 만들기");
+            EditorUI.BeginBody();
+            EditorUI.DrawDescription(
+                "계정이 없다면 가입 후 새 프로젝트를 만드세요.\n" +
+                "· 리전: Northeast Asia 추천\n" +
+                "· DB 비밀번호: 기억해두세요 (④에서 입력)");
+            GUILayout.Space(4);
+            if (EditorUI.DrawLinkButton("Supabase 가입/로그인", GameServerDashboard.COL_SUPABASE))
+                Application.OpenURL("https://supabase.com/dashboard");
+            EditorUI.EndBody();
+        }
+
+        // ── ② Access Token ──
+
+        void DrawStep2_AccessToken(GameServerSettings settings)
+        {
+            EditorUI.DrawSubLabel("② Access Token 입력");
+            EditorUI.BeginBody();
+            EditorUI.DrawDescription(
+                "Supabase > Account > Access Tokens에서 토큰을 생성하세요.\n" +
+                "이 토큰으로 Anon Key, Auth 설정이 자동 처리됩니다.");
+            if (EditorUI.DrawLinkButton("Access Token 발급", GameServerDashboard.COL_SUPABASE))
+                Application.OpenURL("https://supabase.com/dashboard/account/tokens");
+
+            GUILayout.Space(4);
+            var token = EditorUI.DrawPasswordField("Access Token", GameServerSettings.SupabaseAccessToken);
+            if (token != GameServerSettings.SupabaseAccessToken)
             {
-                if (EditorTabBase.DrawLinkBtn("API 설정 페이지", GameServerDashboard.COL_SUPABASE))
-                    Application.OpenURL(settings.SupabaseApiSettingsUrl);
+                GameServerSettings.SupabaseAccessToken = token;
+                // 토큰 변경 시 프로젝트 목록 초기화
+                _projects = null;
+                _projectLabels = null;
+                _selectedProjectIndex = -1;
+                _anonKeyState = AnonKeyState.None;
             }
 
-            GUILayout.Space(4);
-            var anonKey = EditorGUILayout.TextField("Anon Key", GameServerSettings.SupabaseAnonKey);
-            if (anonKey != GameServerSettings.SupabaseAnonKey)
-                GameServerSettings.SupabaseAnonKey = anonKey;
-            EditorTabBase.EndBody();
+            // 토큰 입력 시 프로젝트 목록 조회 버튼
+            if (!string.IsNullOrEmpty(GameServerSettings.SupabaseAccessToken) && _projects == null && !_loadingProjects)
+            {
+                GUILayout.Space(4);
+                if (EditorUI.DrawColorButton("프로젝트 목록 조회", GameServerDashboard.COL_SUPABASE, 28))
+                    FetchProjects();
+            }
 
-            GUILayout.Space(6);
+            if (_loadingProjects)
+                EditorUI.DrawLoading(true, "프로젝트 목록 조회 중...");
 
-            // ④
-            EditorTabBase.DrawSubLabel("④ DB Password");
-            EditorTabBase.BeginBody();
-            EditorTabBase.DrawDescription("프로젝트 생성 시 설정한 비밀번호입니다.\n잊었다면 Settings > Database에서 리셋할 수 있습니다.");
+            if (!string.IsNullOrEmpty(_projectsError))
+                EditorUI.DrawDescription($"✗ {_projectsError}", EditorUI.COL_ERROR);
+
+            EditorUI.EndBody();
+        }
+
+        // ── ③ 프로젝트 선택 ──
+
+        void DrawStep3_ProjectSelect(GameServerSettings settings)
+        {
+            var hasToken = !string.IsNullOrEmpty(GameServerSettings.SupabaseAccessToken);
+
+            EditorUI.DrawSubLabel("③ 프로젝트 선택");
+            EditorUI.BeginBody();
+
+            if (!hasToken)
+            {
+                EditorUI.DrawDescription("②에서 Access Token을 먼저 입력하세요.", EditorUI.COL_WARN);
+                EditorUI.EndBody();
+                return;
+            }
+
+            if (_projects != null && _projects.Length > 0)
+            {
+                // 드롭다운
+                var prev = _selectedProjectIndex;
+                _selectedProjectIndex = EditorGUILayout.Popup("프로젝트", _selectedProjectIndex, _projectLabels);
+
+                if (_selectedProjectIndex != prev && _selectedProjectIndex >= 0)
+                    OnProjectSelected(settings, _projects[_selectedProjectIndex]);
+
+                // 선택된 프로젝트 정보
+                if (_selectedProjectIndex >= 0)
+                {
+                    var p = _projects[_selectedProjectIndex];
+                    EditorUI.DrawCellLabel($"  URL: https://{p.id}.supabase.co", 0, EditorUI.COL_MUTED);
+                    EditorUI.DrawCellLabel($"  상태: {p.status}  |  리전: {p.region}", 0, EditorUI.COL_MUTED);
+
+                    // Anon Key 상태
+                    GUILayout.Space(4);
+                    switch (_anonKeyState)
+                    {
+                        case AnonKeyState.Loading:
+                            EditorUI.DrawLoading(true, "Anon Key 조회 중...");
+                            break;
+                        case AnonKeyState.Done:
+                            EditorUI.DrawDescription("✓ Anon Key 자동 조회 완료", EditorUI.COL_SUCCESS);
+                            break;
+                        case AnonKeyState.Failed:
+                            EditorUI.DrawDescription($"✗ Anon Key 조회 실패: {_anonKeyError}", EditorUI.COL_ERROR);
+                            EditorUI.DrawDescription("③을 넘어갈 수 없습니다. 토큰과 프로젝트를 확인하세요.", EditorUI.COL_WARN);
+                            break;
+                    }
+                }
+            }
+            else if (_projects != null && _projects.Length == 0)
+            {
+                EditorUI.DrawDescription("프로젝트가 없습니다. Supabase에서 먼저 프로젝트를 만드세요.", EditorUI.COL_WARN);
+            }
+            else
+            {
+                EditorUI.DrawDescription("②에서 [프로젝트 목록 조회]를 눌러주세요.", EditorUI.COL_MUTED);
+            }
+
+            EditorUI.EndBody();
+        }
+
+        // ── ④ DB Password ──
+
+        void DrawStep4_DbPassword(GameServerSettings settings)
+        {
+            EditorUI.DrawSubLabel("④ DB Password");
+            EditorUI.BeginBody();
+
+            // Anon Key 미완료 시 차단
+            if (_anonKeyState != AnonKeyState.Done &&
+                string.IsNullOrEmpty(GameServerSettings.SupabaseAnonKey))
+            {
+                EditorUI.DrawDescription("③에서 프로젝트를 선택하면 자동으로 Anon Key가 조회됩니다.", EditorUI.COL_WARN);
+                EditorUI.EndBody();
+                return;
+            }
+
+            EditorUI.DrawDescription(
+                "프로젝트 생성 시 설정한 비밀번호입니다.\n" +
+                "잊었다면 Settings > Database에서 리셋할 수 있습니다.");
 
             if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
             {
-                if (EditorTabBase.DrawLinkBtn("Database 설정 페이지", GameServerDashboard.COL_SUPABASE))
+                if (EditorUI.DrawLinkButton("Database 설정 페이지", GameServerDashboard.COL_SUPABASE))
                     Application.OpenURL(settings.SupabaseDatabaseSettingsUrl);
             }
 
             GUILayout.Space(4);
-            var dbPw = EditorGUILayout.PasswordField("DB Password", GameServerSettings.SupabaseDbPassword);
+            var dbPw = EditorUI.DrawPasswordField("DB Password", GameServerSettings.SupabaseDbPassword);
             if (dbPw != GameServerSettings.SupabaseDbPassword)
                 GameServerSettings.SupabaseDbPassword = dbPw;
-            EditorTabBase.EndBody();
 
-            GUILayout.Space(6);
-
-            // ⑤
-            EditorTabBase.DrawSubLabel("⑤ 보안 설정");
-            EditorTabBase.BeginBody();
-            EditorTabBase.DrawDescription(
-                "Settings > API에서 확인하세요:\n" +
-                "  ✓ Enable Data API — 켜기 (기본값)\n" +
-                "  ✓ Enable Auto RLS — 켜기 ⚠ 중요");
-            EditorTabBase.DrawDescription(
-                "Auto RLS를 켜면 REST API로는 아무도 DB에 접근할 수 없고, " +
-                "우리 서버만 접근할 수 있습니다.", EditorTabBase.COL_WARN);
-
-            if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
-            {
-                if (EditorTabBase.DrawLinkBtn("API 보안 설정 페이지", GameServerDashboard.COL_SUPABASE))
-                    Application.OpenURL(settings.SupabaseApiSettingsUrl);
-            }
-            EditorTabBase.EndBody();
-
-            GUILayout.Space(6);
-
-            // ⑥
-            EditorTabBase.DrawSubLabel("⑥ 연결 테스트");
-            EditorTabBase.BeginBody();
-            DrawConnectionTest(settings);
-            EditorTabBase.EndBody();
-
-            so.ApplyModifiedProperties();
+            EditorUI.EndBody();
         }
+
+        // ── 프로젝트 목록 조회 ──
+
+        async void FetchProjects()
+        {
+            _loadingProjects = true;
+            _projectsError = null;
+            _dashboard.Repaint();
+
+            var (ok, projects, error) = await SupabaseManagementApi.ListProjects(
+                GameServerSettings.SupabaseAccessToken);
+
+            _loadingProjects = false;
+
+            if (ok)
+            {
+                _projects = projects;
+                _projectLabels = new string[projects.Length];
+                for (var i = 0; i < projects.Length; i++)
+                    _projectLabels[i] = $"{projects[i].name} ({projects[i].region})";
+
+                // 이미 설정된 URL이 있으면 자동 선택
+                var currentRef = GameServerSettings.Instance.SupabaseProjectId;
+                if (!string.IsNullOrEmpty(currentRef))
+                {
+                    for (var i = 0; i < projects.Length; i++)
+                    {
+                        if (projects[i].id == currentRef)
+                        {
+                            _selectedProjectIndex = i;
+                            // Anon Key도 조회
+                            FetchAnonKey(projects[i].id);
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                _projectsError = error;
+            }
+
+            _dashboard.Repaint();
+        }
+
+        // ── 프로젝트 선택 시 ──
+
+        void OnProjectSelected(GameServerSettings settings, SupabaseManagementApi.ProjectInfo project)
+        {
+            // URL 자동 설정
+            settings.supabaseUrl = $"https://{project.id}.supabase.co";
+            settings.Save();
+
+            // Anon Key 자동 조회
+            FetchAnonKey(project.id);
+
+            // Auth URL 동기화 캐시 초기화
+            AuthUrlSyncManager.InvalidateCache();
+        }
+
+        async void FetchAnonKey(string projectRef)
+        {
+            _anonKeyState = AnonKeyState.Loading;
+            _dashboard.Repaint();
+
+            var (ok, anonKey, error) = await SupabaseManagementApi.GetAnonKey(
+                projectRef, GameServerSettings.SupabaseAccessToken);
+
+            if (ok)
+            {
+                GameServerSettings.SupabaseAnonKey = anonKey;
+                _anonKeyState = AnonKeyState.Done;
+
+                // 익명 로그인 + Auth URL 자동 설정
+                RunAutoAuthSetup(projectRef);
+            }
+            else
+            {
+                _anonKeyState = AnonKeyState.Failed;
+                _anonKeyError = error;
+            }
+
+            _dashboard.Repaint();
+        }
+
+        async void RunAutoAuthSetup(string projectRef)
+        {
+            var token = GameServerSettings.SupabaseAccessToken;
+            var bundleId = PlayerSettings.applicationIdentifier;
+            var settings = GameServerSettings.Instance;
+            var siteUrl = $"{bundleId}://auth";
+            var redirectUrls = $"{bundleId}://auth,http://localhost:*/**";
+            if (!string.IsNullOrEmpty(settings.cloudRunUrl))
+                redirectUrls = $"{bundleId}://auth,{settings.cloudRunUrl.TrimEnd('/')}/auth/callback,http://localhost:*/**";
+
+            var body = "{" +
+                $"\"external_anonymous_users_enabled\":true," +
+                $"\"site_url\":\"{siteUrl}\"," +
+                $"\"uri_allow_list\":\"{redirectUrls}\"" +
+                "}";
+
+            var (ok, error) = await SupabaseManagementApi.PatchAuthConfig(projectRef, token, body);
+            if (ok)
+                Debug.Log("[GameServer] 자동 Auth 설정 완료: 익명 로그인 + Auth URL");
+            else
+                Debug.LogWarning($"[GameServer] Auth 자동 설정 실패: {error}");
+        }
+
+        // ── 연결 테스트 ──
 
         void DrawConnectionTest(GameServerSettings settings)
         {
@@ -132,28 +332,28 @@ namespace Tjdtjq5.GameServer.Editor
                                    !string.IsNullOrEmpty(GameServerSettings.SupabaseAnonKey);
                     using (new EditorGUI.DisabledGroupScope(!canTest))
                     {
-                        if (EditorTabBase.DrawColorBtn("연결 테스트", GameServerDashboard.COL_SUPABASE, 28))
+                        if (EditorUI.DrawColorButton("연결 테스트", GameServerDashboard.COL_SUPABASE, 28))
                             RunConnectionTest(settings);
                     }
                     if (!canTest)
-                        EditorTabBase.DrawDescription("URL과 Anon Key를 입력하면 테스트할 수 있습니다.", EditorTabBase.COL_WARN);
+                        EditorUI.DrawDescription("프로젝트를 선택하고 Anon Key가 조회되면 테스트할 수 있습니다.", EditorUI.COL_WARN);
                     break;
 
                 case TestState.Testing:
-                    EditorTabBase.DrawLoading(true, "연결 테스트 중...");
+                    EditorUI.DrawLoading(true, "연결 테스트 중...");
                     break;
 
                 case TestState.Success:
-                    EditorTabBase.DrawDescription("✓ Supabase 연결 성공!", EditorTabBase.COL_SUCCESS);
+                    EditorUI.DrawDescription("✓ Supabase 연결 성공!", EditorUI.COL_SUCCESS);
                     GUILayout.Space(4);
-                    if (EditorTabBase.DrawColorBtn("다시 테스트", GameServerDashboard.COL_SUPABASE))
+                    if (EditorUI.DrawColorButton("다시 테스트", GameServerDashboard.COL_SUPABASE))
                         RunConnectionTest(settings);
                     break;
 
                 case TestState.Failed:
-                    EditorTabBase.DrawDescription($"✗ {_testError}", EditorTabBase.COL_ERROR);
+                    EditorUI.DrawDescription($"✗ {_testError}", EditorUI.COL_ERROR);
                     GUILayout.Space(4);
-                    if (EditorTabBase.DrawColorBtn("다시 테스트", EditorTabBase.COL_ERROR))
+                    if (EditorUI.DrawColorButton("다시 테스트", EditorUI.COL_ERROR))
                         RunConnectionTest(settings);
                     break;
             }
@@ -207,17 +407,17 @@ namespace Tjdtjq5.GameServer.Editor
             else if (code == 401 || code == 403)
             {
                 _testState = TestState.Failed;
-                _testError = $"인증 실패 (HTTP {code})\nAnon Key가 올바른지 확인해주세요.";
+                _testError = $"인증 실패 (HTTP {code}) — Anon Key를 확인하세요.";
             }
             else if (code == 0)
             {
                 _testState = TestState.Failed;
-                _testError = $"서버에 연결할 수 없습니다.\nURL: {GameServerSettings.Instance.supabaseUrl}\n에러: {error}";
+                _testError = $"서버에 연결할 수 없습니다 — URL을 확인하세요.";
             }
             else
             {
                 _testState = TestState.Failed;
-                _testError = $"HTTP {code}\n응답: {body}\n에러: {error}";
+                _testError = $"HTTP {code}: {error}";
             }
 
             _dashboard.Repaint();

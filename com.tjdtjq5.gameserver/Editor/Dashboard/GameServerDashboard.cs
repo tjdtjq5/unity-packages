@@ -18,13 +18,11 @@ namespace Tjdtjq5.GameServer.Editor
         Mode _mode;
 
         // ── 대시보드 탭 ──
-        static readonly string[] DashboardTabs = { "Status", "ServerLogic", "Deploy", "Cost" };
+        static readonly string[] DashboardTabs = { "Deploy", "Monitor" };
         static readonly Color[] DashboardTabColors =
         {
-            EditorTabBase.COL_SUCCESS,
-            COL_PRIMARY,
-            EditorTabBase.COL_WARN,
-            EditorTabBase.COL_MUTED
+            EditorUI.COL_WARN,
+            EditorUI.COL_INFO
         };
         int _activeTab;
         Vector2 _scrollPos;
@@ -32,25 +30,43 @@ namespace Tjdtjq5.GameServer.Editor
         // ── 인스턴스 ──
         SetupWizard _setupWizard;
         SettingsView _settingsView;
-        ServerLogicTab _serverLogicTab;
+        DeployTab _deployTab;
+        MonitorTab _monitorTab;
 
         // ── 알림 ──
         string _notification;
-        EditorTabBase.NotificationType _notificationType;
+        EditorUI.NotificationType _notificationType;
 
-        [MenuItem("Tools/GameServer/Dashboard %#g")]
+        [MenuItem("Tools/GameServer/Dashboard %#q")]
         public static void Open()
         {
             var wnd = GetWindow<GameServerDashboard>("GameServer");
             wnd.minSize = new Vector2(520, 480);
         }
 
+        [MenuItem("Tools/GameServer/Data %#d")]
+        public static void OpenData()
+        {
+            var settings = GameServerSettings.Instance;
+            if (settings.IsSupabaseConfigured)
+                Application.OpenURL($"https://supabase.com/dashboard/project/{settings.SupabaseProjectId}/editor");
+            else
+                EditorUtility.DisplayDialog("Data", "Supabase 설정이 필요합니다.\nDashboard > Settings에서 연결하세요.", "확인");
+        }
+
         void OnEnable()
         {
             _setupWizard = new SetupWizard(this);
             _settingsView = new SettingsView(this);
-            _serverLogicTab = new ServerLogicTab();
+            _deployTab = new DeployTab(this);
+            _monitorTab = new MonitorTab(this);
             _mode = GameServerSettings.Instance.setupCompleted ? Mode.Dashboard : Mode.Setup;
+
+            // CLI 캐시 워밍업 (백그라운드 — 설정 진입 시 지연 방지)
+            PrerequisiteChecker.WarmCacheAsync();
+
+            // Auth URL 변경 감지 + 자동 동기화
+            AuthUrlSyncManager.CheckAndSync(GameServerSettings.Instance);
         }
 
         void OnDisable()
@@ -60,12 +76,12 @@ namespace Tjdtjq5.GameServer.Editor
 
         void OnGUI()
         {
-            EditorTabBase.DrawWindowBackground(position);
+            EditorUI.DrawWindowBackground(position);
 
             switch (_mode)
             {
                 case Mode.Setup:
-                    EditorTabBase.DrawWindowHeader("GameServer", "v0.1.0", COL_PRIMARY);
+                    EditorUI.DrawWindowHeader("GameServer", $"v{GameServerSettings.VERSION}", COL_PRIMARY);
                     _setupWizard.OnDraw();
                     break;
 
@@ -83,24 +99,25 @@ namespace Tjdtjq5.GameServer.Editor
         {
             // 헤더 + 뱃지 + ⚙
             var badges = GetStatusBadges();
-            if (EditorTabBase.DrawWindowHeaderWithGear("GameServer", "v0.1.0", COL_PRIMARY, badges))
+            if (EditorUI.DrawWindowHeaderWithGear("GameServer", $"v{GameServerSettings.VERSION}", COL_PRIMARY, badges))
                 _mode = Mode.Settings;
 
+            // Access Token 만료 경고 (상단 고정)
+            DrawTokenWarning();
+
             // 탭 바
-            _activeTab = EditorTabBase.DrawTabBar(DashboardTabs, _activeTab, DashboardTabColors, COL_PRIMARY);
+            _activeTab = EditorUI.DrawTabBar(DashboardTabs, _activeTab, DashboardTabColors, COL_PRIMARY);
 
             // 알림
-            EditorTabBase.DrawNotificationBar(ref _notification, _notificationType);
+            EditorUI.DrawNotificationBar(ref _notification, _notificationType);
 
             // 탭 내용
             _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
 
             switch (_activeTab)
             {
-                case 0: EditorTabBase.DrawPlaceholder("Status — 구현 예정"); break;
-                case 1: _serverLogicTab.OnDraw(); break;
-                case 2: EditorTabBase.DrawPlaceholder("Deploy — 구현 예정"); break;
-                case 3: EditorTabBase.DrawPlaceholder("Cost — 구현 예정"); break;
+                case 0: _deployTab.OnDraw(); break;
+                case 1: _monitorTab.OnDraw(); break;
             }
 
             EditorGUILayout.EndScrollView();
@@ -108,12 +125,30 @@ namespace Tjdtjq5.GameServer.Editor
 
         void DrawSettingsMode()
         {
-            EditorTabBase.DrawWindowHeader("GameServer", "v0.1.0", COL_PRIMARY);
-            if (EditorTabBase.DrawBackButton("← 대시보드로 돌아가기"))
+            EditorUI.DrawWindowHeader("GameServer", $"v{GameServerSettings.VERSION}", COL_PRIMARY);
+            if (EditorUI.DrawBackButton("← 대시보드로 돌아가기"))
                 _mode = Mode.Dashboard;
 
-            EditorTabBase.DrawNotificationBar(ref _notification, _notificationType);
+            DrawTokenWarning();
+            EditorUI.DrawNotificationBar(ref _notification, _notificationType);
             _settingsView.OnDraw();
+        }
+
+        void DrawTokenWarning()
+        {
+            if (!AuthUrlSyncManager.IsTokenExpired) return;
+
+            var prev = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0.95f, 0.3f, 0.3f, 0.3f);
+            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+            GUI.backgroundColor = prev;
+
+            EditorUI.DrawCellLabel("  ⚠ Access Token이 만료되었습니다. Settings > Supabase에서 재발급하세요.", 0, EditorUI.COL_ERROR);
+
+            if (GUILayout.Button("Settings", GUILayout.Width(70)))
+                _mode = Mode.Settings;
+
+            EditorGUILayout.EndHorizontal();
         }
 
         (string name, int state)[] GetStatusBadges()
@@ -123,16 +158,24 @@ namespace Tjdtjq5.GameServer.Editor
             int supabaseState = 0; // 회색
             if (settings.IsSupabaseConfigured) supabaseState = 1; // 초록
 
-            int cloudRunState = 0;
-            if (settings.IsGcpConfigured && !string.IsNullOrEmpty(settings.cloudRunUrl))
-                cloudRunState = 1;
+            int cloudRunState = 0; // 회색: 미설정
+            if (settings.IsGcpConfigured && settings.gcpCloudRunApiEnabled
+                && !string.IsNullOrEmpty(settings.gcpServiceAccountEmail))
+            {
+                cloudRunState = !string.IsNullOrEmpty(settings.cloudRunUrl) ? 1 : 2;
+                // 1=초록: 배포됨, 2=노랑: 설정 완료+미배포
+            }
+            else if (settings.IsGcpConfigured)
+            {
+                cloudRunState = 2; // 노랑: 설정 중
+            }
 
             return new[] { ("Supabase", supabaseState), ("Cloud Run", cloudRunState) };
         }
 
         // ── Public API ──
 
-        public void ShowNotification(string message, EditorTabBase.NotificationType type)
+        public void ShowNotification(string message, EditorUI.NotificationType type)
         {
             _notification = message;
             _notificationType = type;
@@ -148,8 +191,24 @@ namespace Tjdtjq5.GameServer.Editor
             Repaint();
         }
 
-        public void OpenSettings() => _mode = Mode.Settings;
-        public void BackToDashboard() => _mode = Mode.Dashboard;
+        public void OpenSettings()
+        {
+            _mode = Mode.Settings;
+            GUIUtility.ExitGUI();
+        }
+
+        public void BackToDashboard()
+        {
+            _mode = Mode.Dashboard;
+            GUIUtility.ExitGUI();
+        }
+
+        public void OpenSetup()
+        {
+            _setupWizard = new SetupWizard(this);
+            _mode = Mode.Setup;
+            GUIUtility.ExitGUI();
+        }
 
         public new void Repaint() => base.Repaint();
     }

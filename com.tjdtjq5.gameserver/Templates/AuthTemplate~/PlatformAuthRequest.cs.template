@@ -1,0 +1,4 @@
+public class PlatformAuthRequest
+{
+    public string token { get; set; }
+}

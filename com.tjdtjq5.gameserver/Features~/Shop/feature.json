@@ -1,0 +1,7 @@
+{
+  "name": "상점",
+  "id": "shop",
+  "description": "상품 등록/구매/구매 이력 관리. 재화/인벤토리 연동.",
+  "tier": 2,
+  "dependencies": ["currency", "inventory"]
+}

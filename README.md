@@ -137,7 +137,7 @@ Unity 에디터에서 Claude Code CLI 실행 + Channel Bridge(MCP) + Discord 연
 
 ---
 
-### GameServer `v0.2.0`
+### GameServer `v0.3.0`
 
 Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지
 
@@ -151,14 +151,14 @@ Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지
 
 **Package Manager URL:**
 ```
-https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.gameserver#gameserver/v0.2.0
+https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.gameserver#gameserver/v0.3.0
 ```
 
 <details>
 <summary>manifest.json에 직접 추가</summary>
 
 ```json
-"com.tjdtjq5.gameserver": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.gameserver#gameserver/v0.2.0"
+"com.tjdtjq5.gameserver": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.gameserver#gameserver/v0.3.0"
 ```
 </details>
 

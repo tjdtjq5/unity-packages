@@ -8,3 +8,4 @@ C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Rel
 C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.GameServer.SourceGen.csproj.CoreCompileInputs.cache
 C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.GameServer.SourceGen.dll
 C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.GameServer.SourceGen.pdb
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.GameServer.SourceGen.sourcelink.json

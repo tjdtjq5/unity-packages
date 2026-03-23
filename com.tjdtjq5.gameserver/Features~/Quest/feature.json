@@ -1,0 +1,7 @@
+{
+  "name": "퀘스트",
+  "id": "quest",
+  "description": "퀘스트 정의/진행도 추적/완료 보상. 일일/주간/업적 지원. 우편 연동.",
+  "tier": 2,
+  "dependencies": ["mail"]
+}

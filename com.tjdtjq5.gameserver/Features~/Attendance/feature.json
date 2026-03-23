@@ -1,0 +1,7 @@
+{
+  "name": "출석 체크",
+  "id": "attendance",
+  "description": "일일 출석 체크 + 연속 출석 보상. 재화/우편 연동.",
+  "tier": 2,
+  "dependencies": ["mail"]
+}

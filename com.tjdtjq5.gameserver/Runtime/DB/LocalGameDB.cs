@@ -9,7 +9,7 @@ namespace Tjdtjq5.GameServer
 {
     /// <summary>
     /// IGameDB의 로컬 구현. 메모리 Dictionary + JSON 직렬화.
-    /// Unity Play 모드에서 서버 없이 [ServerLogic]을 즉시 실행.
+    /// Unity Play 모드에서 서버 없이 [Service]를 즉시 실행.
     /// </summary>
     public class LocalGameDB : IGameDB
     {
@@ -47,6 +47,14 @@ namespace Tjdtjq5.GameServer
             var list = table.Values
                 .Select(json => JsonUtility.FromJson<T>(json))
                 .ToList();
+
+            // [Table] 타입에 대해 성능 경고 (100건 초과 시)
+            if (list.Count > 100 && IsTableType<T>())
+            {
+                Debug.LogWarning(
+                    $"[GameServer:성능] GetAll<{typeof(T).Name}>()이 {list.Count}건을 로드했습니다. " +
+                    $"[Table] 데이터에는 _db.Query<{typeof(T).Name}>(new QueryOptions().Eq(\"필드명\", 값))를 사용하세요.");
+            }
 
             Log($"GetAll<{typeof(T).Name}>() → {list.Count} rows");
             return Task.FromResult(list);
@@ -99,12 +107,102 @@ namespace Tjdtjq5.GameServer
             return Task.CompletedTask;
         }
 
-        // ── Query (Phase 2에서 Source Generator와 연동) ──
+        // ── Query ──
 
-        public Task<List<T>> Query<T>(Func<object, object> queryBuilder)
+        public Task<List<T>> Query<T>(QueryOptions options)
         {
-            Debug.LogWarning("[GameServer:LocalDB] Query 필터링 미구현 (Phase 2). 전체 데이터 반환됨.");
-            return GetAll<T>();
+            if (options == null || options.Filters.Count == 0)
+            {
+                // 필터 없는 Query는 GetAll과 동일하지만 성능 경고 없이 실행
+                var allTable = GetTable(typeof(T).Name);
+                var allList = allTable.Values
+                    .Select(json => JsonUtility.FromJson<T>(json))
+                    .ToList();
+                Log($"Query<{typeof(T).Name}>(no filters) → {allList.Count} rows");
+                return Task.FromResult(allList);
+            }
+
+            var table = GetTable(typeof(T).Name);
+            var fields = typeof(T).GetFields(BindingFlags.Public | BindingFlags.Instance);
+            var results = new List<T>();
+
+            foreach (var json in table.Values)
+            {
+                var entity = JsonUtility.FromJson<T>(json);
+                if (MatchesFilters(entity, fields, options.Filters))
+                    results.Add(entity);
+            }
+
+            // 정렬
+            if (!string.IsNullOrEmpty(options.OrderBy))
+            {
+                var orderField = System.Array.Find(fields, f =>
+                    f.Name.Equals(options.OrderBy, System.StringComparison.OrdinalIgnoreCase));
+                if (orderField != null)
+                {
+                    results.Sort((a, b) =>
+                    {
+                        var va = orderField.GetValue(a) as System.IComparable;
+                        var vb = orderField.GetValue(b) as System.IComparable;
+                        var cmp = va?.CompareTo(vb) ?? 0;
+                        return options.OrderDesc ? -cmp : cmp;
+                    });
+                }
+            }
+
+            // 페이지네이션
+            if (options.Offset > 0)
+                results = results.Skip(options.Offset).ToList();
+            if (options.Limit > 0)
+                results = results.Take(options.Limit).ToList();
+
+            Log($"Query<{typeof(T).Name}>({options.Filters.Count} filters) → {results.Count} rows");
+            return Task.FromResult(results);
+        }
+
+        static bool MatchesFilters<T>(T entity, FieldInfo[] fields, System.Collections.Generic.List<QueryFilter> filters)
+        {
+            foreach (var filter in filters)
+            {
+                var field = System.Array.Find(fields, f =>
+                    f.Name.Equals(filter.Column, System.StringComparison.OrdinalIgnoreCase));
+                if (field == null) continue;
+
+                var value = field.GetValue(entity);
+                if (!CompareValues(value, filter.Operator, filter.Value))
+                    return false;
+            }
+            return true;
+        }
+
+        static bool CompareValues(object fieldValue, string op, object filterValue)
+        {
+            if (fieldValue == null)
+                return filterValue == null && op == "=";
+
+            var fieldStr = fieldValue.ToString();
+            var filterStr = filterValue?.ToString() ?? "";
+
+            return op switch
+            {
+                "=" => fieldStr == filterStr,
+                ">" => CompareNumeric(fieldValue, filterValue) > 0,
+                "<" => CompareNumeric(fieldValue, filterValue) < 0,
+                ">=" => CompareNumeric(fieldValue, filterValue) >= 0,
+                "<=" => CompareNumeric(fieldValue, filterValue) <= 0,
+                "like" => fieldStr.IndexOf(filterStr, System.StringComparison.OrdinalIgnoreCase) >= 0,
+                _ => fieldStr == filterStr
+            };
+        }
+
+        static int CompareNumeric(object a, object b)
+        {
+            if (a is System.IComparable ca && b != null)
+            {
+                try { return ca.CompareTo(System.Convert.ChangeType(b, a.GetType())); }
+                catch { /* fallback to string */ }
+            }
+            return string.Compare(a?.ToString(), b?.ToString(), System.StringComparison.Ordinal);
         }
 
         // ── Transaction ──
@@ -247,6 +345,20 @@ namespace Tjdtjq5.GameServer
                 Debug.LogWarning($"[GameServer:LocalDB] {field.DeclaringType?.Name}.{field.Name}: " +
                     $"[CreatedAt/UpdatedAt] 지원 타입은 long, double, DateTime, string. " +
                     $"현재 타입: {field.FieldType.Name}");
+        }
+
+        // ── [Table] 타입 캐시 ──
+
+        static readonly Dictionary<System.Type, bool> _tableTypeCache = new();
+
+        static bool IsTableType<T>()
+        {
+            var type = typeof(T);
+            if (_tableTypeCache.TryGetValue(type, out var cached))
+                return cached;
+            var result = type.GetCustomAttribute(typeof(TableAttribute)) != null;
+            _tableTypeCache[type] = result;
+            return result;
         }
 
         // ── 로그 ──

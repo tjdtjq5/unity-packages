@@ -1,0 +1,7 @@
+{
+  "name": "인벤토리",
+  "id": "inventory",
+  "description": "아이템 획득/소모/조회/이력 관리",
+  "tier": 1,
+  "dependencies": []
+}

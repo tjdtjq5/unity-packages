@@ -1,0 +1,62 @@
+using System.Net.Http;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+[ApiController]
+[Route("api/auth")]
+public class AuthGameCenterController : ControllerBase
+{
+    readonly IConfiguration _config;
+    static readonly HttpClient _http = new();
+
+    public AuthGameCenterController(IConfiguration config) => _config = config;
+
+    [HttpPost("gamecenter")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GameCenterLogin([FromBody] PlatformAuthRequest req)
+    {
+        if (string.IsNullOrEmpty(req?.token))
+            return BadRequest("token is required");
+
+        // 1. Game Center identity 파싱
+        var identity = JsonNode.Parse(req.token);
+        var playerId = identity?["playerId"]?.ToString();
+
+        if (string.IsNullOrEmpty(playerId))
+            return Unauthorized(new { error = "Invalid Game Center identity" });
+
+        // TODO: Apple 서버로 signature 검증 (프로덕션에서 필수)
+
+        // 2. Supabase에서 유저 찾기/생성 + JWT 발급
+        return await SignInOrCreateUser($"gc_{playerId}@platform.local", playerId);
+    }
+
+    async Task<IActionResult> SignInOrCreateUser(string email, string password)
+    {
+        var supabaseUrl = _config["Supabase:Url"];
+        var serviceKey = _config["Supabase:ServiceRoleKey"];
+        var body = JsonSerializer.Serialize(new { email, password });
+
+        // signin 시도
+        var signReq = new HttpRequestMessage(HttpMethod.Post, $"{supabaseUrl}/auth/v1/token?grant_type=password");
+        signReq.Headers.Add("apikey", serviceKey);
+        signReq.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        var signResult = await _http.SendAsync(signReq);
+        var signJson = JsonNode.Parse(await signResult.Content.ReadAsStringAsync());
+
+        if (signJson?["access_token"] != null)
+            return Ok(new { accessToken = signJson["access_token"]?.ToString(), refreshToken = signJson["refresh_token"]?.ToString(), userId = signJson["user"]?["id"]?.ToString() });
+
+        // 유저 생성
+        var createReq = new HttpRequestMessage(HttpMethod.Post, $"{supabaseUrl}/auth/v1/signup");
+        createReq.Headers.Add("apikey", serviceKey);
+        createReq.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        var createResult = await _http.SendAsync(createReq);
+        var createJson = JsonNode.Parse(await createResult.Content.ReadAsStringAsync());
+
+        return Ok(new { accessToken = createJson?["access_token"]?.ToString(), refreshToken = createJson?["refresh_token"]?.ToString(), userId = createJson?["user"]?["id"]?.ToString() });
+    }
+}

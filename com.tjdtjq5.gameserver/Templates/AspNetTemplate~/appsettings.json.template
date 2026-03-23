@@ -1,0 +1,13 @@
+{
+  "ConnectionStrings": {
+    "Supabase": ""
+  },
+  "Supabase": {
+    "AuthUrl": "https://{{SUPABASE_PROJECT_ID}}.supabase.co/auth/v1"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information"
+    }
+  }
+}

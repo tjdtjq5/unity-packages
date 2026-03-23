@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Tjdtjq5.GameServer.SourceGen")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d519c1fef72ca29cee16a74bbf8e178c9ea727cb")]
 [assembly: System.Reflection.AssemblyProductAttribute("Tjdtjq5.GameServer.SourceGen")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Tjdtjq5.GameServer.SourceGen")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

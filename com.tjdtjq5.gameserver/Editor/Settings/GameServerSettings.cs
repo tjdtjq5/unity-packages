@@ -6,6 +6,7 @@ namespace Tjdtjq5.GameServer.Editor
 {
     public class GameServerSettings : ScriptableObject
     {
+        public const string VERSION = "0.2.0";
         const string AssetPath = "Assets/Editor/GameServerSettings.asset";
         const string PREF = "GameServer_";
 
@@ -20,6 +21,16 @@ namespace Tjdtjq5.GameServer.Editor
 
         [Header("GitHub")]
         public string githubRepoName;
+
+        [Header("GCP 상태")]
+        public bool gcpCloudRunApiEnabled;
+        public string gcpServiceAccountEmail;
+
+        [Header("Auth")]
+        public System.Collections.Generic.List<string> enabledAuthProviders = new() { "Guest" };
+
+        [Header("배포 캐시")]
+        public System.Collections.Generic.List<string> enabledServerCaches = new() { "nuget", "docker" };
 
         [Header("서버 로그")]
         public bool serverLogToConsole = true;
@@ -49,6 +60,13 @@ namespace Tjdtjq5.GameServer.Editor
             set => EditorPrefs.SetString(PREF + "GithubToken", value);
         }
 
+        /// <summary>Supabase Management API용 Access Token. supabase.com/dashboard/account/tokens에서 발급.</summary>
+        public static string SupabaseAccessToken
+        {
+            get => EditorPrefs.GetString(PREF + "SupabaseAccessToken", "");
+            set => EditorPrefs.SetString(PREF + "SupabaseAccessToken", value);
+        }
+
         // ── 설정 완료 판단 ──
 
         public bool IsSupabaseConfigured =>
@@ -65,6 +83,8 @@ namespace Tjdtjq5.GameServer.Editor
 
         public bool IsDeployConfigured =>
             IsGcpConfigured && IsGitHubConfigured;
+
+        public bool HasCache(string cacheId) => enabledServerCaches.Contains(cacheId);
 
         // ── Supabase 프로젝트 ID 추출 ──
 
@@ -83,7 +103,7 @@ namespace Tjdtjq5.GameServer.Editor
         }
 
         public string SupabaseApiSettingsUrl =>
-            $"https://supabase.com/dashboard/project/{SupabaseProjectId}/settings/api";
+            $"https://supabase.com/dashboard/project/{SupabaseProjectId}/settings/api-keys";
         public string SupabaseDatabaseSettingsUrl =>
             $"https://supabase.com/dashboard/project/{SupabaseProjectId}/settings/database";
         public string SupabaseDashboardUrl =>

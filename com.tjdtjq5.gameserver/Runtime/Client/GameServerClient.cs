@@ -1,6 +1,7 @@
 using System;
 using System.Text;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -88,7 +89,7 @@ namespace Tjdtjq5.GameServer
 
             if (payload != null)
             {
-                var json = JsonUtility.ToJson(payload);
+                var json = JsonConvert.SerializeObject(payload);
                 request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
             }
 
@@ -114,13 +115,31 @@ namespace Tjdtjq5.GameServer
             if (request.result == UnityWebRequest.Result.Success)
             {
                 response.success = true;
-                if (!string.IsNullOrEmpty(request.downloadHandler.text))
-                    response.data = JsonUtility.FromJson<T>(request.downloadHandler.text);
+                var text = request.downloadHandler.text;
+                if (!string.IsNullOrEmpty(text))
+                {
+                    try
+                    {
+                        response.data = JsonConvert.DeserializeObject<T>(text);
+                    }
+                    catch (JsonException)
+                    {
+                        // plain text 응답 (string, int 등)
+                        if (typeof(T) == typeof(string))
+                            response.data = (T)(object)text;
+                        else
+                            response.data = (T)Convert.ChangeType(text.Trim(), typeof(T));
+                    }
+                }
             }
             else
             {
                 response.success = false;
-                response.error = request.error;
+                // 서버 응답 본문에 상세 에러가 있으면 포함
+                var body = request.downloadHandler?.text;
+                response.error = !string.IsNullOrEmpty(body)
+                    ? $"{request.error}\n{body}"
+                    : request.error;
                 response.errorType = ClassifyError(request);
             }
 

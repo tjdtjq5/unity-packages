@@ -1,0 +1,7 @@
+{
+  "name": "가챠",
+  "id": "gacha",
+  "description": "가챠 배너/확률 테이블/뽑기/천장(pity)/이력 관리. 재화/인벤토리 연동.",
+  "tier": 2,
+  "dependencies": ["currency", "inventory"]
+}

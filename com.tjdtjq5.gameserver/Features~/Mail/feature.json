@@ -1,0 +1,7 @@
+{
+  "name": "우편함",
+  "id": "mail",
+  "description": "우편 발송/수신/첨부 보상 수령/삭제. 재화/인벤토리 연동.",
+  "tier": 2,
+  "dependencies": ["currency", "inventory"]
+}

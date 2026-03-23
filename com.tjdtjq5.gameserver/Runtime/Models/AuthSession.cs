@@ -9,6 +9,7 @@ namespace Tjdtjq5.GameServer
         public string refreshToken;
         public string userId;
         public long expiresAt;
+        public bool isGuest;
 
         public bool IsExpired => DateTimeOffset.UtcNow.ToUnixTimeSeconds() >= expiresAt;
     }
