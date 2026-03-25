@@ -16,6 +16,9 @@ namespace Tjdtjq5.GameServer
         Task Save<T>(T entity);
         Task Delete<T>(object primaryKey);
         Task<List<T>> Query<T>(QueryOptions options);
+        Task<int> Count<T>(QueryOptions options);
+        Task SaveAll<T>(List<T> entities);
+        Task DeleteAll<T>(QueryOptions options);
         Task Transaction(Func<IGameDB, Task> action);
     }
 }

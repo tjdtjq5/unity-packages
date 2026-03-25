@@ -205,12 +205,87 @@ namespace Tjdtjq5.GameServer
             return string.Compare(a?.ToString(), b?.ToString(), System.StringComparison.Ordinal);
         }
 
+        // ── Count ──
+
+        public Task<int> Count<T>(QueryOptions options)
+        {
+            if (options == null || options.Filters.Count == 0)
+            {
+                var count = GetTable(typeof(T).Name).Count;
+                Log($"Count<{typeof(T).Name}>(no filters) → {count}");
+                return Task.FromResult(count);
+            }
+
+            var table = GetTable(typeof(T).Name);
+            var fields = typeof(T).GetFields(BindingFlags.Public | BindingFlags.Instance);
+            var result = 0;
+
+            foreach (var json in table.Values)
+            {
+                var entity = JsonUtility.FromJson<T>(json);
+                if (MatchesFilters(entity, fields, options.Filters))
+                    result++;
+            }
+
+            Log($"Count<{typeof(T).Name}>({options.Filters.Count} filters) → {result}");
+            return Task.FromResult(result);
+        }
+
+        // ── SaveAll ──
+
+        public Task SaveAll<T>(List<T> entities)
+        {
+            if (entities == null || entities.Count == 0)
+                return Task.CompletedTask;
+
+            foreach (var e in entities)
+                Save(e);
+
+            Log($"SaveAll<{typeof(T).Name}>({entities.Count} entities)");
+            return Task.CompletedTask;
+        }
+
+        // ── DeleteAll ──
+
+        public Task DeleteAll<T>(QueryOptions options)
+        {
+            var table = GetTable(typeof(T).Name);
+            var fields = typeof(T).GetFields(BindingFlags.Public | BindingFlags.Instance);
+            var toRemove = new List<string>();
+
+            foreach (var (pk, json) in table)
+            {
+                var entity = JsonUtility.FromJson<T>(json);
+                if (options == null || options.Filters.Count == 0 || MatchesFilters(entity, fields, options.Filters))
+                    toRemove.Add(pk);
+            }
+
+            foreach (var pk in toRemove)
+                table.Remove(pk);
+
+            Log($"DeleteAll<{typeof(T).Name}>({options?.Filters.Count ?? 0} filters) → {toRemove.Count} deleted");
+            return Task.CompletedTask;
+        }
+
         // ── Transaction ──
 
         public async Task Transaction(Func<IGameDB, Task> action)
         {
-            // LocalGameDB에서는 순차 실행 (롤백 없음)
-            await action(this);
+            // 스냅샷 생성 → 실패 시 롤백
+            var snapshot = _tables.ToDictionary(
+                kv => kv.Key,
+                kv => new Dictionary<string, string>(kv.Value));
+            try
+            {
+                await action(this);
+            }
+            catch
+            {
+                _tables.Clear();
+                foreach (var kv in snapshot)
+                    _tables[kv.Key] = kv.Value;
+                throw;
+            }
         }
 
         // ── 내부 헬퍼 ──

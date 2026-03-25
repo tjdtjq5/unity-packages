@@ -143,6 +143,9 @@ public interface IGameDB
     Task Save<T>(T entity);
     Task Delete<T>(object primaryKey);
     Task<List<T>> Query<T>(QueryOptions options);
+    Task<int> Count<T>(QueryOptions options);
+    Task SaveAll<T>(List<T> entities);
+    Task DeleteAll<T>(QueryOptions options);
     Task Transaction(Func<IGameDB, Task> action);
 }");
         }
@@ -163,8 +166,16 @@ using Dapper;
 public class DapperGameDB : IGameDB
 {
     readonly string _cs;
-    public DapperGameDB(string connectionString) => _cs = connectionString;
-    IDbConnection Conn() => new NpgsqlConnection(_cs);
+    readonly IDbConnection _sharedConn;
+    readonly IDbTransaction _tx;
+
+    public DapperGameDB(string connectionString) { _cs = connectionString; }
+    DapperGameDB(IDbConnection conn, IDbTransaction tx) { _sharedConn = conn; _tx = tx; }
+
+    // 트랜잭션 모드: sharedConn 재사용 (dispose 금지)
+    // 일반 모드: 새 커넥션 생성 (using으로 dispose)
+    bool IsTransaction => _sharedConn != null;
+    IDbConnection GetConn() => _sharedConn ?? new NpgsqlConnection(_cs);
 
     // lowercase 컬럼 → camelCase 필드 매핑용 SELECT 컬럼 생성
     static string SelectCols<T>()
@@ -178,81 +189,179 @@ public class DapperGameDB : IGameDB
         }));
     }
 
+    // WHERE 절 + 파라미터 빌드 (공통)
+    static (string where, DynamicParameters param) BuildWhere(QueryOptions options)
+    {
+        var param = new DynamicParameters();
+        if (options?.Filters?.Count > 0)
+        {
+            var parts = new List<string>();
+            for (int i = 0; i < options.Filters.Count; i++)
+            {
+                var f = options.Filters[i];
+                var pn = $""p{i}"";
+                var op = f.Operator == ""like"" ? ""ILIKE"" : f.Operator;
+                var val = f.Operator == ""like"" ? $""%{f.Value}%"" : f.Value;
+                parts.Add($""{f.Column.ToLower()} {op} @{pn}"");
+                param.Add(pn, val);
+            }
+            return ("" WHERE "" + string.Join("" AND "", parts), param);
+        }
+        return ("""", param);
+    }
+
     public async Task<T> Get<T>(object primaryKey)
     {
-        using var c = Conn();
-        var table = typeof(T).Name.ToLower() + ""s"";
-        var cols = SelectCols<T>();
-        return await c.QueryFirstOrDefaultAsync<T>($""SELECT {cols} FROM {table} WHERE id = @id"", new { id = primaryKey });
+        var c = GetConn();
+        try
+        {
+            var table = typeof(T).Name.ToLower() + ""s"";
+            var cols = SelectCols<T>();
+            return await c.QueryFirstOrDefaultAsync<T>($""SELECT {cols} FROM {table} WHERE id = @id"", new { id = primaryKey }, _tx);
+        }
+        finally { if (!IsTransaction) c.Dispose(); }
     }
 
     public async Task<List<T>> GetAll<T>()
     {
-        using var c = Conn();
-        var table = typeof(T).Name.ToLower() + ""s"";
-        var cols = SelectCols<T>();
-        return (await c.QueryAsync<T>($""SELECT {cols} FROM {table}"")).ToList();
+        var c = GetConn();
+        try
+        {
+            var table = typeof(T).Name.ToLower() + ""s"";
+            var cols = SelectCols<T>();
+            return (await c.QueryAsync<T>($""SELECT {cols} FROM {table}"", transaction: _tx)).ToList();
+        }
+        finally { if (!IsTransaction) c.Dispose(); }
     }
 
     public async Task Save<T>(T entity)
     {
-        using var c = Conn();
-        var type = typeof(T);
-        var fields = type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-        var names = string.Join("", "", fields.Select(f => f.Name.ToLower()));
-        var values = string.Join("", "", fields.Select(f => ""@"" + f.Name));
-        var updates = string.Join("", "", fields.Where(f => f.Name != ""id"").Select(f => $""{f.Name.ToLower()} = @{f.Name}""));
-        var table = type.Name.ToLower() + ""s"";
-        var sql = $""INSERT INTO {table} ({names}) VALUES ({values}) ON CONFLICT (id) DO UPDATE SET {updates}"";
-        // 명시적으로 필드 값을 DynamicParameters에 바인딩 (public fields 지원)
-        var param = new DynamicParameters();
-        foreach (var f in fields)
-            param.Add(f.Name, f.GetValue(entity));
-        await c.ExecuteAsync(sql, param);
+        var c = GetConn();
+        try
+        {
+            var type = typeof(T);
+            var fields = type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            var names = string.Join("", "", fields.Select(f => f.Name.ToLower()));
+            var values = string.Join("", "", fields.Select(f => ""@"" + f.Name));
+            var updates = string.Join("", "", fields.Where(f => f.Name != ""id"").Select(f => $""{f.Name.ToLower()} = @{f.Name}""));
+            var table = type.Name.ToLower() + ""s"";
+            var sql = $""INSERT INTO {table} ({names}) VALUES ({values}) ON CONFLICT (id) DO UPDATE SET {updates}"";
+            var param = new DynamicParameters();
+            foreach (var f in fields)
+                param.Add(f.Name, f.GetValue(entity));
+            await c.ExecuteAsync(sql, param, _tx);
+        }
+        finally { if (!IsTransaction) c.Dispose(); }
     }
 
     public async Task Delete<T>(object primaryKey)
     {
-        using var c = Conn();
-        var table = typeof(T).Name.ToLower() + ""s"";
-        await c.ExecuteAsync($""DELETE FROM {table} WHERE id = @id"", new { id = primaryKey });
+        var c = GetConn();
+        try
+        {
+            var table = typeof(T).Name.ToLower() + ""s"";
+            await c.ExecuteAsync($""DELETE FROM {table} WHERE id = @id"", new { id = primaryKey }, _tx);
+        }
+        finally { if (!IsTransaction) c.Dispose(); }
     }
 
     public async Task<List<T>> Query<T>(QueryOptions options)
     {
-        using var c = Conn();
-        var table = typeof(T).Name.ToLower() + ""s"";
-        var cols = SelectCols<T>();
-        var sql = $""SELECT {cols} FROM {table}"";
-        var param = new DynamicParameters();
-
-        if (options?.Filters?.Count > 0)
+        var c = GetConn();
+        try
         {
-            var where = new List<string>();
-            for (int i = 0; i < options.Filters.Count; i++)
-            {
-                var f = options.Filters[i];
-                var paramName = $""p{i}"";
-                var op = f.Operator == ""like"" ? ""ILIKE"" : f.Operator;
-                var val = f.Operator == ""like"" ? $""%{f.Value}%"" : f.Value;
-                where.Add($""{f.Column.ToLower()} {op} @{paramName}"");
-                param.Add(paramName, val);
-            }
-            sql += "" WHERE "" + string.Join("" AND "", where);
+            var table = typeof(T).Name.ToLower() + ""s"";
+            var cols = SelectCols<T>();
+            var (where, param) = BuildWhere(options);
+            var sql = $""SELECT {cols} FROM {table}{where}"";
+
+            if (!string.IsNullOrEmpty(options?.OrderBy))
+                sql += $"" ORDER BY {options.OrderBy.ToLower()}"" + (options.OrderDesc ? "" DESC"" : "" ASC"");
+
+            sql += $"" LIMIT {options?.Limit ?? 1000}"";
+            if (options?.Offset > 0) sql += $"" OFFSET {options.Offset}"";
+
+            return (await c.QueryAsync<T>(sql, param, _tx)).ToList();
         }
+        finally { if (!IsTransaction) c.Dispose(); }
+    }
 
-        if (!string.IsNullOrEmpty(options?.OrderBy))
-            sql += $"" ORDER BY {options.OrderBy.ToLower()}"" + (options.OrderDesc ? "" DESC"" : "" ASC"");
+    public async Task<int> Count<T>(QueryOptions options)
+    {
+        var c = GetConn();
+        try
+        {
+            var table = typeof(T).Name.ToLower() + ""s"";
+            var (where, param) = BuildWhere(options);
+            return await c.ExecuteScalarAsync<int>($""SELECT COUNT(*) FROM {table}{where}"", param, _tx);
+        }
+        finally { if (!IsTransaction) c.Dispose(); }
+    }
 
-        sql += $"" LIMIT {options?.Limit ?? 1000}"";
-        if (options?.Offset > 0) sql += $"" OFFSET {options.Offset}"";
+    public async Task SaveAll<T>(List<T> entities)
+    {
+        if (entities == null || entities.Count == 0) return;
+        var c = GetConn();
+        try
+        {
+            if (!IsTransaction) ((NpgsqlConnection)c).Open();
 
-        return (await c.QueryAsync<T>(sql, param)).ToList();
+            var type = typeof(T);
+            var fields = type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            var names = string.Join("", "", fields.Select(f => f.Name.ToLower()));
+            var updates = string.Join("", "", fields.Where(f => f.Name != ""id"").Select(f => $""{f.Name.ToLower()} = EXCLUDED.{f.Name.ToLower()}""));
+            var table = type.Name.ToLower() + ""s"";
+
+            var valueClauses = new List<string>();
+            var param = new DynamicParameters();
+            for (int i = 0; i < entities.Count; i++)
+            {
+                var vals = string.Join("", "", fields.Select(f => $""@{f.Name}_{i}""));
+                valueClauses.Add($""({vals})"");
+                foreach (var f in fields)
+                    param.Add($""{f.Name}_{i}"", f.GetValue(entities[i]));
+            }
+
+            var sql = $""INSERT INTO {table} ({names}) VALUES {string.Join("", "", valueClauses)} ON CONFLICT (id) DO UPDATE SET {updates}"";
+            await c.ExecuteAsync(sql, param, _tx);
+        }
+        finally { if (!IsTransaction) c.Dispose(); }
+    }
+
+    public async Task DeleteAll<T>(QueryOptions options)
+    {
+        var c = GetConn();
+        try
+        {
+            var table = typeof(T).Name.ToLower() + ""s"";
+            var (where, param) = BuildWhere(options);
+            await c.ExecuteAsync($""DELETE FROM {table}{where}"", param, _tx);
+        }
+        finally { if (!IsTransaction) c.Dispose(); }
     }
 
     public async Task Transaction(Func<IGameDB, Task> action)
     {
-        await action(this);
+        if (_sharedConn != null)
+        {
+            // 이미 트랜잭션 안이면 그대로 실행
+            await action(this);
+            return;
+        }
+        using var conn = new NpgsqlConnection(_cs);
+        await conn.OpenAsync();
+        using var tx = await conn.BeginTransactionAsync();
+        try
+        {
+            var txDb = new DapperGameDB(conn, tx);
+            await action(txDb);
+            await tx.CommitAsync();
+        }
+        catch
+        {
+            await tx.RollbackAsync();
+            throw;
+        }
     }
 }");
         }
