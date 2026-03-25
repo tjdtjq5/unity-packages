@@ -175,7 +175,7 @@ namespace Tjdtjq5.CICD.Editor
                 sb.AppendLine("          path: |");
                 sb.AppendLine("            ~/.gradle/caches");
                 sb.AppendLine("            ~/.gradle/wrapper");
-                sb.AppendLine("          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}");
+                sb.AppendLine("          key: gradle-${{ hashFiles('Assets/Plugins/Android/*.gradle', 'Assets/Plugins/Android/*.properties') }}");
                 sb.AppendLine("          restore-keys: gradle-");
                 sb.AppendLine("          save-always: true");
                 sb.AppendLine();
@@ -187,7 +187,7 @@ namespace Tjdtjq5.CICD.Editor
                 sb.AppendLine("        uses: actions/cache@v4");
                 sb.AppendLine("        with:");
                 sb.AppendLine("          path: Library/Il2cppBuildCache");
-                sb.AppendLine("          key: il2cpp-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/Scripts/**', 'Packages/manifest.json') }}");
+                sb.AppendLine("          key: il2cpp-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/**/*.cs', 'Packages/manifest.json') }}");
                 sb.AppendLine("          restore-keys: il2cpp-${{ matrix.targetPlatform }}-");
                 sb.AppendLine("          save-always: true");
                 sb.AppendLine();
@@ -242,7 +242,7 @@ namespace Tjdtjq5.CICD.Editor
             if (caches.Contains(CacheTypes.DockerImage))
             {
                 sb.AppendLine("      - name: Save Unity Docker image");
-                sb.AppendLine("        if: steps.docker-cache.outputs.cache-hit != 'true'");
+                sb.AppendLine("        if: always() && steps.docker-cache.outputs.cache-hit != 'true'");
                 sb.AppendLine("        run: |");
                 sb.AppendLine("          IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep unityci | head -1)");
                 sb.AppendLine("          if [ -n \"$IMAGE\" ]; then");

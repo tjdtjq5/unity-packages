@@ -49,7 +49,7 @@ namespace Tjdtjq5.CICD.Editor
         // ── 캐시 ──
 
         [Header("캐시")]
-        public System.Collections.Generic.List<string> enabledCaches = new() { "library" };
+        public System.Collections.Generic.List<string> enabledCaches = new() { "library", "gradle", "il2cpp", "docker-image" };
 
         /// <summary>특정 캐시가 활성화되어있는지.</summary>
         public bool HasCache(string cacheId) => enabledCaches.Contains(cacheId);

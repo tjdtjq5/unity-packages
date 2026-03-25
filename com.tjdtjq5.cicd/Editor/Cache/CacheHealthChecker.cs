@@ -138,6 +138,7 @@ namespace Tjdtjq5.CICD.Editor
                 EditorPrefs.SetString(PREF_KEYSTORE, s.keystore);
                 EditorPrefs.SetString(PREF_SCRIPTING_BACKEND, s.scriptingBackend);
                 EditorPrefs.SetString(PREF_PACKAGE_NAME, s.packageName);
+                EditorPrefs.SetString(PREF_ANDROID_FORMAT, s.androidFormat);
                 return;
             }
 
