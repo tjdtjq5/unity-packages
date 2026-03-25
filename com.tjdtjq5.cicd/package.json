@@ -1,6 +1,6 @@
 {
   "name": "com.tjdtjq5.cicd",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "displayName": "CI/CD",
   "description": "GameCI 기반 Unity CI/CD 파이프라인 자동 생성 패키지",
   "unity": "6000.1",
