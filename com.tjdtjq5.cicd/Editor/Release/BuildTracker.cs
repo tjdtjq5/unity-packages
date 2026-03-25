@@ -22,7 +22,7 @@ namespace Tjdtjq5.CICD.Editor
         static bool _polling;
 
         const double POLL_INTERVAL = 15;
-        const double TIMEOUT = 600; // 10분
+        const double TIMEOUT = 3600; // 60분
 
         // ── 빌드 히스토리 ──
 

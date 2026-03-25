@@ -19,6 +19,7 @@ namespace Tjdtjq5.CICD.Editor
         const string PREF_KEYSTORE = PREF + "Keystore";
         const string PREF_SCRIPTING_BACKEND = PREF + "ScriptingBackend";
         const string PREF_PACKAGE_NAME = PREF + "PackageName";
+        const string PREF_ANDROID_FORMAT = PREF + "AndroidFormat";
 
         public enum Severity { Error, Warning, Info }
 
@@ -52,6 +53,7 @@ namespace Tjdtjq5.CICD.Editor
                 platforms = GetCurrentPlatformString(),
                 keystore = GetCurrentKeystoreString(),
                 scriptingBackend = GetCurrentScriptingBackend(),
+                androidFormat = GetCurrentAndroidFormat(),
             };
 
             _cached = RunAllChecks(snapshot);
@@ -66,6 +68,7 @@ namespace Tjdtjq5.CICD.Editor
             public string platforms;
             public string keystore;
             public string scriptingBackend;
+            public string androidFormat;
         }
 
         public static void Invalidate() => _cached = null;
@@ -79,6 +82,7 @@ namespace Tjdtjq5.CICD.Editor
             EditorPrefs.SetString(PREF_KEYSTORE, GetCurrentKeystoreString());
             EditorPrefs.SetString(PREF_SCRIPTING_BACKEND, GetCurrentScriptingBackend());
             EditorPrefs.SetString(PREF_PACKAGE_NAME, PlayerSettings.applicationIdentifier);
+            EditorPrefs.SetString(PREF_ANDROID_FORMAT, GetCurrentAndroidFormat());
             Invalidate();
         }
 
@@ -115,6 +119,7 @@ namespace Tjdtjq5.CICD.Editor
             CheckScriptingBackendChange(alerts, s.scriptingBackend);
             CheckPackageNameChange(alerts, s.packageName);
             CheckGradleConfigChange(alerts);
+            CheckAndroidFormatChange(alerts, s.androidFormat);
             CheckUnusedCaches(alerts, s);
             CheckGitChanges(alerts);
 
@@ -141,6 +146,8 @@ namespace Tjdtjq5.CICD.Editor
                 EditorPrefs.SetString(PREF_PACKAGE_NAME, s.packageName);
             if (!EditorPrefs.HasKey(PREF_SCRIPTING_BACKEND))
                 EditorPrefs.SetString(PREF_SCRIPTING_BACKEND, s.scriptingBackend);
+            if (!EditorPrefs.HasKey(PREF_ANDROID_FORMAT))
+                EditorPrefs.SetString(PREF_ANDROID_FORMAT, s.androidFormat);
         }
 
         // ── 기존 검사 (영향 캐시 명시) ──
@@ -181,7 +188,7 @@ namespace Tjdtjq5.CICD.Editor
             if (saved != currentVersion)
                 alerts.Add(new Alert(Severity.Warning,
                     $"Unity 버전 변경 ({saved} → {currentVersion})",
-                    CacheTypes.Library, CacheTypes.IL2CPP, CacheTypes.Docker));
+                    CacheTypes.Library, CacheTypes.IL2CPP, CacheTypes.DockerImage));
         }
 
         static void CheckPlatformChange(List<Alert> alerts, string currentPlatforms)
@@ -202,7 +209,7 @@ namespace Tjdtjq5.CICD.Editor
             if (days > 7)
                 alerts.Add(new Alert(Severity.Warning,
                     $"마지막 빌드 {(int)days}일 전 — GitHub 캐시 만료됨",
-                    CacheTypes.Library, CacheTypes.Gradle, CacheTypes.IL2CPP));
+                    CacheTypes.Library, CacheTypes.Gradle, CacheTypes.IL2CPP, CacheTypes.DockerImage));
         }
 
         static void CheckKeystoreChange(List<Alert> alerts, string currentKeystore)
@@ -265,6 +272,17 @@ namespace Tjdtjq5.CICD.Editor
                     break;
                 }
             }
+        }
+
+        /// <summary>APK ↔ AAB 전환 시 Gradle 캐시 무효화 필요.</summary>
+        static void CheckAndroidFormatChange(List<Alert> alerts, string currentFormat)
+        {
+            var saved = EditorPrefs.GetString(PREF_ANDROID_FORMAT, "");
+            if (string.IsNullOrEmpty(saved)) return;
+            if (saved != currentFormat)
+                alerts.Add(new Alert(Severity.Warning,
+                    $"Android 빌드 포맷 변경 ({saved} → {currentFormat})",
+                    CacheTypes.Gradle));
         }
 
         /// <summary>활성화된 캐시가 현재 설정과 맞지 않는 경우 안내.</summary>
@@ -340,6 +358,12 @@ namespace Tjdtjq5.CICD.Editor
         {
             var s = BuildAutomationSettings.Instance;
             return $"{s.keystorePath}|{s.keyAlias}";
+        }
+
+        static string GetCurrentAndroidFormat()
+        {
+            var s = BuildAutomationSettings.Instance;
+            return s.androidBuildFormat.ToString();
         }
 
         static string GetCurrentScriptingBackend()

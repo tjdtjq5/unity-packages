@@ -17,7 +17,7 @@ namespace Tjdtjq5.CICD.Editor
             AppendBuildJob(sb, settings);
 
             if (settings.deployGitHubReleases)
-                AppendReleaseJob(sb);
+                AppendReleaseJob(sb, settings);
 
             if (settings.deployGooglePlay)
                 AppendGooglePlayJob(sb);
@@ -103,13 +103,16 @@ namespace Tjdtjq5.CICD.Editor
             else
                 sb.AppendLine("    runs-on: ubuntu-latest");
 
-            // 매트릭스
+            // 매트릭스 (include 방식: 플랫폼별 artifactPath 포함)
             sb.AppendLine("    strategy:");
             sb.AppendLine("      fail-fast: false");
             sb.AppendLine("      matrix:");
-            sb.AppendLine("        targetPlatform:");
+            sb.AppendLine("        include:");
             foreach (var p in platforms)
-                sb.AppendLine($"          - {p}");
+            {
+                sb.AppendLine($"          - targetPlatform: {p}");
+                sb.AppendLine($"            artifactPath: {GetArtifactPath(p, settings)}");
+            }
 
             // outputs (release job에서 사용)
             sb.AppendLine("    outputs:");
@@ -128,11 +131,11 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("          swap-storage: true");
             sb.AppendLine();
 
-            // checkout
+            // checkout (shallow — 버전은 GITHUB_REF_NAME에서 추출하므로 히스토리 불필요)
             sb.AppendLine("      - name: Checkout");
             sb.AppendLine("        uses: actions/checkout@v4");
             sb.AppendLine("        with:");
-            sb.AppendLine("          fetch-depth: 0");
+            sb.AppendLine("          fetch-depth: 1");
             sb.AppendLine("          lfs: true");
             sb.AppendLine();
 
@@ -147,7 +150,7 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("          fi");
             sb.AppendLine();
 
-            // 캐시 (활성화된 캐시만 step 생성)
+            // ── 캐시 (활성화된 캐시만 step 생성) ──
             var caches = settings.enabledCaches;
 
             if (caches.Contains(CacheTypes.Library))
@@ -156,7 +159,7 @@ namespace Tjdtjq5.CICD.Editor
                 sb.AppendLine("        uses: actions/cache@v4");
                 sb.AppendLine("        with:");
                 sb.AppendLine("          path: Library");
-                sb.AppendLine("          key: Library-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}");
+                sb.AppendLine("          key: Library-${{ matrix.targetPlatform }}-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt', 'ProjectSettings/ProjectSettings.asset') }}");
                 sb.AppendLine("          restore-keys: |");
                 sb.AppendLine("            Library-${{ matrix.targetPlatform }}-");
                 sb.AppendLine("          save-always: true");
@@ -184,31 +187,25 @@ namespace Tjdtjq5.CICD.Editor
                 sb.AppendLine("        uses: actions/cache@v4");
                 sb.AppendLine("        with:");
                 sb.AppendLine("          path: Library/Il2cppBuildCache");
-                sb.AppendLine("          key: il2cpp-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/Scripts/**', 'Packages/**') }}");
+                sb.AppendLine("          key: il2cpp-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/Scripts/**', 'Packages/manifest.json') }}");
                 sb.AppendLine("          restore-keys: il2cpp-${{ matrix.targetPlatform }}-");
                 sb.AppendLine("          save-always: true");
                 sb.AppendLine();
             }
 
-            if (caches.Contains(CacheTypes.Npm))
+            // Docker 이미지 캐싱 (restore + load)
+            if (caches.Contains(CacheTypes.DockerImage))
             {
-                sb.AppendLine("      - name: Cache npm");
+                sb.AppendLine("      - name: Restore Unity Docker image");
+                sb.AppendLine("        id: docker-cache");
                 sb.AppendLine("        uses: actions/cache@v4");
                 sb.AppendLine("        with:");
-                sb.AppendLine("          path: ~/.npm");
-                sb.AppendLine("          key: npm-${{ hashFiles('**/package-lock.json') }}");
-                sb.AppendLine("          restore-keys: npm-");
+                sb.AppendLine("          path: /tmp/unity-image.tar");
+                sb.AppendLine("          key: unity-docker-${{ matrix.targetPlatform }}-${{ hashFiles('ProjectSettings/ProjectVersion.txt') }}");
                 sb.AppendLine();
-            }
-
-            if (caches.Contains(CacheTypes.Docker))
-            {
-                sb.AppendLine("      - name: Cache Docker layers");
-                sb.AppendLine("        uses: actions/cache@v4");
-                sb.AppendLine("        with:");
-                sb.AppendLine("          path: /tmp/.buildx-cache");
-                sb.AppendLine("          key: docker-${{ runner.os }}-${{ hashFiles('**/Dockerfile') }}");
-                sb.AppendLine("          restore-keys: docker-${{ runner.os }}-");
+                sb.AppendLine("      - name: Load cached Docker image");
+                sb.AppendLine("        if: steps.docker-cache.outputs.cache-hit == 'true'");
+                sb.AppendLine("        run: docker load < /tmp/unity-image.tar");
                 sb.AppendLine();
             }
 
@@ -241,18 +238,31 @@ namespace Tjdtjq5.CICD.Editor
 
             sb.AppendLine();
 
+            // Docker 이미지 캐싱 (save — 캐시 미스 시만)
+            if (caches.Contains(CacheTypes.DockerImage))
+            {
+                sb.AppendLine("      - name: Save Unity Docker image");
+                sb.AppendLine("        if: steps.docker-cache.outputs.cache-hit != 'true'");
+                sb.AppendLine("        run: |");
+                sb.AppendLine("          IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep unityci | head -1)");
+                sb.AppendLine("          if [ -n \"$IMAGE\" ]; then");
+                sb.AppendLine("            docker save \"$IMAGE\" > /tmp/unity-image.tar");
+                sb.AppendLine("          fi");
+                sb.AppendLine();
+            }
+
             // 아티팩트 업로드 (태그 빌드에서만 — 브랜치 빌드는 캐시 워밍만)
             sb.AppendLine("      - name: Upload build artifact");
             sb.AppendLine("        if: startsWith(github.ref, 'refs/tags/v')");
             sb.AppendLine("        uses: actions/upload-artifact@v4");
             sb.AppendLine("        with:");
             sb.AppendLine("          name: build-${{ matrix.targetPlatform }}");
-            sb.AppendLine("          path: build/${{ matrix.targetPlatform }}");
+            sb.AppendLine("          path: ${{ matrix.artifactPath }}");
             sb.AppendLine("          retention-days: 14");
             sb.AppendLine();
         }
 
-        static void AppendReleaseJob(StringBuilder sb)
+        static void AppendReleaseJob(StringBuilder sb, BuildAutomationSettings settings)
         {
             sb.AppendLine("  release:");
             sb.AppendLine("    name: Create GitHub Release");
@@ -267,17 +277,22 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("        with:");
             sb.AppendLine("          path: artifacts");
             sb.AppendLine();
-            sb.AppendLine("      - name: Zip artifacts");
+            sb.AppendLine("      - name: Prepare release assets");
             sb.AppendLine("        run: |");
+            sb.AppendLine("          mkdir -p release");
+            sb.AppendLine("          # APK/AAB 단일 파일은 그대로 복사 (zip 불필요)");
+            sb.AppendLine("          find artifacts -name '*.apk' -o -name '*.aab' | while read f; do cp \"$f\" release/; done");
+            sb.AppendLine("          # 폴더형 아티팩트(Windows, WebGL 등)는 zip으로 묶기");
             sb.AppendLine("          cd artifacts");
             sb.AppendLine("          for dir in */; do");
-            sb.AppendLine("            zip -r \"${dir%/}.zip\" \"$dir\"");
+            sb.AppendLine("            if ls \"${dir}\"*.apk \"${dir}\"*.aab 2>/dev/null | grep -q .; then continue; fi");
+            sb.AppendLine("            zip -r \"../release/${dir%/}.zip\" \"$dir\"");
             sb.AppendLine("          done");
             sb.AppendLine();
             sb.AppendLine("      - name: Create Release");
             sb.AppendLine("        uses: softprops/action-gh-release@v2");
             sb.AppendLine("        with:");
-            sb.AppendLine("          files: artifacts/*.zip");
+            sb.AppendLine("          files: release/*");
             sb.AppendLine("          generate_release_notes: true");
             sb.AppendLine();
         }
@@ -461,6 +476,17 @@ namespace Tjdtjq5.CICD.Editor
             if (settings.enableWindows) list.Add("StandaloneWindows64");
             if (settings.enableWebGL) list.Add("WebGL");
             return list;
+        }
+
+        /// <summary>플랫폼별 아티팩트 업로드 경로 (Android는 APK/AAB만, 나머지는 폴더 전체)</summary>
+        static string GetArtifactPath(string platform, BuildAutomationSettings settings)
+        {
+            if (platform == "Android")
+            {
+                string ext = settings.androidBuildFormat == AndroidBuildFormat.AAB ? "*.aab" : "*.apk";
+                return $"build/Android/{ext}";
+            }
+            return $"build/{platform}";
         }
     }
 }
