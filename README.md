@@ -137,32 +137,25 @@ Unity 에디터에서 Claude Code CLI 실행 + Channel Bridge(MCP) + Discord 연
 
 ---
 
-### GameServer `v0.4.0`
+### SupaRun `v0.1.0`
 
-Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지
+Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. Supabase + Cloud Run 자동 배포.
 
 | 기능 | 내용 |
 |------|------|
-| [TableData] / [SpecData] | 어트리뷰트로 DB 테이블 + CRUD 자동 생성 |
-| [ServerLogic] | 서버 로직 작성 → 타입 안전 프록시 자동 생성 |
+| [Table] / [Config] | 어트리뷰트로 DB 테이블 + CRUD 자동 생성 |
+| [Service] / [API] | 서버 로직 작성 → 타입 안전 프록시 자동 생성 |
 | LocalGameDB | 미배포 로직은 Unity 내에서 즉시 실행 |
-| Setup Wizard | Supabase/GCP/GitHub 단계별 설정 안내 |
-| 배포 | [배포] 버튼 → GitHub push → Cloud Run 자동 배포 |
-
-**Package Manager URL:**
-```
-https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.gameserver#gameserver/v0.4.0
-```
-
-<details>
-<summary>manifest.json에 직접 추가</summary>
+| Dashboard | Status / Deploy / Monitor 3탭 대시보드 |
+| Auth | 게스트 자동 로그인 + OAuth 12종 + GPGS/GameCenter |
+| Features | Currency, Inventory, Shop 등 8종 템플릿 |
+| 배포 | 원버튼 → GitHub push → Cloud Run 자동 배포 |
 
 ```json
-"com.tjdtjq5.gameserver": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.gameserver#gameserver/v0.4.0"
+"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.1.0"
 ```
-</details>
 
-> 의존: `editor-toolkit >= 1.2.0`
+> 의존: `editor-toolkit >= 1.1.0`
 
 ---
 
@@ -173,7 +166,7 @@ editor-toolkit (독립)
   ├── cicd
   ├── ugs-manager
   ├── ui-framework (+ DOTween, VContainer)
-  ├── gameserver
+  ├── suparun
   └── claude
 ```
 

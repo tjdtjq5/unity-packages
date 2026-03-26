@@ -1,0 +1,20 @@
+{
+    "name": "Tjdtjq5.SupaRun.Editor",
+    "rootNamespace": "Tjdtjq5.SupaRun.Editor",
+    "references": [
+        "Tjdtjq5.SupaRun.Runtime",
+        "Tjdtjq5.EditorToolkit.Editor",
+        "Tjdtjq5.EditorToolkit.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

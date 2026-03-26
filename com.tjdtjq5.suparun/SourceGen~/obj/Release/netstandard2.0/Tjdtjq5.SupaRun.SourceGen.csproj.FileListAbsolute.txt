@@ -1,0 +1,11 @@
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\bin\Release\netstandard2.0\Tjdtjq5.SupaRun.SourceGen.deps.json
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\bin\Release\netstandard2.0\Tjdtjq5.SupaRun.SourceGen.dll
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\bin\Release\netstandard2.0\Tjdtjq5.SupaRun.SourceGen.pdb
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.SupaRun.SourceGen.csproj.AssemblyReference.cache
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.SupaRun.SourceGen.GeneratedMSBuildEditorConfig.editorconfig
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.SupaRun.SourceGen.AssemblyInfoInputs.cache
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.SupaRun.SourceGen.AssemblyInfo.cs
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.SupaRun.SourceGen.csproj.CoreCompileInputs.cache
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.SupaRun.SourceGen.sourcelink.json
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.SupaRun.SourceGen.dll
+C:\workspace\unity\ServerTest\Packages\com.tjdtjq5.gameserver\SourceGen~\obj\Release\netstandard2.0\Tjdtjq5.SupaRun.SourceGen.pdb

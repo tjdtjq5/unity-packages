@@ -1,0 +1,80 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// DB
+var connectionString = builder.Configuration.GetConnectionString("Supabase");
+builder.Services.AddScoped<IGameDB>(_ => new DapperGameDB(connectionString));
+
+// Controllers (public fields 직렬화 활성화)
+builder.Services.AddControllers()
+    .AddJsonOptions(o => o.JsonSerializerOptions.IncludeFields = true);
+
+// Auth
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.Authority = builder.Configuration["Supabase:AuthUrl"];
+        options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+        {
+            ValidateAudience = false
+        };
+    });
+
+// Rate Limiting (유저별)
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        var userId = context.User?.FindFirst("sub")?.Value
+                  ?? context.Connection.RemoteIpAddress?.ToString()
+                  ?? "anonymous";
+
+        return RateLimitPartition.GetFixedWindowLimiter(userId, _ =>
+            new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 100,
+                Window = TimeSpan.FromMinutes(1)
+            });
+    });
+});
+
+// Response Compression
+builder.Services.AddResponseCompression();
+
+var app = builder.Build();
+
+// Auto Migration
+{
+    var migrationDir = Path.Combine(AppContext.BaseDirectory, "Migrations");
+    if (Directory.Exists(migrationDir))
+    {
+        using var conn = new Npgsql.NpgsqlConnection(connectionString);
+        conn.Open();
+        foreach (var sqlFile in Directory.GetFiles(migrationDir, "*.sql").OrderBy(f => f))
+        {
+            try
+            {
+                var sql = File.ReadAllText(sqlFile);
+                using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Migration] {Path.GetFileName(sqlFile)} OK");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Migration] {Path.GetFileName(sqlFile)} SKIP: {ex.Message}");
+            }
+        }
+    }
+}
+
+app.UseResponseCompression();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
+app.MapControllers();
+app.MapGet("/health", () => "OK");
+app.Run();

@@ -1,0 +1,14 @@
+{
+    "name": "Tjdtjq5.SupaRun.Runtime",
+    "rootNamespace": "Tjdtjq5.SupaRun",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
