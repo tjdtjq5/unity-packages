@@ -21,7 +21,7 @@ namespace Tjdtjq5.SupaRun.Editor
         static bool _polling;
 
         const double POLL_INTERVAL = 15;
-        const double TIMEOUT = 300; // 5분
+        const double TIMEOUT = 600; // 10분
 
         public static void StartTracking(string repo)
         {

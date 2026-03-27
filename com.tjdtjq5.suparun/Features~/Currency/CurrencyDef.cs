@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>재화 종류 정의. 서버 Config에서 관리.</summary>
-[Config]
+[Config("currency")]
 public class CurrencyDef
 {
     [PrimaryKey] public string id;          // "gold", "diamond", "stamina"

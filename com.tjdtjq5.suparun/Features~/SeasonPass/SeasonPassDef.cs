@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>시즌패스 정의. 관리자가 등록.</summary>
-[Config]
+[Config("seasonpass")]
 public class SeasonPassDef
 {
     [PrimaryKey] public string id;          // "season_1"

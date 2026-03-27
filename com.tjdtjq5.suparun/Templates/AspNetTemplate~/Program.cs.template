@@ -163,11 +163,15 @@ app.Use(async (context, next) =>
                         created_by = isFirst ? "auto" : ""
                     });
                     isAdmin = isFirst;
+                    Console.WriteLine($"[Admin] 자동 등록: {email ?? userId} → {(isFirst ? "admin" : "pending")}");
                 }
-                catch { }
+                catch (Exception regEx)
+                {
+                    Console.WriteLine($"[Admin] 자동 등록 실패: {regEx.Message}");
+                }
             }
         }
-        catch { /* admin_users 테이블 미생성 시 무시 */ }
+        catch (Exception adminEx) { Console.WriteLine($"[Admin] 인증 체크 실패: {adminEx.Message}"); }
 
         if (!isAdmin)
         {

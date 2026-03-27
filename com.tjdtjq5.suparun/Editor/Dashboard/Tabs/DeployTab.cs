@@ -68,7 +68,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
                 case ActionsTracker.Status.Timeout:
                     _state = DeployState.BuildFailed;
-                    _errorMessage = "5분 초과 — GitHub Actions에서 직접 확인하세요.";
+                    _errorMessage = "10분 초과 — GitHub Actions에서 직접 확인하세요.";
                     break;
             }
         }

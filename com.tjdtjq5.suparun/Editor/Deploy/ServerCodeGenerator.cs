@@ -1595,6 +1595,33 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
             sb.AppendLine("    };");
             sb.AppendLine("");
 
+            // Save delegates (플레이어 관리 수정용)
+            sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, object, Task>> _save = new()");
+            sb.AppendLine("    {");
+            foreach (var t in tableTypes)
+                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async (db, e) => await db.Save(({t.Name})e),");
+            sb.AppendLine("    };");
+
+            // Deserialize delegates
+            sb.AppendLine("    static readonly Dictionary<string, Func<string, object>> _deserialize = new()");
+            sb.AppendLine("    {");
+            foreach (var t in tableTypes)
+                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = json => JsonSerializer.Deserialize<{t.Name}>(json, _jsonOpts),");
+            sb.AppendLine("    };");
+
+            // hasUserId 테이블 목록
+            sb.AppendLine("    static readonly HashSet<string> _userTables = new()");
+            sb.AppendLine("    {");
+            foreach (var t in tableTypes)
+            {
+                var hasUserId = t.GetFields(BindingFlags.Public | BindingFlags.Instance)
+                    .Any(f => f.Name == "userId" || f.Name == "user_id");
+                if (hasUserId)
+                    sb.AppendLine($"        \"{ToSnakeCase(t.Name)}\",");
+            }
+            sb.AppendLine("    };");
+            sb.AppendLine("");
+
             // Field → Column 매핑 (camelCase → snake_case)
             sb.AppendLine("    static readonly Dictionary<string, Dictionary<string, string>> _fieldToColumn = new()");
             sb.AppendLine("    {");
@@ -1807,6 +1834,43 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
             sb.AppendLine("                }");
             sb.AppendLine("            }");
             sb.AppendLine("            return Ok(new { count = userIds.Count, userIds, details });");
+            sb.AppendLine("        }");
+            sb.AppendLine("        catch (Exception ex) { return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message }); }");
+            sb.AppendLine("    }");
+            sb.AppendLine("");
+
+            // ── GET /admin/api/player/{userId} ──
+            sb.AppendLine("    [HttpGet(\"/admin/api/player/{userId}\")]");
+            sb.AppendLine("    public async Task<IActionResult> GetPlayer(string userId)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        try");
+            sb.AppendLine("        {");
+            sb.AppendLine("            var tables = new Dictionary<string, object>();");
+            sb.AppendLine("            foreach (var tableName in _userTables)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                var opts = new QueryOptions().Eq(\"user_id\", userId).SetLimit(200);");
+            sb.AppendLine("                tables[tableName] = await _query[tableName](_db, opts);");
+            sb.AppendLine("            }");
+            sb.AppendLine("            return Ok(new { userId, tables });");
+            sb.AppendLine("        }");
+            sb.AppendLine("        catch (Exception ex) { return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message }); }");
+            sb.AppendLine("    }");
+            sb.AppendLine("");
+
+            // ── PUT {typeName}/{id} (플레이어 데이터 수정) ──
+            sb.AppendLine("    [HttpPut(\"{typeName}/{id}\")]");
+            sb.AppendLine("    public async Task<IActionResult> UpdateRow(string typeName, string id, [FromBody] JsonElement body)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (!_save.ContainsKey(typeName)) return NotFound(new { error = $\"Unknown table: {typeName}\" });");
+            sb.AppendLine("        try");
+            sb.AppendLine("        {");
+            sb.AppendLine("            var entity = _deserialize[typeName](body.GetRawText());");
+            sb.AppendLine("            entity.GetType().GetField(\"id\")?.SetValue(entity, id);");
+            sb.AppendLine("            await _save[typeName](_db, entity);");
+            // 감사 로그
+            sb.AppendLine("            var adminId = User?.FindFirst(\"sub\")?.Value ?? \"unknown\";");
+            sb.AppendLine("            try { await _db.Save(new AdminAuditLog { id = Guid.NewGuid().ToString(), admin_id = adminId, config_type = typeName, row_id = id, action = \"player_update\", after_json = body.GetRawText(), created_at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }); } catch { }");
+            sb.AppendLine("            return Ok(entity);");
             sb.AppendLine("        }");
             sb.AppendLine("        catch (Exception ex) { return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message }); }");
             sb.AppendLine("    }");

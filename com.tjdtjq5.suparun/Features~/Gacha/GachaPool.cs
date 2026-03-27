@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>가챠 확률 테이블 항목. bannerId별 풀.</summary>
-[Config]
+[Config("gacha")]
 public class GachaPool
 {
     [PrimaryKey] public string id;

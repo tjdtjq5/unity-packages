@@ -4,7 +4,7 @@ using Tjdtjq5.SupaRun;
 /// 출석 보상 정의. 관리자가 등록.
 /// rewards JSON 예시: [{"type":"currency","id":"gold","amount":100},{"type":"item","id":"potion_hp","amount":3}]
 /// </summary>
-[Config]
+[Config("attendance")]
 public class AttendanceReward
 {
     [PrimaryKey] public string id;

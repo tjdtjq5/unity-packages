@@ -35,6 +35,7 @@
   .loading-spinner{display:flex;justify-content:center;padding:3rem}
   .stat-badge{font-size:.75rem;padding:2px 8px;border-radius:99px;font-weight:500}
   .sidebar-section-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;color:#ffffff60;padding:0 1rem;margin:1rem 0 .25rem}
+  .table th{text-transform:none;font-size:.75rem}
   .row-enter{animation:rowEnter .3s ease both}
   @keyframes rowEnter{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
   .page-transition{animation:pageTransition .3s ease}
@@ -528,22 +529,18 @@ function renderSidebar() {
     li.innerHTML = `<a class="nav-link sidebar-link" href="#" data-type="${stn}" onclick="selectType('${stn}');return false"><span class="nav-link-icon"><i class="ti ti-table"></i></span><span class="nav-link-title">${escHtml(t.name)}</span></a>`;
     ul.appendChild(li);
   }
-  // Table 섹션
+  // Table 섹션 — 크로스 검색(테이블 검색) 탭만
   if (tableTypes.length > 0) {
     const sep = document.createElement('li');
-    sep.innerHTML = '<div class="sidebar-section-label mt-3">Table (읽기 전용)</div>';
+    sep.innerHTML = '<div class="sidebar-section-label mt-3">Table</div>';
     ul.appendChild(sep);
-    for (const t of tableTypes) {
-      const li = document.createElement('li');
-      li.className = 'nav-item';
-      const stn = escHtml(t.tableName);
-      li.innerHTML = `<a class="nav-link sidebar-link" href="#" data-type="${stn}" onclick="selectTableType('${stn}');return false"><span class="nav-link-icon"><i class="ti ti-database"></i></span><span class="nav-link-title">${escHtml(t.name)}</span></a>`;
-      ul.appendChild(li);
-    }
-    // 크로스 검색
+    const player = document.createElement('li');
+    player.className = 'nav-item';
+    player.innerHTML = `<a class="nav-link sidebar-link" href="#" onclick="showPlayerSearch();return false"><span class="nav-link-icon"><i class="ti ti-user-search"></i></span><span class="nav-link-title">플레이어 관리</span></a>`;
+    ul.appendChild(player);
     const cross = document.createElement('li');
     cross.className = 'nav-item';
-    cross.innerHTML = `<a class="nav-link sidebar-link" href="#" onclick="showCrossSearch();return false"><span class="nav-link-icon"><i class="ti ti-arrows-cross"></i></span><span class="nav-link-title">크로스 검색</span></a>`;
+    cross.innerHTML = `<a class="nav-link sidebar-link" href="#" onclick="showCrossSearch();return false"><span class="nav-link-icon"><i class="ti ti-database-search"></i></span><span class="nav-link-title">테이블 검색</span></a>`;
     ul.appendChild(cross);
   }
 }
@@ -595,7 +592,7 @@ function renderTable(filter = '') {
     else if (f.foreignKey) icon = '<i class="ti ti-link text-cyan me-1" title="Foreign Key"></i>';
     html += `<th>${icon}${escHtml(f.name)}</th>`;
   }
-  html += '<th style="width:80px">작업</th></tr></thead><tbody>';
+  html += '<th style="width:80px"></th></tr></thead><tbody>';
   for (let ri = 0; ri < filtered.length; ri++) {
     const row = filtered[ri];
     const sid = escHtml(String(row.id??''));
@@ -603,8 +600,8 @@ function renderTable(filter = '') {
     html += `<tr data-id="${sid}" style="animation-delay:${delay}ms">`;
     for (const f of fields) html += '<td>' + renderCell(row, f) + '</td>';
     html += `<td><div class="btn-list flex-nowrap">
-      <button class="btn btn-ghost-primary btn-icon btn-sm" onclick="copyRow('${sid}')" title="복사"><i class="ti ti-copy"></i></button>
-      <button class="btn btn-ghost-danger btn-icon btn-sm" onclick="requestDelete('${sid}')" title="삭제"><i class="ti ti-trash"></i></button>
+      <button class="btn btn-ghost-primary btn-icon btn-sm" onclick="copyRowIdx(${ri})" title="복사"><i class="ti ti-copy"></i></button>
+      <button class="btn btn-ghost-danger btn-icon btn-sm" onclick="requestDeleteIdx(${ri})" title="삭제"><i class="ti ti-trash"></i></button>
     </div></td></tr>`;
   }
   html += '</tbody></table>';
@@ -632,7 +629,7 @@ function renderCell(row, field) {
     const display = formatRewards(val);
     return `<span class="badge bg-blue-lt json-badge" title="${escHtml(val||'[]')}" onclick="openRewards('${sid}','${sfn}')"><i class="ti ti-gift me-1"></i>${display||'(비어있음)'}</span>`;
   }
-  if (field.isPrimaryKey) return `<code class="text-muted">${escHtml(String(val??''))}</code>`;
+  if (field.isPrimaryKey) return `<code class="cell-edit text-muted" onclick="startEdit(this,'${sid}','${sfn}','${escHtml(field.type)}')">${escHtml(String(val??''))}</code>`;
   return `<span class="cell-edit" onclick="startEdit(this,'${sid}','${sfn}','${escHtml(field.type)}')">${escHtml(String(val??''))}</span>`;
 }
 
@@ -683,7 +680,7 @@ async function addRow() {
   if (!currentType) return;
   const row = {};
   for (const f of currentType.fields) {
-    if (f.type === 'string') row[f.name] = f.isPrimaryKey ? 'new_' + Date.now() : (f.isRequired ? 'new' : '');
+    if (f.type === 'string') row[f.name] = f.isPrimaryKey ? prompt('ID를 입력하세요:', 'new_' + Date.now()) || '' : (f.isRequired ? 'new' : '');
     else if (['int','long','number'].includes(f.type)) row[f.name] = 0;
     else if (f.type === 'bool') row[f.name] = false;
     else row[f.name] = '';
@@ -697,18 +694,18 @@ async function addRow() {
   } catch (e) { toast('추가 실패: ' + e.message, 'error'); }
 }
 
+function copyRowIdx(idx) { const row = currentData[idx]; if (row) copyRow(row.id); }
 async function copyRow(rowId) {
   const src = currentData.find(r => r.id === rowId); if (!src) return;
-  const copy = { ...src, id: src.id + '_copy_' + Date.now() };
+  const copy = { ...src, id: src.id + '_copy' };
   try {
     const saved = await api(`/${currentType.tableName}`, 'POST', copy);
     currentData.unshift(saved); renderTable(); toast('행 복사됨', 'success');
     document.getElementById('page-subtitle').textContent = `${currentData.length}건`;
-    const tr = document.querySelector(`tr[data-id="${escHtml(saved.id)}"]`);
-    if (tr) tr.classList.add('row-highlight');
   } catch (e) { toast('복사 실패: ' + e.message, 'error'); }
 }
 
+function requestDeleteIdx(idx) { const row = currentData[idx]; if (row) requestDelete(row.id); }
 function requestDelete(rowId) {
   document.getElementById('delete-target').textContent = `ID: ${rowId}`;
   deleteCallback = () => doDeleteRow(rowId);
@@ -717,10 +714,7 @@ function requestDelete(rowId) {
 function confirmDelete() { if (deleteCallback) deleteCallback(); bootstrap.Modal.getInstance(document.getElementById('delete-modal'))?.hide(); }
 async function doDeleteRow(rowId) {
   try {
-    await api(`/${currentType.tableName}/${rowId}`, 'DELETE');
-    // 행 삭제 애니메이션
-    const tr = document.querySelector(`tr[data-id="${escHtml(rowId)}"]`);
-    if (tr) { tr.classList.add('row-delete'); await new Promise(r => setTimeout(r, 300)); }
+    await api(`/${currentType.tableName}/${encodeURIComponent(rowId)}`, 'DELETE');
     currentData = currentData.filter(r => r.id !== rowId); renderTable();
     toast('삭제됨', 'success');
     document.getElementById('page-subtitle').textContent = `${currentData.length}건`;
@@ -812,7 +806,7 @@ async function showAdmins() {
   const admins = await adminApi('');
   const container = document.getElementById('table-container');
   let html = '<table class="table table-vcenter card-table table-striped"><thead><tr>';
-  html += '<th>이메일</th><th>상태</th><th>메모</th><th>등록일</th><th>작업</th>';
+  html += '<th>이메일</th><th>상태</th><th>등록일</th><th></th>';
   html += '</tr></thead><tbody>';
   for (const a of admins) {
     const time = new Date(a.created_at).toLocaleDateString('ko-KR');
@@ -826,7 +820,6 @@ async function showAdmins() {
     html += `<tr>
       <td><i class="ti ti-mail text-muted me-1"></i>${escHtml(a.email||'')}</td>
       <td>${roleBadge}</td>
-      <td class="text-muted">${escHtml(a.memo||'')}</td>
       <td class="text-muted">${escHtml(time)}</td>
       <td><div class="btn-list flex-nowrap">${approveBtn}
         <button class="btn btn-ghost-danger btn-icon btn-sm" onclick="removeAdmin('${safeId}')" title="삭제"><i class="ti ti-trash"></i></button>
@@ -835,25 +828,13 @@ async function showAdmins() {
   }
   html += '</tbody></table>';
   html += `<div class="p-3 border-top">
-    <div class="text-muted small mb-2"><i class="ti ti-info-circle me-1"></i>여기서 추가한 관리자는 회원가입 후 바로 접근 가능합니다.</div>
-    <div class="row g-2 align-items-end">
-      <div class="col-4"><label class="form-label small">이메일</label><input id="admin-email" type="email" class="form-control form-control-sm" placeholder="admin@example.com"></div>
-      <div class="col-4"><label class="form-label small">메모</label><input id="admin-memo" type="text" class="form-control form-control-sm" placeholder="(선택)"></div>
-      <div class="col-auto"><button class="btn btn-primary btn-sm" onclick="addAdmin()"><i class="ti ti-plus me-1"></i>관리자 추가</button></div>
-    </div>
-    <div class="text-muted small mt-2 mb-0">
-      직접 회원가입한 유저는 "승인 대기" 상태로 등록됩니다. 위에서 승인하세요.
-    </div>
+    <div class="text-muted small mb-2">직접 회원가입한 유저는 "승인 대기" 상태로 등록됩니다. 위에서 승인하세요.</div>
   </div>`;
   container.innerHTML = html;
 }
 
 async function addAdmin() {
-  const email = document.getElementById('admin-email').value;
-  const memo = document.getElementById('admin-memo').value;
-  if (!email) { toast('이메일을 입력하세요', 'error'); return; }
-  try { await adminApi('', 'POST', { email, memo }); showAdmins(); toast('관리자 추가됨', 'success'); }
-  catch (e) { toast(e.message, 'error'); }
+  // 사전 등록 UI 제거됨 — 회원가입 시 자동 pending 등록
 }
 
 async function changeRole(id, role) {
@@ -1167,7 +1148,7 @@ async function executeCross() {
       }
       html += '</tr></thead><tbody>';
       for (const uid of res.userIds) {
-        html += `<tr><td><code>${escHtml(uid)}</code></td>`;
+        html += `<tr><td><a href="#" class="text-primary" onclick="showPlayer('${escHtml(uid)}');return false"><code>${escHtml(uid)}</code></a></td>`;
         for (const t of tables) {
           const detail = res.details[uid]?.[t] || {};
           const fields = crossConditions.filter(c => c.table === t).map(c => c.field);
@@ -1186,6 +1167,128 @@ async function executeCross() {
     toast(`크로스 검색 완료: ${res.count}명`, 'success');
   } catch (e) { results.innerHTML = ''; toast('검색 실패: ' + e.message, 'error'); }
 }
+
+// ── 플레이어 관리 ──
+let playerData = null;
+let playerUserId = null;
+
+function showPlayerSearch() {
+  isTableMode = true;
+  currentType = null;
+  currentTableType = null;
+  document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-title').textContent = '플레이어 관리';
+  document.getElementById('page-subtitle').textContent = '';
+  hideToolbar();
+  const container = document.getElementById('table-container');
+  container.innerHTML = `<div class="p-4">
+    <div class="input-icon mb-3" style="max-width:400px">
+      <span class="input-icon-addon"><i class="ti ti-user-search"></i></span>
+      <input id="player-uid-input" type="text" class="form-control" placeholder="유저 ID 입력" value="${escHtml(playerUserId||'')}">
+    </div>
+    <button class="btn btn-primary" onclick="doPlayerSearch()"><i class="ti ti-search me-1"></i>검색</button>
+    <div id="player-results" class="mt-3">${playerData ? '' : '<div class="empty-state"><i class="ti ti-user"></i><h3>유저 ID를 입력하고 검색하세요</h3></div>'}</div>
+  </div>`;
+  if (playerData) renderPlayerCards();
+}
+
+async function showPlayer(userId) {
+  playerUserId = userId;
+  showPlayerSearch();
+  document.getElementById('player-uid-input').value = userId;
+  await doPlayerSearch();
+}
+
+async function doPlayerSearch() {
+  const uid = document.getElementById('player-uid-input')?.value?.trim();
+  if (!uid) { toast('유저 ID를 입력하세요', 'error'); return; }
+  playerUserId = uid;
+  const results = document.getElementById('player-results');
+  results.innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div></div>';
+  try {
+    playerData = await tableApi(`/../player/${encodeURIComponent(uid)}`);
+    document.getElementById('page-subtitle').textContent = uid;
+    renderPlayerCards();
+  } catch (e) {
+    results.innerHTML = `<div class="empty-state"><i class="ti ti-user-off"></i><h3>조회 실패</h3><p>${escHtml(e.message)}</p></div>`;
+    toast('조회 실패: ' + e.message, 'error');
+  }
+}
+
+function renderPlayerCards() {
+  const results = document.getElementById('player-results');
+  if (!playerData || !playerData.tables) { results.innerHTML = '<div class="empty-state"><i class="ti ti-inbox"></i><h3>데이터 없음</h3></div>'; return; }
+  let html = '';
+  for (const [tableName, rows] of Object.entries(playerData.tables)) {
+    const arr = Array.isArray(rows) ? rows : [];
+    const tt = tableTypes.find(t => t.tableName === tableName);
+    const fields = tt?.fields || [];
+    html += `<div class="card card-sm shadow-sm mb-3 page-fade">`;
+    html += `<div class="card-header"><h4 class="card-title"><i class="ti ti-table me-2"></i>${escHtml(tt?.name || tableName)}</h4><span class="badge bg-blue-lt ms-auto">${arr.length}건</span></div>`;
+    if (arr.length === 0) {
+      html += '<div class="card-body text-muted text-center py-3">데이터 없음</div>';
+    } else {
+      html += '<div class="table-responsive"><table class="table table-vcenter card-table table-striped"><thead><tr>';
+      for (const f of fields) {
+        if (f.name === 'userId' || f.name === 'user_id') continue;
+        let icon = '';
+        if (f.isPrimaryKey) icon = '<i class="ti ti-key text-yellow me-1"></i>';
+        html += `<th>${icon}${escHtml(f.name)}</th>`;
+      }
+      html += '</tr></thead><tbody>';
+      for (const row of arr) {
+        const rowId = String(row.id ?? row[fields.find(f=>f.isPrimaryKey)?.name] ?? '');
+        html += '<tr>';
+        for (const f of fields) {
+          if (f.name === 'userId' || f.name === 'user_id') continue;
+          const val = row[f.name];
+          if (f.isPrimaryKey) {
+            html += `<td><code class="text-muted">${escHtml(String(val??''))}</code></td>`;
+          } else if (f.type === 'bool') {
+            html += `<td>${val ? '<span class="badge bg-green">true</span>' : '<span class="badge bg-red">false</span>'}</td>`;
+          } else {
+            html += `<td><span class="cell-edit" onclick="startPlayerEdit(this,'${escHtml(tableName)}','${escHtml(rowId)}','${escHtml(f.name)}','${escHtml(f.type)}')">${escHtml(String(val??''))}</span></td>`;
+          }
+        }
+        html += '</tr>';
+      }
+      html += '</tbody></table></div>';
+    }
+    html += '</div>';
+  }
+  results.innerHTML = html;
+}
+
+function startPlayerEdit(el, tableName, rowId, fieldName, fieldType) {
+  if (el.querySelector('input')) return;
+  const current = el.textContent;
+  const input = document.createElement('input');
+  input.className = 'cell-input';
+  input.value = current;
+  if (['int','long','number'].includes(fieldType)) input.type = 'number';
+  el.textContent = ''; el.appendChild(input); input.focus(); input.select();
+  const commit = async () => {
+    const newVal = castValue(input.value, fieldType);
+    el.textContent = String(newVal ?? '');
+    // 해당 행의 전체 데이터를 찾아서 PUT
+    const rows = playerData.tables[tableName];
+    const row = Array.isArray(rows) ? rows.find(r => String(r.id) === rowId) : null;
+    if (!row) return;
+    row[fieldName] = newVal;
+    try {
+      await tableApi(`/${tableName}/${encodeURIComponent(rowId)}`, 'PUT', row);
+      el.classList.add('cell-saved'); setTimeout(() => el.classList.remove('cell-saved'), 800);
+      toast('저장됨', 'success');
+    } catch (e) { toast('저장 실패: ' + e.message, 'error'); }
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') el.textContent = current; });
+}
+
+// Enter 키로 플레이어 검색
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('player-uid-input') === document.activeElement) doPlayerSearch();
+});
 
 // ── 유틸 ──
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }

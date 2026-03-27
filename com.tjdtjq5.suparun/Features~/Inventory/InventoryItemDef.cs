@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>아이템 종류 정의. 서버 Config에서 관리.</summary>
-[Config]
+[Config("inventory")]
 public class InventoryItemDef
 {
     [PrimaryKey] public string id;          // "sword_01", "potion_hp"

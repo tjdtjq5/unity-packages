@@ -4,7 +4,7 @@ using Tjdtjq5.SupaRun;
 /// 시즌패스 레벨별 보상 정의.
 /// rewards JSON 예시: [{"type":"currency","id":"gold","amount":500},{"type":"item","id":"potion_hp","amount":3}]
 /// </summary>
-[Config]
+[Config("seasonpass")]
 public class SeasonPassLevel
 {
     [PrimaryKey] public string id;          // "season_1_lv5"

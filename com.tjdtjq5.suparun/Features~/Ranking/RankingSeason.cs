@@ -4,7 +4,7 @@ using Tjdtjq5.SupaRun;
 /// 랭킹 시즌 정의. startAt~endAt으로 활성 자동 판단.
 /// rewards JSON: [{"rankMin":1,"rankMax":1,"rewards":[{"type":"currency","id":"diamond","amount":1000}]}]
 /// </summary>
-[Config]
+[Config("ranking")]
 public class RankingSeason
 {
     [PrimaryKey] public string id;

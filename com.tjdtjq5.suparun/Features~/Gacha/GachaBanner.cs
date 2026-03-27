@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>가챠 배너. 관리자가 등록.</summary>
-[Config]
+[Config("gacha")]
 public class GachaBanner
 {
     [PrimaryKey] public string id;
