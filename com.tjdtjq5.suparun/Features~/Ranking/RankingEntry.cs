@@ -5,13 +5,12 @@ using Tjdtjq5.SupaRun;
 public class RankingEntry
 {
     [PrimaryKey] public string id;
-    /// <summary>리더보드 ID (예: "stage_clear", "pvp_rating").</summary>
     [Index] public string boardId;
     [Index] public string playerId;
+    /// <summary>그룹 ID. null이면 전체 랭킹.</summary>
+    [Index] public string groupId;
     public string playerName;
-    /// <summary>점수. 높을수록 상위.</summary>
     public long score;
-    /// <summary>부가 데이터 (JSON 등 자유 형식).</summary>
     public string metadata;
     [CreatedAt] public long createdAt;
     [UpdatedAt] public long updatedAt;

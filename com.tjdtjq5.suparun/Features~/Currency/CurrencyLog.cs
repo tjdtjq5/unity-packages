@@ -7,8 +7,8 @@ public class CurrencyLog
     [PrimaryKey] public string id;
     [Index] public string playerId;
     public string currencyId;
-    public int change;
-    public int balanceAfter;
+    public long change;
+    public long balanceAfter;
     [NotNull] public string reason;
     [CreatedAt] public long createdAt;
 }

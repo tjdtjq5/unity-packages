@@ -310,6 +310,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
             var body = "{" +
                 $"\"external_anonymous_users_enabled\":true," +
+                $"\"mailer_autoconfirm\":true," +
                 $"\"site_url\":\"{siteUrl}\"," +
                 $"\"uri_allow_list\":\"{redirectUrls}\"" +
                 "}";

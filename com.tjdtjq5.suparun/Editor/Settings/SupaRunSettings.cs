@@ -130,6 +130,7 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 if (_instance == null)
                 {
+                    MigrateFromGameServer();
                     _instance = AssetDatabase.LoadAssetAtPath<SupaRunSettings>(AssetPath);
                     if (_instance == null)
                     {
@@ -149,6 +150,30 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             EditorUtility.SetDirty(this);
             AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>GameServer_ → SupaRun_ EditorPrefs 마이그레이션 (일회성).</summary>
+        static void MigrateFromGameServer()
+        {
+            const string OLD = "GameServer_";
+            var keys = new[] { "SupabaseAnonKey", "SupabaseDbPassword", "GithubToken",
+                               "SupabaseAccessToken", "CronSecret" };
+            foreach (var key in keys)
+            {
+                var oldVal = EditorPrefs.GetString(OLD + key, "");
+                if (!string.IsNullOrEmpty(oldVal) && string.IsNullOrEmpty(EditorPrefs.GetString(PREF + key, "")))
+                {
+                    EditorPrefs.SetString(PREF + key, oldVal);
+                    EditorPrefs.DeleteKey(OLD + key);
+                }
+            }
+
+            // Settings asset 마이그레이션
+            const string OLD_ASSET = "Assets/Editor/GameServerSettings.asset";
+            if (System.IO.File.Exists(OLD_ASSET) && !System.IO.File.Exists(AssetPath))
+            {
+                AssetDatabase.MoveAsset(OLD_ASSET, AssetPath);
+            }
         }
     }
 }

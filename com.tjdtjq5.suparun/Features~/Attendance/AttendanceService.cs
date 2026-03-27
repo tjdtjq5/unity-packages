@@ -2,45 +2,45 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using Tjdtjq5.SupaRun;
 
-/// <summary>출석 체크 서비스. 일일 체크 + 연속 출석 + 보상.</summary>
+/// <summary>출석 체크 서비스. 일일 체크 + 연속 출석 + 보상 즉시 지급.</summary>
 [Service]
 public class AttendanceService
 {
     readonly IGameDB _db;
-    readonly MailService _mail;
+    readonly CurrencyService _currency;
+    readonly InventoryService _inventory;
 
-    public AttendanceService(IGameDB db, MailService mail)
+    public AttendanceService(IGameDB db, CurrencyService currency, InventoryService inventory)
     {
         _db = db;
-        _mail = mail;
+        _currency = currency;
+        _inventory = inventory;
     }
 
-    /// <summary>오늘 출석 체크. 이미 했으면 기존 기록 반환.</summary>
+    /// <summary>오늘 출석 체크. 이미 했으면 기존 기록 반환. 보상 즉시 지급.</summary>
     [API]
     public async Task<AttendanceRecord> CheckIn(string playerId)
     {
         var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
         // 이미 출석했는지 확인
-        var todayList = await _db.Query<AttendanceRecord>(new QueryOptions()
-            .Eq("playerId", playerId).Eq("date", today).SetLimit(1));
-        if (todayList.Count > 0)
-            return todayList[0];
+        var existing = await _db.Get<AttendanceRecord>($"{playerId}_{today}");
+        if (existing != null)
+            return existing;
 
         // 어제 기록으로 연속 출석 계산
         var yesterday = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-dd");
-        var yesterdayList = await _db.Query<AttendanceRecord>(new QueryOptions()
-            .Eq("playerId", playerId).Eq("date", yesterday).SetLimit(1));
-        var yesterdayRecord = yesterdayList.Count > 0 ? yesterdayList[0] : null;
+        var yesterdayRecord = await _db.Get<AttendanceRecord>($"{playerId}_{yesterday}");
         var streak = (yesterdayRecord?.streak ?? 0) + 1;
 
         // 이번 달 출석 일수
-        var monthRecords = await _db.Query<AttendanceRecord>(new QueryOptions()
-            .Eq("playerId", playerId));
         var monthPrefix = DateTime.UtcNow.ToString("yyyy-MM");
-        var monthCount = monthRecords.Count(r => r.date.StartsWith(monthPrefix)) + 1;
+        var monthRecords = await _db.Query<AttendanceRecord>(new QueryOptions()
+            .Eq("playerId", playerId).Like("date", $"{monthPrefix}%"));
+        var monthCount = monthRecords.Count + 1;
 
         var record = new AttendanceRecord
         {
@@ -52,8 +52,8 @@ public class AttendanceService
         };
         await _db.Save(record);
 
-        // 출석 보상 확인 + 우편 발송
-        await CheckAndSendRewards(playerId, monthCount);
+        // 보상 즉시 지급
+        await GrantDayReward(playerId, monthCount);
 
         return record;
     }
@@ -62,27 +62,18 @@ public class AttendanceService
     [API]
     public async Task<List<AttendanceRecord>> GetMonthRecords(string playerId)
     {
-        var records = await _db.Query<AttendanceRecord>(new QueryOptions()
-            .Eq("playerId", playerId).OrderByAsc("date"));
         var monthPrefix = DateTime.UtcNow.ToString("yyyy-MM");
-        return records.Where(r => r.date.StartsWith(monthPrefix)).ToList();
+        return await _db.Query<AttendanceRecord>(new QueryOptions()
+            .Eq("playerId", playerId).Like("date", $"{monthPrefix}%")
+            .OrderByAsc("date"));
     }
 
-    /// <summary>오늘 출석 여부 + 연속 일수.</summary>
+    /// <summary>오늘 출석 여부 + 연속 일수 + 월 누적.</summary>
     [API]
-    public async Task<(bool checkedIn, int streak, int monthDays)> GetStatus(string playerId)
+    public async Task<AttendanceRecord> GetStatus(string playerId)
     {
         var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
-        var todayList = await _db.Query<AttendanceRecord>(new QueryOptions()
-            .Eq("playerId", playerId).Eq("date", today).SetLimit(1));
-        var todayRecord = todayList.Count > 0 ? todayList[0] : null;
-
-        var allRecords = await _db.Query<AttendanceRecord>(new QueryOptions()
-            .Eq("playerId", playerId));
-        var monthPrefix = DateTime.UtcNow.ToString("yyyy-MM");
-        var monthDays = allRecords.Count(r => r.date.StartsWith(monthPrefix));
-
-        return (todayRecord != null, todayRecord?.streak ?? 0, monthDays);
+        return await _db.Get<AttendanceRecord>($"{playerId}_{today}");
     }
 
     /// <summary>출석 보상 목록 (Config).</summary>
@@ -92,22 +83,36 @@ public class AttendanceService
         return await _db.GetAll<AttendanceReward>();
     }
 
-    // ── 보상 처리 ──
+    // ── 보상 지급 ──
 
-    async Task CheckAndSendRewards(string playerId, int dayOfMonth)
+    async Task GrantDayReward(string playerId, int dayOfMonth)
     {
         var rewards = await _db.GetAll<AttendanceReward>();
         var reward = rewards.Find(r => r.day == dayOfMonth);
-        if (reward == null) return;
+        if (reward == null || string.IsNullOrEmpty(reward.rewards)) return;
 
-        // 우편으로 보상 발송
-        await _mail.SendMail(
-            playerId,
-            $"출석 {dayOfMonth}일 보상",
-            $"출석 {dayOfMonth}일 달성 보상입니다!",
-            reward.rewardType,
-            reward.rewardId,
-            reward.rewardAmount
-        );
+        var entries = JsonConvert.DeserializeObject<List<RewardEntry>>(reward.rewards);
+        if (entries == null) return;
+
+        var reason = $"attendance:day{dayOfMonth}";
+        foreach (var entry in entries)
+        {
+            switch (entry.type)
+            {
+                case "currency":
+                    await _currency.Add(playerId, entry.id, entry.amount, reason);
+                    break;
+                case "item":
+                    await _inventory.AddItem(playerId, entry.id, (int)entry.amount, reason);
+                    break;
+            }
+        }
+    }
+
+    class RewardEntry
+    {
+        public string type;
+        public string id;
+        public long amount;
     }
 }

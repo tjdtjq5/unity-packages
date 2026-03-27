@@ -15,7 +15,7 @@ namespace Tjdtjq5.SupaRun
             public static RealtimeChannel OnChange(string boardId, Action<RankingEntry> callback)
             {
                 var ch = SupaRun.Realtime.Channel($"ranking-{boardId}");
-                ch.OnPostgresChange<RankingEntry>("rankingentries", ChangeEvent.All, callback,
+                ch.OnPostgresChange<RankingEntry>("ranking_entry", ChangeEvent.All, callback,
                     filter: $"boardid=eq.{boardId}");
                 return ch;
             }

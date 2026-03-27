@@ -80,6 +80,9 @@ namespace Tjdtjq5.SupaRun.Editor
 
                     Debug.Log($"[SupaRun:Deploy] 배포 목록 업데이트: {endpoints.Count}개 엔드포인트");
 
+                    // autoconfirm 보장 (어드민 회원가입 즉시 로그인용)
+                    EnsureAutoConfirm(settings);
+
                     onSuccess?.Invoke();
                 },
                 onFailed: error =>
@@ -101,7 +104,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 return (null, genError);
 
             var tempDir = Path.Combine(Path.GetTempPath(),
-                "gameserver_buildtest_" + Guid.NewGuid().ToString("N")[..8]);
+                "suparun_buildtest_" + Guid.NewGuid().ToString("N")[..8]);
 
             foreach (var file in files)
             {
@@ -153,6 +156,16 @@ namespace Tjdtjq5.SupaRun.Editor
                 try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); }
                 catch { /* ignore */ }
             }
+        }
+
+        /// <summary>어드민 회원가입 즉시 로그인을 위해 autoconfirm 보장.</summary>
+        static async void EnsureAutoConfirm(SupaRunSettings settings)
+        {
+            var token = SupaRunSettings.SupabaseAccessToken;
+            if (string.IsNullOrEmpty(token)) return;
+            var (ok, _) = await SupabaseManagementApi.PatchAuthConfig(
+                settings.SupabaseProjectId, token, "{\"mailer_autoconfirm\":true}");
+            if (ok) Debug.Log("[SupaRun:Deploy] autoconfirm 설정 완료");
         }
 
         /// <summary>pg_cron 잡 관리. [Cron] 있으면 활성화+등록, 없으면 기존 잡 삭제.</summary>
@@ -251,6 +264,11 @@ namespace Tjdtjq5.SupaRun.Editor
             // Workflow
             files.Add(LoadTemplate(templateRoot, "WorkflowTemplate~/deploy.yml.template", ".github/workflows/deploy.yml", settings));
 
+            // Admin 웹 페이지
+            var adminTemplatePath = Path.Combine(templateRoot, "AdminTemplate~/index.html");
+            if (File.Exists(adminTemplatePath))
+                files.Add(LoadTemplate(templateRoot, "AdminTemplate~/index.html", "admin/index.html", settings));
+
             // Auth 플랫폼 (GPGS/GameCenter 활성화 시)
             if (settings.enabledAuthProviders != null)
             {
@@ -286,6 +304,15 @@ namespace Tjdtjq5.SupaRun.Editor
             // 변수 치환
             content = content.Replace("{{SUPABASE_PROJECT_ID}}", settings.SupabaseProjectId);
             content = content.Replace("{{DOTNET_MAJOR}}", dotnetMajor.ToString());
+            content = content.Replace("{{SUPABASE_URL}}", settings.supabaseUrl ?? "");
+            content = content.Replace("{{SUPABASE_ANON_KEY}}", SupaRunSettings.SupabaseAnonKey ?? "");
+
+            // OAuth provider 목록 (Guest, GPGS, GameCenter 제외 = 웹 OAuth만)
+            var q = '"';
+            var oauthProviders = settings.enabledAuthProviders?
+                .Where(p => p != "Guest" && p != "GPGS" && p != "GameCenter")
+                .Select(p => q + p.ToLower() + q) ?? Enumerable.Empty<string>();
+            content = content.Replace("{{AUTH_PROVIDERS_JSON}}", "[" + string.Join(",", oauthProviders) + "]");
 
             return new GeneratedFile(outputPath, content);
         }
@@ -293,14 +320,14 @@ namespace Tjdtjq5.SupaRun.Editor
         static string GetTemplateRoot()
         {
             // 패키지 경로에서 Templates 폴더 찾기
-            var guids = AssetDatabase.FindAssets("t:DefaultAsset", new[] { "Packages/com.tjdtjq5.gameserver/Templates" });
+            var guids = AssetDatabase.FindAssets("t:DefaultAsset", new[] { "Packages/com.tjdtjq5.suparun/Templates" });
             if (guids.Length > 0)
             {
                 var path = AssetDatabase.GUIDToAssetPath(guids[0]);
                 return Path.GetDirectoryName(Path.GetDirectoryName(path));
             }
             // 폴백: 직접 경로
-            return "Packages/com.tjdtjq5.gameserver/Templates";
+            return "Packages/com.tjdtjq5.suparun/Templates";
         }
 
         static List<GeneratedFile> GetSharedFiles(Type[] tableTypes, Type[] specTypes, Type[] logicTypes)
@@ -355,6 +382,10 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (trimmed.StartsWith("using UnityEngine") ||
                     trimmed.StartsWith("using UnityEditor") ||
                     trimmed.StartsWith("using Unity."))
+                    continue;
+                // #if UNITY_EDITOR / #endif 전처리기 지시문 제거
+                if (trimmed.StartsWith("#if UNITY_EDITOR") ||
+                    trimmed.StartsWith("#endif // UNITY_EDITOR"))
                     continue;
                 sb.AppendLine(line.TrimEnd('\r'));
             }

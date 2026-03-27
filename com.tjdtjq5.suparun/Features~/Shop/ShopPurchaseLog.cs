@@ -7,7 +7,7 @@ public class ShopPurchaseLog
     [PrimaryKey] public string id;
     [Index] public string playerId;
     [Index] public string productId;
-    public int price;
+    public long price;
     public string currencyId;
     [CreatedAt] public long purchasedAt;
 }

@@ -25,7 +25,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 return;
             }
 
-            var tempDir = Path.Combine(Path.GetTempPath(), "gameserver_deploy_" + Guid.NewGuid().ToString("N")[..8]);
+            var tempDir = Path.Combine(Path.GetTempPath(), "suparun_deploy_" + Guid.NewGuid().ToString("N")[..8]);
 
             try
             {
@@ -39,13 +39,17 @@ namespace Tjdtjq5.SupaRun.Editor
                     return;
                 }
 
-                // 2. 기존 Generated/ + Shared/ 삭제
-                foreach (var dir in new[] { "Generated", "Shared" })
+                // 2. 기존 Generated/ + Shared/ 삭제 + 레거시 파일 정리
+                foreach (var dir in new[] { "Generated", "Shared", "admin" })
                 {
                     var d = Path.Combine(tempDir, dir);
                     if (Directory.Exists(d))
                         Directory.Delete(d, true);
                 }
+                // 레거시 GameServer.csproj 삭제 (리네임 전 잔여물)
+                var legacyCsproj = Path.Combine(tempDir, "GameServer.csproj");
+                if (File.Exists(legacyCsproj))
+                    File.Delete(legacyCsproj);
 
                 // 3. 파일 쓰기
                 foreach (var file in files)

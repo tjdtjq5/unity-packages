@@ -19,9 +19,20 @@ namespace Tjdtjq5.SupaRun
             _anonKey = anonKey;
         }
 
+        static string ToSnakeCase(string name)
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < name.Length; i++)
+            {
+                if (char.IsUpper(name[i]) && i > 0) sb.Append('_');
+                sb.Append(char.ToLower(name[i]));
+            }
+            return sb.ToString();
+        }
+
         public async Task<ServerResponse<T>> Get<T>(object id)
         {
-            var table = typeof(T).Name.ToLower() + "s";
+            var table = ToSnakeCase(typeof(T).Name);
             var url = $"{_restUrl}/{table}?id=eq.{id}&limit=1";
 
             var list = await Fetch<List<T>>(url);
@@ -41,7 +52,7 @@ namespace Tjdtjq5.SupaRun
 
         public async Task<ServerResponse<List<T>>> GetAll<T>()
         {
-            var table = typeof(T).Name.ToLower() + "s";
+            var table = ToSnakeCase(typeof(T).Name);
             var url = $"{_restUrl}/{table}";
             return await Fetch<List<T>>(url);
         }

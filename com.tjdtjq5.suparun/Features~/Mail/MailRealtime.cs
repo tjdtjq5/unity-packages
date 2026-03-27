@@ -15,7 +15,7 @@ namespace Tjdtjq5.SupaRun
             public static RealtimeChannel OnChange(string playerId, Action<Mail> callback)
             {
                 var ch = SupaRun.Realtime.Channel($"mail-{playerId}");
-                ch.OnPostgresChange<Mail>("mails", ChangeEvent.Insert, callback,
+                ch.OnPostgresChange<Mail>("mail", ChangeEvent.Insert, callback,
                     filter: $"playerid=eq.{playerId}");
                 return ch;
             }

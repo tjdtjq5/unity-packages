@@ -2,9 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using Tjdtjq5.SupaRun;
 
-/// <summary>상점 서비스. 상품 조회/구매/이력.</summary>
+/// <summary>상점 서비스. 상품 조회/구매(다중 보상)/이력.</summary>
 [Service]
 public class ShopService
 {
@@ -31,11 +32,15 @@ public class ShopService
             .ToList();
     }
 
-    /// <summary>상품 구매. 재화 차감 + 아이템 지급 + 이력 기록.</summary>
+    /// <summary>
+    /// 상품 구매.
+    /// 1. 재화 차감
+    /// 2. rewards 파싱 → 각 보상 지급 (실패 시 재화 환불)
+    /// 3. 이력 기록
+    /// </summary>
     [API]
     public async Task<ShopPurchaseLog> Purchase(string playerId, string productId)
     {
-        // 상품 확인
         var product = await _db.Get<ShopProduct>(productId);
         if (product == null || !product.isActive)
             throw new InvalidOperationException("존재하지 않거나 판매 중이 아닌 상품입니다.");
@@ -50,21 +55,27 @@ public class ShopService
         // 구매 제한 확인
         if (product.maxPurchase > 0)
         {
-            var logs = await _db.Query<ShopPurchaseLog>(new QueryOptions()
-                .Eq("playerId", playerId).Eq("productId", productId));
-            var count = logs.Count;
+            var count = await GetPurchaseCount(playerId, productId);
             if (count >= product.maxPurchase)
                 throw new InvalidOperationException($"구매 제한 초과 ({product.maxPurchase}회)");
         }
 
-        // 재화 차감
+        // 1. 재화 차감
         await _currency.Subtract(playerId, product.currencyId, product.price, $"shop:{productId}");
 
-        // 아이템 지급
-        if (!string.IsNullOrEmpty(product.rewardItemId) && product.rewardAmount > 0)
-            await _inventory.AddItem(playerId, product.rewardItemId, product.rewardAmount, $"shop:{productId}");
+        // 2. 보상 지급
+        try
+        {
+            await GrantRewards(playerId, product, productId);
+        }
+        catch (Exception ex)
+        {
+            // 보상 지급 실패 → 재화 환불
+            await _currency.Add(playerId, product.currencyId, product.price, $"shop_refund:{productId}");
+            throw new InvalidOperationException($"보상 지급 실패, 재화 환불됨: {ex.Message}");
+        }
 
-        // 이력 기록
+        // 3. 이력 기록
         var log = new ShopPurchaseLog
         {
             id = Guid.NewGuid().ToString(),
@@ -90,8 +101,39 @@ public class ShopService
     [API]
     public async Task<int> GetPurchaseCount(string playerId, string productId)
     {
-        var logs = await _db.Query<ShopPurchaseLog>(new QueryOptions()
+        return await _db.Count<ShopPurchaseLog>(new QueryOptions()
             .Eq("playerId", playerId).Eq("productId", productId));
-        return logs.Count;
+    }
+
+    // ── 보상 지급 ──
+
+    async Task GrantRewards(string playerId, ShopProduct product, string productId)
+    {
+        if (string.IsNullOrEmpty(product.rewards)) return;
+
+        var rewards = JsonConvert.DeserializeObject<List<RewardEntry>>(product.rewards);
+        if (rewards == null || rewards.Count == 0) return;
+
+        var reason = $"shop:{productId}";
+
+        foreach (var reward in rewards)
+        {
+            switch (reward.type)
+            {
+                case "currency":
+                    await _currency.Add(playerId, reward.id, reward.amount, reason);
+                    break;
+                case "item":
+                    await _inventory.AddItem(playerId, reward.id, (int)reward.amount, reason);
+                    break;
+            }
+        }
+    }
+
+    class RewardEntry
+    {
+        public string type;    // "currency" | "item"
+        public string id;
+        public long amount;
     }
 }

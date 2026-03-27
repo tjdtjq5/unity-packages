@@ -127,7 +127,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (_isTableMissing)
                 {
                     EditorUI.DrawDescription(
-                        "serverlogs 테이블이 아직 생성되지 않았습니다.\n\n" +
+                        "server_log 테이블이 아직 생성되지 않았습니다.\n\n" +
                         "Deploy 탭 > DB 동기화를 실행하면\n" +
                         "테이블이 자동으로 생성됩니다.", EditorUI.COL_WARN);
                 }
@@ -270,7 +270,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
             try
             {
-                var url = $"{settings.supabaseUrl}/rest/v1/serverlogs" +
+                var url = $"{settings.supabaseUrl}/rest/v1/server_log" +
                           $"?order=createdat.desc&limit={_limit + 1}"; // +1로 hasMore 판단
 
                 if (_filter == LevelFilter.Error)

@@ -3,13 +3,14 @@ WORKDIR /src
 COPY SupaRun.csproj .
 RUN dotnet restore
 COPY . .
-RUN dotnet publish -c Release -o /app --no-restore
-RUN mkdir -p /src/Generated/Migrations
+RUN dotnet publish SupaRun.csproj -c Release -o /app --no-restore
+RUN mkdir -p /src/Generated/Migrations /src/admin
 
 FROM mcr.microsoft.com/dotnet/aspnet:{{DOTNET_MAJOR}}.0
 WORKDIR /app
 COPY --from=build /app .
 COPY --from=build /src/Generated/Migrations ./Migrations
+COPY --from=build /src/admin ./admin
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 ENTRYPOINT ["dotnet", "SupaRun.dll"]

@@ -110,7 +110,7 @@ namespace Tjdtjq5.SupaRun.Editor
         static string GetTemplateRoot()
         {
             // 패키지 경로에서 Features~ 폴더 찾기
-            var packagePath = Path.GetFullPath("Packages/com.tjdtjq5.gameserver");
+            var packagePath = Path.GetFullPath("Packages/com.tjdtjq5.suparun");
             return Path.Combine(packagePath, "Features~");
         }
     }

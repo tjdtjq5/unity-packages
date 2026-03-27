@@ -46,14 +46,16 @@ namespace Tjdtjq5.SupaRun.Editor
             wnd.minSize = new Vector2(520, 480);
         }
 
-        [MenuItem("Tools/SupaRun/Data %#d")]
-        public static void OpenData()
+        [MenuItem("Tools/SupaRun/Admin %#d")]
+        public static void OpenAdmin()
         {
             var settings = SupaRunSettings.Instance;
-            if (settings.IsSupabaseConfigured)
-                Application.OpenURL($"https://supabase.com/dashboard/project/{settings.SupabaseProjectId}/editor");
+            if (!string.IsNullOrEmpty(settings.cloudRunUrl))
+                Application.OpenURL(settings.cloudRunUrl.TrimEnd('/') + "/admin");
+            else if (settings.IsSupabaseConfigured)
+                EditorUtility.DisplayDialog("Admin", "서버가 아직 배포되지 않았습니다.\nDeploy 후 다시 시도하세요.", "확인");
             else
-                EditorUtility.DisplayDialog("Data", "Supabase 설정이 필요합니다.\nDashboard > Settings에서 연결하세요.", "확인");
+                EditorUtility.DisplayDialog("Admin", "Supabase 설정이 필요합니다.\nDashboard > Settings에서 연결하세요.", "확인");
         }
 
         void OnEnable()

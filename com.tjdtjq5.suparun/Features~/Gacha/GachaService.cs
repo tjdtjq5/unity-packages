@@ -11,6 +11,7 @@ public class GachaService
     readonly IGameDB _db;
     readonly CurrencyService _currency;
     readonly InventoryService _inventory;
+    static readonly Random _rng = new();
 
     public GachaService(IGameDB db, CurrencyService currency, InventoryService inventory)
     {
@@ -39,17 +40,16 @@ public class GachaService
         return results[0];
     }
 
-    /// <summary>N연차 뽑기.</summary>
+    /// <summary>10연차 뽑기.</summary>
     [API]
     public async Task<List<GachaLog>> Pull10(string playerId, string bannerId)
     {
         return await PullMulti(playerId, bannerId, 10);
     }
 
-    /// <summary>N회 뽑기 내부 구현.</summary>
+    /// <summary>N회 뽑기.</summary>
     async Task<List<GachaLog>> PullMulti(string playerId, string bannerId, int count)
     {
-        // 배너 확인
         var banner = await _db.Get<GachaBanner>(bannerId);
         if (banner == null || !banner.isActive)
             throw new InvalidOperationException("존재하지 않거나 비활성 배너입니다.");
@@ -60,23 +60,39 @@ public class GachaService
         if (banner.endAt > 0 && banner.endAt < now)
             throw new InvalidOperationException("종료된 배너입니다.");
 
-        // 비용 계산 + 차감
+        // 비용 계산
         var totalCost = count == 10 && banner.cost10Amount > 0
             ? banner.cost10Amount
             : banner.costAmount * count;
+
+        // 재화 차감
         await _currency.Subtract(playerId, banner.costCurrencyId, totalCost, $"gacha:{bannerId}x{count}");
 
-        // 풀 로드
+        // 뽑기 실행
+        List<GachaLog> results;
+        try
+        {
+            results = await ExecutePulls(playerId, banner, count);
+        }
+        catch
+        {
+            // 뽑기 실패 시 재화 환불
+            await _currency.Add(playerId, banner.costCurrencyId, totalCost, $"gacha_refund:{bannerId}x{count}");
+            throw;
+        }
+
+        return results;
+    }
+
+    async Task<List<GachaLog>> ExecutePulls(string playerId, GachaBanner banner, int count)
+    {
         var allPool = await _db.GetAll<GachaPool>();
-        var pool = allPool.Where(p => p.bannerId == bannerId).ToList();
+        var pool = allPool.Where(p => p.bannerId == banner.id).ToList();
         if (pool.Count == 0)
             throw new InvalidOperationException("가챠 풀이 비어있습니다.");
 
         var totalWeight = pool.Sum(p => p.weight);
-
-        // 천장 로드
-        var pity = await GetOrCreatePity(playerId, bannerId);
-        var rng = new Random();
+        var pity = await GetOrCreatePity(playerId, banner.id);
         var results = new List<GachaLog>();
 
         for (var i = 0; i < count; i++)
@@ -91,29 +107,28 @@ public class GachaService
             {
                 var pityPool = pool.Where(p => p.grade == banner.pityGrade).ToList();
                 picked = pityPool.Count > 0
-                    ? pityPool[rng.Next(pityPool.Count)]
-                    : DrawWeighted(pool, totalWeight, rng);
+                    ? pityPool[_rng.Next(pityPool.Count)]
+                    : DrawWeighted(pool, totalWeight);
                 pity.counter = 0;
                 wasPity = true;
             }
             else
             {
-                picked = DrawWeighted(pool, totalWeight, rng);
+                picked = DrawWeighted(pool, totalWeight);
 
-                // 최고 등급 뽑으면 천장 리셋
                 if (!string.IsNullOrEmpty(banner.pityGrade) && picked.grade == banner.pityGrade)
                     pity.counter = 0;
             }
 
             // 아이템 지급
-            await _inventory.AddItem(playerId, picked.itemId, 1, $"gacha:{bannerId}");
+            await _inventory.AddItem(playerId, picked.itemId, 1, $"gacha:{banner.id}");
 
-            // 이력 기록
+            // 이력
             var log = new GachaLog
             {
                 id = Guid.NewGuid().ToString(),
                 playerId = playerId,
-                bannerId = bannerId,
+                bannerId = banner.id,
                 itemId = picked.itemId,
                 grade = picked.grade,
                 pityCounter = pity.counter,
@@ -123,9 +138,7 @@ public class GachaService
             results.Add(log);
         }
 
-        // 천장 저장
         await _db.Save(pity);
-
         return results;
     }
 
@@ -133,7 +146,7 @@ public class GachaService
     [API]
     public async Task<int> GetPityCounter(string playerId, string bannerId)
     {
-        var pity = await FindPity(playerId, bannerId);
+        var pity = await _db.Get<GachaPity>($"{playerId}_{bannerId}");
         return pity?.counter ?? 0;
     }
 
@@ -146,7 +159,7 @@ public class GachaService
             .OrderByDesc("createdAt").SetLimit(count));
     }
 
-    /// <summary>배너별 확률 테이블 조회.</summary>
+    /// <summary>배너별 확률 테이블.</summary>
     [API]
     public async Task<List<GachaPool>> GetPool(string bannerId)
     {
@@ -156,9 +169,9 @@ public class GachaService
 
     // ── 내부 ──
 
-    static GachaPool DrawWeighted(List<GachaPool> pool, int totalWeight, Random rng)
+    static GachaPool DrawWeighted(List<GachaPool> pool, int totalWeight)
     {
-        var roll = rng.Next(totalWeight);
+        var roll = _rng.Next(totalWeight);
         var cumulative = 0;
         foreach (var item in pool)
         {
@@ -171,24 +184,18 @@ public class GachaService
 
     async Task<GachaPity> GetOrCreatePity(string playerId, string bannerId)
     {
-        var existing = await FindPity(playerId, bannerId);
+        var id = $"{playerId}_{bannerId}";
+        var existing = await _db.Get<GachaPity>(id);
         if (existing != null) return existing;
 
         var pity = new GachaPity
         {
-            id = $"{playerId}_{bannerId}",
+            id = id,
             playerId = playerId,
             bannerId = bannerId,
             counter = 0
         };
         await _db.Save(pity);
         return pity;
-    }
-
-    async Task<GachaPity> FindPity(string playerId, string bannerId)
-    {
-        var list = await _db.Query<GachaPity>(new QueryOptions()
-            .Eq("playerId", playerId).Eq("bannerId", bannerId).SetLimit(1));
-        return list.Count > 0 ? list[0] : null;
     }
 }

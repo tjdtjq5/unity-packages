@@ -9,13 +9,13 @@ namespace Tjdtjq5.SupaRun
         {
             /// <summary>
             /// 재화 잔액 변동 실시간 감지.
-            /// Subscribe() 후 currencybalances 변경 시 콜백.
-            /// Unsubscribe()로 해제. 비용: ⚡1
+            /// Subscribe() 후 currencys 변경 시 콜백.
+            /// Unsubscribe()로 해제.
             /// </summary>
-            public static RealtimeChannel OnChange(string playerId, Action<CurrencyBalance> callback)
+            public static RealtimeChannel OnChange(string playerId, Action<Currency> callback)
             {
                 var ch = SupaRun.Realtime.Channel($"currency-{playerId}");
-                ch.OnPostgresChange<CurrencyBalance>("currencybalances", ChangeEvent.All, callback,
+                ch.OnPostgresChange<Currency>("currency", ChangeEvent.All, callback,
                     filter: $"playerid=eq.{playerId}");
                 return ch;
             }

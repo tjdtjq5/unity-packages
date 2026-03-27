@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SupaRun Admin</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/css/tabler.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<style>
+  .cell-edit{cursor:pointer;min-height:1.5em;padding:2px 6px;border-radius:4px;transition:background .15s}
+  .cell-edit:hover{background:#e8f0fe}
+  .cell-saved{animation:saved .8s ease}
+  @keyframes saved{0%{background:#d1fae5;box-shadow:0 0 0 2px #22c55e40}100%{background:transparent;box-shadow:none}}
+  .cell-input{width:100%;border:2px solid #206bc4;border-radius:4px;padding:2px 6px;outline:none;transition:border-color .15s}
+  .cell-input:focus{border-color:#0b5ed7;box-shadow:0 0 0 3px #206bc440}
+  .json-badge{cursor:pointer;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;transition:transform .1s}
+  .json-badge:hover{transform:scale(1.05)}
+  .sidebar-link.active{background:#206bc4!important;color:#fff!important;border-radius:6px}
+  #admin-page{display:none!important}
+  #admin-page.active{display:flex!important}
+  .oauth-btn{display:flex;align-items:center;justify-content:center;gap:8px}
+  .page-fade{animation:pageFade .25s ease}
+  @keyframes pageFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  .row-delete{animation:rowSlide .3s ease forwards}
+  @keyframes rowSlide{to{opacity:0;transform:translateX(30px);max-height:0;padding:0;overflow:hidden}}
+  .toast-container{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column-reverse;gap:8px}
+  .toast-item{padding:10px 16px;border-radius:8px;color:#fff;font-size:.875rem;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:toastIn .3s ease,toastOut .3s ease 2.5s forwards;display:flex;align-items:center;gap:8px}
+  .toast-item.success{background:#2fb344}
+  .toast-item.error{background:#d63939}
+  .toast-item.info{background:#206bc4}
+  @keyframes toastIn{from{opacity:0;transform:translateY(12px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+  @keyframes toastOut{to{opacity:0;transform:translateY(-8px) scale(.95)}}
+  .empty-state{padding:4rem 2rem;text-align:center;color:#667382}
+  .empty-state i{font-size:3rem;margin-bottom:1rem;opacity:.4}
+  .loading-spinner{display:flex;justify-content:center;padding:3rem}
+  .stat-badge{font-size:.75rem;padding:2px 8px;border-radius:99px;font-weight:500}
+  .sidebar-section-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;color:#ffffff60;padding:0 1rem;margin:1rem 0 .25rem}
+  .row-enter{animation:rowEnter .3s ease both}
+  @keyframes rowEnter{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+  .page-transition{animation:pageTransition .3s ease}
+  @keyframes pageTransition{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
+  tbody tr{animation:rowStagger .25s ease both}
+  .row-highlight{animation:rowHighlight 1s ease}
+  @keyframes rowHighlight{0%{background:#dbeafe;box-shadow:inset 3px 0 0 #206bc4}100%{background:transparent;box-shadow:none}}
+</style>
+</head>
+<body class="theme-light">
+
+<!-- ── Toast 컨테이너 ── -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- ── 로그인 ── -->
+<div id="login-page" class="page page-center">
+  <div class="container container-tight py-4">
+    <div class="text-center mb-4">
+      <div class="mb-3"><i class="ti ti-server-bolt" style="font-size:3rem;color:#206bc4"></i></div>
+      <h1 class="fw-bold">SupaRun Admin</h1>
+      <p class="text-muted">게임 서버 설정 관리</p>
+    </div>
+    <div class="card card-md shadow-sm">
+      <div class="card-body">
+        <div id="login-error" class="alert alert-danger" style="display:none"></div>
+        <div class="mb-3">
+          <label class="form-label"><i class="ti ti-mail me-1"></i>이메일</label>
+          <input id="login-email" type="email" class="form-control" autocomplete="email" placeholder="admin@example.com">
+        </div>
+        <div class="mb-3">
+          <label class="form-label"><i class="ti ti-lock me-1"></i>비밀번호</label>
+          <input id="login-password" type="password" class="form-control" autocomplete="current-password" placeholder="6자 이상">
+        </div>
+        <div class="form-footer d-flex gap-2">
+          <button class="btn btn-primary flex-fill" onclick="doLoginEmail()"><i class="ti ti-login me-1"></i>로그인</button>
+          <button class="btn btn-outline-primary flex-fill" onclick="doSignUp()"><i class="ti ti-user-plus me-1"></i>회원가입</button>
+        </div>
+        <div id="oauth-section" style="display:none">
+          <div class="hr-text my-4">또는</div>
+          <div class="d-grid gap-2" id="oauth-buttons"></div>
+        </div>
+      </div>
+    </div>
+    <div class="text-center text-muted mt-3" style="font-size:.75rem">Powered by SupaRun</div>
+  </div>
+</div>
+
+<!-- ── 어드민 ── -->
+<div id="admin-page" class="page">
+  <aside class="navbar navbar-vertical navbar-expand-lg navbar-dark" style="background:#1e293b">
+    <div class="container-fluid">
+      <h1 class="navbar-brand navbar-brand-autodark">
+        <i class="ti ti-server-bolt me-2"></i><span class="nav-link-title">SupaRun</span>
+      </h1>
+      <div class="collapse navbar-collapse" id="sidebar-menu">
+        <div class="sidebar-section-label">Config</div>
+        <ul id="sidebar-list" class="navbar-nav"></ul>
+        <div class="sidebar-section-label mt-3">시스템</div>
+        <ul class="navbar-nav">
+          <li class="nav-item">
+            <a class="nav-link sidebar-link" href="#" onclick="showAdmins();return false">
+              <span class="nav-link-icon"><i class="ti ti-shield-check"></i></span>
+              <span class="nav-link-title">관리자</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link sidebar-link" href="#" onclick="showAuditLog();return false">
+              <span class="nav-link-icon"><i class="ti ti-history"></i></span>
+              <span class="nav-link-title">변경 이력</span>
+            </a>
+          </li>
+        </ul>
+        <div class="mt-auto p-3">
+          <div class="text-muted small mb-2 text-center" id="admin-email-display"></div>
+          <button class="btn btn-ghost-light w-100" onclick="doLogout()"><i class="ti ti-logout me-1"></i>로그아웃</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="page-wrapper">
+    <div class="page-header d-print-none">
+      <div class="container-xl">
+        <div class="row align-items-center">
+          <div class="col-auto">
+            <h2 id="page-title" class="page-title">Config를 선택하세요</h2>
+            <div id="page-subtitle" class="text-muted small"></div>
+          </div>
+          <div class="col-auto ms-auto">
+            <div class="d-flex gap-2">
+              <div id="search-wrapper" style="display:none" class="input-icon">
+                <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                <input id="search-input" type="text" class="form-control" placeholder="검색..." oninput="filterTable(this.value)" style="width:200px">
+              </div>
+              <button id="btn-export" class="btn btn-outline-secondary" onclick="exportData()" style="display:none"><i class="ti ti-download me-1"></i>내보내기</button>
+              <label id="btn-import" class="btn btn-outline-secondary mb-0" style="display:none">
+                <i class="ti ti-upload me-1"></i>가져오기<input type="file" accept=".json" onchange="importData(this)" hidden>
+              </label>
+              <button id="btn-add" class="btn btn-primary" onclick="addRow()" style="display:none"><i class="ti ti-plus me-1"></i>추가</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="page-body">
+      <div class="container-xl page-fade">
+        <div class="card shadow-sm">
+          <div id="table-container" class="table-responsive">
+            <div class="empty-state">
+              <i class="ti ti-database"></i>
+              <h3>Config를 선택하세요</h3>
+              <p>왼쪽 사이드바에서 편집할 Config를 선택합니다.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Rewards 모달 ── -->
+<div class="modal modal-blur fade" id="rewards-modal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-gift me-2"></i>보상 편집</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="rewards-list"></div>
+        <button class="btn btn-outline-primary btn-sm mt-2" onclick="addRewardRow()"><i class="ti ti-plus me-1"></i>보상 추가</button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary" onclick="saveRewards()"><i class="ti ti-check me-1"></i>저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 삭제 확인 모달 ── -->
+<div class="modal modal-blur fade" id="delete-modal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content border-danger">
+      <div class="modal-status bg-danger"></div>
+      <div class="modal-body text-center py-4">
+        <i class="ti ti-alert-triangle text-danger mb-2" style="font-size:3rem"></i>
+        <h3>삭제 확인</h3>
+        <p class="text-muted">이 작업은 되돌릴 수 없습니다.</p>
+        <p id="delete-target" class="fw-bold"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary w-100" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-danger w-100" onclick="confirmDelete()"><i class="ti ti-trash me-1"></i>삭제</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/js/tabler.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// ── 글로벌 에러 핸들러 (빈 화면 방지) ──
+window.onerror = function(msg, src, line, col, err) {
+  var el = document.getElementById('login-error');
+  if (el) { el.style.display = 'block'; el.className = 'alert alert-danger';
+    el.innerHTML = '<strong>오류 발생</strong><br>' + msg + '<br><small>' + (src||'') + ':' + (line||'') + '</small>'; }
+  console.error('Admin Error:', msg, src, line, col, err);
+};
+window.addEventListener('unhandledrejection', function(e) {
+  var el = document.getElementById('login-error');
+  if (el) { el.style.display = 'block'; el.className = 'alert alert-danger';
+    el.innerHTML = '<strong>오류 발생</strong><br>' + (e.reason?.message || e.reason || 'Unknown error'); }
+  console.error('Unhandled rejection:', e.reason);
+});
+
+// ── Config ──
+const SUPABASE_URL = '{{SUPABASE_URL}}';
+const SUPABASE_ANON_KEY = '{{SUPABASE_ANON_KEY}}';
+let AUTH_PROVIDERS = [];
+const API_BASE = '/admin/api/config';
+
+// ── 초기화 에러 방어 ──
+let sb = null;
+try {
+  AUTH_PROVIDERS = JSON.parse('{{AUTH_PROVIDERS_JSON}}');
+} catch { AUTH_PROVIDERS = []; }
+try {
+  if (!window.supabase) throw new Error('supabase-js CDN 로드 실패');
+  if (!SUPABASE_URL || SUPABASE_URL.includes('{{')) throw new Error('SUPABASE_URL이 설정되지 않았습니다. SupaRun Dashboard에서 Supabase를 연결하세요.');
+  if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('{{')) throw new Error('SUPABASE_ANON_KEY가 설정되지 않았습니다.');
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} catch (e) {
+  document.getElementById('login-error').textContent = e.message;
+  document.getElementById('login-error').style.display = 'block';
+}
+
+// OAuth 버튼 동적 생성 (설정된 provider만)
+const OAUTH_STYLES = {
+  google: { label: 'Google로 로그인', style: '', icon: '<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>' },
+  kakao: { label: '카카오로 로그인', style: 'background:#FEE500;border-color:#FEE500;color:#000', icon: '' },
+  apple: { label: 'Apple로 로그인', style: 'background:#000;border-color:#000;color:#fff', icon: '' },
+};
+try {
+  if (AUTH_PROVIDERS.length > 0) {
+    document.getElementById('oauth-section').style.display = '';
+    const container = document.getElementById('oauth-buttons');
+    AUTH_PROVIDERS.forEach(p => {
+      const s = OAUTH_STYLES[p] || { label: `${p}로 로그인`, style: '', icon: '' };
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-outline-secondary oauth-btn';
+      if (s.style) btn.style.cssText = s.style;
+      btn.innerHTML = `${s.icon} ${s.label}`;
+      btn.onclick = () => doLoginOAuth(p);
+      container.appendChild(btn);
+    });
+  }
+} catch {}
+
+// ── Toast ──
+function toast(msg, type = 'success') {
+  const c = document.getElementById('toast-container');
+  const icons = { success: 'ti-check', error: 'ti-x', info: 'ti-info-circle' };
+  const el = document.createElement('div');
+  el.className = `toast-item ${type}`;
+  el.innerHTML = `<i class="ti ${icons[type]||icons.info}"></i>${escHtml(msg)}`;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ── State ──
+let token = null;
+let types = [];
+let currentType = null;
+let currentData = [];
+let rewardSources = {};
+let fkSources = {};
+let undoStack = [];
+let deleteCallback = null;
+let debounceTimers = {};
+// Table state
+let tableTypes = [];
+let currentTableType = null;
+let tableData = { rows: [], total: 0 };
+let tableFilters = [];
+let tablePage = 0;
+const TABLE_PAGE_SIZE = 50;
+let chartInstance = null;
+let isTableMode = false;
+
+// ── Auth (supabase-js) ──
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  el.className = 'alert alert-danger';
+  el.innerHTML = msg.replace(/\n/g, '<br>');
+  el.style.display = 'block';
+}
+
+async function doLoginEmail() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  document.getElementById('login-error').style.display = 'none';
+
+  if (!email) { showLoginError('이메일을 입력하세요.'); return; }
+  if (!password) { showLoginError('비밀번호를 입력하세요.'); return; }
+  if (!sb) { showLoginError('Supabase 연결 실패. SupaRun Dashboard에서 Supabase 설정을 확인하세요.'); return; }
+
+  try {
+    isManualLogin = true;
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) { isManualLogin = false; showLoginError(error.message); }
+  } catch (e) {
+    showLoginError('로그인 실패: ' + e.message);
+  }
+}
+
+async function doSignUp() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  document.getElementById('login-error').style.display = 'none';
+
+  if (!email) { showLoginError('이메일을 입력하세요.'); return; }
+  if (!password) { showLoginError('비밀번호를 입력하세요.'); return; }
+  if (password.length < 6) { showLoginError('비밀번호는 6자 이상이어야 합니다.'); return; }
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) { showLoginError('Supabase 설정이 필요합니다.'); return; }
+
+  try {
+    isManualLogin = true;
+    const { data, error } = await sb.auth.signUp({ email, password });
+    if (error) { isManualLogin = false; showLoginError(error.message); return; }
+
+    if (data.session) {
+      const el = document.getElementById('login-error');
+      el.className = 'alert alert-success';
+      el.textContent = '회원가입 완료!';
+      el.style.display = 'block';
+    } else {
+      const el = document.getElementById('login-error');
+      el.className = 'alert alert-success';
+      el.textContent = '회원가입 완료! 같은 이메일과 비밀번호로 로그인하세요.';
+      el.style.display = 'block';
+    }
+  } catch (e) {
+    showLoginError('회원가입 실패: ' + e.message);
+  }
+}
+
+async function doLoginOAuth(provider) {
+  try {
+    const { error } = await sb.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin + '/admin/index.html' } });
+    if (error) showLoginError(error.message);
+  } catch (e) {
+    showLoginError('OAuth 로그인 실패: ' + e.message);
+  }
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  token = null;
+  document.getElementById('admin-page').classList.remove('active');
+  document.getElementById('login-page').style.display = '';
+}
+
+// 세션 변경 감지 (로그인/토큰 갱신/로그아웃)
+let adminLoaded = false;
+let isManualLogin = false;
+sb && sb.auth.onAuthStateChange((event, session) => {
+  if (session?.access_token) {
+    token = session.access_token;
+    if (event === 'TOKEN_REFRESHED') return;
+    if (!adminLoaded && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+      adminLoaded = true;
+      // 이메일 표시
+      const email = session.user?.email;
+      if (email) document.getElementById('admin-email-display').textContent = email;
+      showAdmin().catch(() => {
+        adminLoaded = false;
+        token = null;
+        document.getElementById('admin-page').classList.remove('active');
+        document.getElementById('login-page').style.display = '';
+        if (!isManualLogin) document.getElementById('login-error').style.display = 'none';
+        isManualLogin = false;
+      });
+    }
+  } else if (event === 'SIGNED_OUT') {
+    token = null;
+    adminLoaded = false;
+    document.getElementById('admin-page').classList.remove('active');
+    document.getElementById('login-page').style.display = '';
+  }
+});
+
+// Enter 키 로그인
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('login-page').style.display !== 'none') doLoginEmail();
+});
+
+// Ctrl+Z 되돌리기
+document.addEventListener('keydown', async e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.target.matches('input,textarea,select')) {
+    e.preventDefault();
+    const item = undoStack.pop(); if (!item) return;
+    const row = currentData.find(r => r.id === item.rowId);
+    if (!row || !currentType || currentType.tableName !== item.typeName) return;
+    row[item.fieldName] = item.oldValue;
+    try { await api(`/${currentType.tableName}/${item.rowId}`, 'PUT', row); renderTable(); toast('되돌리기 완료', 'info'); }
+    catch (err) { toast('되돌리기 실패: ' + err.message, 'error'); }
+  }
+});
+
+// ── API ──
+async function api(path, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`${API_BASE}${path}`, opts);
+  if (res.status === 401 || res.status === 403) {
+    var errMsg = res.status === 401
+      ? '로그인 세션이 만료되었습니다. 다시 로그인하세요.'
+      : '관리자 권한이 없습니다.\n첫 번째 가입자는 자동으로 관리자가 됩니다.\n이미 관리자가 있다면, 기존 관리자에게 승인을 요청하세요.';
+    showLoginError(errMsg);
+    token = null; adminLoaded = false;
+    document.getElementById('admin-page').classList.remove('active');
+    document.getElementById('login-page').style.display = '';
+    throw new Error(errMsg);
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  if (res.status === 200 && method === 'DELETE') return null;
+  return res.json();
+}
+
+async function tableApi(path, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`/admin/api/table${path}`, opts);
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `HTTP ${res.status}`); }
+  return res.json();
+}
+
+async function adminApi(path, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`/admin/api/admins${path}`, opts);
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `HTTP ${res.status}`); }
+  if (method === 'DELETE') return null;
+  return res.json();
+}
+
+// ── 초기화 ──
+async function showAdmin() {
+  // 로그인→어드민 fade 전환
+  document.getElementById('login-page').style.transition = 'opacity .2s';
+  document.getElementById('login-page').style.opacity = '0';
+  await new Promise(r => setTimeout(r, 200));
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('login-page').style.opacity = '1';
+  document.getElementById('login-page').style.transition = '';
+  document.getElementById('admin-page').classList.add('active');
+  document.getElementById('admin-page').querySelector('.page-wrapper').classList.add('page-transition');
+  try {
+    types = await api('/_types');
+  } catch (e) {
+    if (e.message.includes('권한') || e.message.includes('세션')) throw e;
+    types = [];
+  }
+  try { tableTypes = await tableApi('/_types'); } catch { tableTypes = []; }
+  renderSidebar();
+  if (types.length === 0 && tableTypes.length === 0) {
+    document.getElementById('table-container').innerHTML =
+      '<div class="empty-state">' +
+      '<i class="ti ti-package"></i>' +
+      '<h3>등록된 Config가 없습니다</h3>' +
+      '<p>Unity에서 Feature를 설치하고 Deploy하면 여기에 나타납니다.</p>' +
+      '</div>';
+  }
+  loadRewardSources();
+}
+
+async function loadRewardSources() {
+  for (const t of types) {
+    if (t.tableName === 'currency_def' || t.tableName === 'inventory_item_def') {
+      try { rewardSources[t.tableName] = await api(`/${t.tableName}`); } catch {}
+    }
+  }
+  // FK 참조 대상 Config 로드
+  const fkTargets = new Set();
+  for (const t of types) {
+    for (const f of t.fields) {
+      if (f.foreignKey) fkTargets.add(f.foreignKey);
+    }
+  }
+  for (const name of fkTargets) {
+    const t = types.find(x => x.name === name);
+    if (t && !fkSources[name]) {
+      try { fkSources[name] = await api(`/${t.tableName}`); } catch {}
+    }
+  }
+}
+
+// ── 사이드바 ──
+function renderSidebar() {
+  const ul = document.getElementById('sidebar-list');
+  ul.innerHTML = '';
+  // 그룹별 분류
+  const groups = {};
+  const ungrouped = [];
+  for (const t of types) {
+    if (t.group) { (groups[t.group] = groups[t.group] || []).push(t); }
+    else { ungrouped.push(t); }
+  }
+  // 그룹 렌더링 (접이식)
+  for (const [group, items] of Object.entries(groups)) {
+    const li = document.createElement('li');
+    li.className = 'nav-item dropdown';
+    const sg = escHtml(group);
+    let links = '';
+    for (const t of items) {
+      const stn = escHtml(t.tableName);
+      links += `<a class="dropdown-item sidebar-link" href="#" data-type="${stn}" onclick="selectType('${stn}');return false"><i class="ti ti-table me-1"></i>${escHtml(t.name)}</a>`;
+    }
+    li.innerHTML = `<a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown" data-bs-auto-close="false"><span class="nav-link-icon"><i class="ti ti-folder"></i></span><span class="nav-link-title">${sg}</span></a><div class="dropdown-menu">${links}</div>`;
+    ul.appendChild(li);
+  }
+  // 그룹 없는 타입 (flat)
+  for (const t of ungrouped) {
+    const li = document.createElement('li');
+    li.className = 'nav-item';
+    const stn = escHtml(t.tableName);
+    li.innerHTML = `<a class="nav-link sidebar-link" href="#" data-type="${stn}" onclick="selectType('${stn}');return false"><span class="nav-link-icon"><i class="ti ti-table"></i></span><span class="nav-link-title">${escHtml(t.name)}</span></a>`;
+    ul.appendChild(li);
+  }
+  // Table 섹션
+  if (tableTypes.length > 0) {
+    const sep = document.createElement('li');
+    sep.innerHTML = '<div class="sidebar-section-label mt-3">Table (읽기 전용)</div>';
+    ul.appendChild(sep);
+    for (const t of tableTypes) {
+      const li = document.createElement('li');
+      li.className = 'nav-item';
+      const stn = escHtml(t.tableName);
+      li.innerHTML = `<a class="nav-link sidebar-link" href="#" data-type="${stn}" onclick="selectTableType('${stn}');return false"><span class="nav-link-icon"><i class="ti ti-database"></i></span><span class="nav-link-title">${escHtml(t.name)}</span></a>`;
+      ul.appendChild(li);
+    }
+    // 크로스 검색
+    const cross = document.createElement('li');
+    cross.className = 'nav-item';
+    cross.innerHTML = `<a class="nav-link sidebar-link" href="#" onclick="showCrossSearch();return false"><span class="nav-link-icon"><i class="ti ti-arrows-cross"></i></span><span class="nav-link-title">크로스 검색</span></a>`;
+    ul.appendChild(cross);
+  }
+}
+
+function hideToolbar() {
+  ['search-wrapper','btn-add','btn-export','btn-import'].forEach(id => document.getElementById(id).style.display = 'none');
+  document.getElementById('page-subtitle').textContent = '';
+}
+
+function showToolbar() {
+  ['search-wrapper','btn-add','btn-export','btn-import'].forEach(id => document.getElementById(id).style.display = '');
+}
+
+// ── 타입 선택 ──
+async function selectType(tableName) {
+  currentType = types.find(t => t.tableName === tableName);
+  if (!currentType) return;
+  document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
+  document.querySelector(`[data-type="${tableName}"]`)?.classList.add('active');
+  document.getElementById('page-title').textContent = currentType.name;
+  showToolbar();
+  document.getElementById('search-input').value = '';
+  // 로딩 표시
+  document.getElementById('table-container').innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div></div>';
+  currentData = await api(`/${tableName}`);
+  document.getElementById('page-subtitle').textContent = `${currentData.length}건`;
+  renderTable();
+}
+
+// ── 테이블 렌더링 ──
+function renderTable(filter = '') {
+  const container = document.getElementById('table-container');
+  if (!currentType || !currentData) return;
+  const fields = currentType.fields;
+  const filtered = filter
+    ? currentData.filter(row => fields.some(f => String(row[f.name] ?? '').toLowerCase().includes(filter.toLowerCase())))
+    : currentData;
+
+  if (filtered.length === 0 && !filter) {
+    container.innerHTML = '<div class="empty-state"><i class="ti ti-inbox"></i><h3>데이터가 없습니다</h3><p>위의 "+ 추가" 버튼으로 첫 행을 만들어보세요.</p></div>';
+    return;
+  }
+
+  let html = '<table class="table table-vcenter card-table table-hover table-striped"><thead><tr>';
+  for (const f of fields) {
+    let icon = '';
+    if (f.isPrimaryKey) icon = '<i class="ti ti-key text-yellow me-1" title="Primary Key"></i>';
+    else if (f.isRequired) icon = '<span class="text-red me-1" title="필수">*</span>';
+    else if (f.foreignKey) icon = '<i class="ti ti-link text-cyan me-1" title="Foreign Key"></i>';
+    html += `<th>${icon}${escHtml(f.name)}</th>`;
+  }
+  html += '<th style="width:80px">작업</th></tr></thead><tbody>';
+  for (let ri = 0; ri < filtered.length; ri++) {
+    const row = filtered[ri];
+    const sid = escHtml(String(row.id??''));
+    const delay = Math.min(ri * 20, 400);
+    html += `<tr data-id="${sid}" style="animation-delay:${delay}ms">`;
+    for (const f of fields) html += '<td>' + renderCell(row, f) + '</td>';
+    html += `<td><div class="btn-list flex-nowrap">
+      <button class="btn btn-ghost-primary btn-icon btn-sm" onclick="copyRow('${sid}')" title="복사"><i class="ti ti-copy"></i></button>
+      <button class="btn btn-ghost-danger btn-icon btn-sm" onclick="requestDelete('${sid}')" title="삭제"><i class="ti ti-trash"></i></button>
+    </div></td></tr>`;
+  }
+  html += '</tbody></table>';
+  if (filter && filtered.length === 0) {
+    html = `<div class="empty-state"><i class="ti ti-search"></i><h3>검색 결과 없음</h3><p>"${escHtml(filter)}"에 대한 결과가 없습니다.</p></div>`;
+  }
+  container.innerHTML = html;
+}
+
+function renderCell(row, field) {
+  const val = row[field.name];
+  const sid = escHtml(String(row.id??''));
+  const sfn = escHtml(field.name);
+  if (field.type === 'bool') {
+    return `<label class="form-check form-switch mb-0"><input type="checkbox" class="form-check-input" ${val?'checked':''}
+      onchange="toggleBool('${sid}','${sfn}',this.checked)"></label>`;
+  }
+  if (field.foreignKey && fkSources[field.foreignKey]) {
+    const src = fkSources[field.foreignKey];
+    let opts = src.map(s => `<option value="${escHtml(s.id)}" ${s.id===val?'selected':''}>${escHtml(s.name||s.id)}</option>`).join('');
+    if (!val || !src.find(s => s.id === val)) opts = `<option value="${escHtml(val||'')}" selected>${escHtml(val||'(없음)')}</option>` + opts;
+    return `<select class="form-select form-select-sm" onchange="debounceSave('${sid}','${sfn}',this.value)">${opts}</select>`;
+  }
+  if (field.isJson) {
+    const display = formatRewards(val);
+    return `<span class="badge bg-blue-lt json-badge" title="${escHtml(val||'[]')}" onclick="openRewards('${sid}','${sfn}')"><i class="ti ti-gift me-1"></i>${display||'(비어있음)'}</span>`;
+  }
+  if (field.isPrimaryKey) return `<code class="text-muted">${escHtml(String(val??''))}</code>`;
+  return `<span class="cell-edit" onclick="startEdit(this,'${sid}','${sfn}','${escHtml(field.type)}')">${escHtml(String(val??''))}</span>`;
+}
+
+// ── 인라인 편집 ──
+function startEdit(el, rowId, fieldName, fieldType) {
+  if (el.querySelector('input')) return;
+  const current = el.textContent;
+  const input = document.createElement('input');
+  input.className = 'cell-input';
+  input.value = current;
+  if (['int','long','number'].includes(fieldType)) input.type = 'number';
+  el.textContent = ''; el.appendChild(input); input.focus(); input.select();
+  const commit = () => { el.textContent = String(castValue(input.value, fieldType) ?? ''); debounceSave(rowId, fieldName, castValue(input.value, fieldType)); };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') el.textContent = current; });
+}
+
+function castValue(v, t) { if (t==='int'||t==='long') return parseInt(v)||0; if (t==='number') return parseFloat(v)||0; return v; }
+
+function debounceSave(rowId, fieldName, value) {
+  const row = currentData.find(r => r.id === rowId);
+  if (row && row[fieldName] !== value) undoStack.push({ rowId, fieldName, oldValue: row[fieldName], typeName: currentType?.tableName });
+  const k = `${rowId}_${fieldName}`; clearTimeout(debounceTimers[k]);
+  debounceTimers[k] = setTimeout(() => commitSave(rowId, fieldName, value), 500);
+}
+
+async function commitSave(rowId, fieldName, value) {
+  const row = currentData.find(r => r.id === rowId); if (!row) return;
+  row[fieldName] = value;
+  try {
+    await api(`/${currentType.tableName}/${rowId}`, 'PUT', row);
+    const cell = document.querySelector(`tr[data-id="${rowId}"] .cell-edit`);
+    if (cell) { cell.classList.add('cell-saved'); setTimeout(() => cell.classList.remove('cell-saved'), 800); }
+    toast('저장됨', 'success');
+  } catch (e) { toast('저장 실패: ' + e.message, 'error'); }
+}
+
+async function toggleBool(rowId, fieldName, value) {
+  const row = currentData.find(r => r.id === rowId); if (!row) return;
+  undoStack.push({ rowId, fieldName, oldValue: row[fieldName], typeName: currentType?.tableName });
+  row[fieldName] = value;
+  try { await api(`/${currentType.tableName}/${rowId}`, 'PUT', row); toast('저장됨', 'success'); }
+  catch (e) { toast('저장 실패: ' + e.message, 'error'); }
+}
+
+// ── 행 추가/복사/삭제 ──
+async function addRow() {
+  if (!currentType) return;
+  const row = {};
+  for (const f of currentType.fields) {
+    if (f.type === 'string') row[f.name] = f.isPrimaryKey ? 'new_' + Date.now() : (f.isRequired ? 'new' : '');
+    else if (['int','long','number'].includes(f.type)) row[f.name] = 0;
+    else if (f.type === 'bool') row[f.name] = false;
+    else row[f.name] = '';
+  }
+  try {
+    const saved = await api(`/${currentType.tableName}`, 'POST', row);
+    currentData.unshift(saved); renderTable(); toast('행 추가됨', 'success');
+    document.getElementById('page-subtitle').textContent = `${currentData.length}건`;
+    const tr = document.querySelector(`tr[data-id="${escHtml(saved.id)}"]`);
+    if (tr) tr.classList.add('row-highlight');
+  } catch (e) { toast('추가 실패: ' + e.message, 'error'); }
+}
+
+async function copyRow(rowId) {
+  const src = currentData.find(r => r.id === rowId); if (!src) return;
+  const copy = { ...src, id: src.id + '_copy_' + Date.now() };
+  try {
+    const saved = await api(`/${currentType.tableName}`, 'POST', copy);
+    currentData.unshift(saved); renderTable(); toast('행 복사됨', 'success');
+    document.getElementById('page-subtitle').textContent = `${currentData.length}건`;
+    const tr = document.querySelector(`tr[data-id="${escHtml(saved.id)}"]`);
+    if (tr) tr.classList.add('row-highlight');
+  } catch (e) { toast('복사 실패: ' + e.message, 'error'); }
+}
+
+function requestDelete(rowId) {
+  document.getElementById('delete-target').textContent = `ID: ${rowId}`;
+  deleteCallback = () => doDeleteRow(rowId);
+  new bootstrap.Modal(document.getElementById('delete-modal')).show();
+}
+function confirmDelete() { if (deleteCallback) deleteCallback(); bootstrap.Modal.getInstance(document.getElementById('delete-modal'))?.hide(); }
+async function doDeleteRow(rowId) {
+  try {
+    await api(`/${currentType.tableName}/${rowId}`, 'DELETE');
+    // 행 삭제 애니메이션
+    const tr = document.querySelector(`tr[data-id="${escHtml(rowId)}"]`);
+    if (tr) { tr.classList.add('row-delete'); await new Promise(r => setTimeout(r, 300)); }
+    currentData = currentData.filter(r => r.id !== rowId); renderTable();
+    toast('삭제됨', 'success');
+    document.getElementById('page-subtitle').textContent = `${currentData.length}건`;
+  }
+  catch (e) { toast('삭제 실패: ' + e.message, 'error'); }
+}
+
+// ── Rewards 모달 ──
+let rewardsRowId = null, rewardsFieldName = null;
+function openRewards(rowId, fieldName) {
+  rewardsRowId = rowId; rewardsFieldName = fieldName;
+  const row = currentData.find(r => r.id === rowId);
+  let rewards = []; try { rewards = JSON.parse(row[fieldName] || '[]'); } catch {}
+  renderRewardsList(rewards);
+  new bootstrap.Modal(document.getElementById('rewards-modal')).show();
+}
+function renderRewardsList(rewards) {
+  const c = document.getElementById('rewards-list'); c.innerHTML = '';
+  rewards.forEach((r, i) => {
+    const div = document.createElement('div'); div.className = 'row g-2 mb-2 align-items-end';
+    div.innerHTML = `<div class="col-3"><label class="form-label small">타입</label>
+      <select class="form-select form-select-sm reward-type" onchange="onRewardTypeChange(${i})">
+        <option value="currency" ${r.type==='currency'?'selected':''}>재화</option>
+        <option value="item" ${r.type==='item'?'selected':''}>아이템</option></select></div>
+      <div class="col-4"><label class="form-label small">ID</label>
+        <select class="form-select form-select-sm reward-id">${getRewardIdOptions(r.type,r.id)}</select></div>
+      <div class="col-3"><label class="form-label small">수량</label>
+        <input type="number" class="form-control form-control-sm reward-amount" value="${r.amount||0}" min="1"></div>
+      <div class="col-2"><button class="btn btn-ghost-danger btn-icon btn-sm" onclick="removeRewardRow(${i})"><i class="ti ti-x"></i></button></div>`;
+    c.appendChild(div);
+  });
+}
+function getRewardIdOptions(type, sid) {
+  const src = type==='currency' ? (rewardSources['currency_def']||[]) : (rewardSources['inventory_item_def']||[]);
+  if (!src.length) return `<option value="${escHtml(sid||'')}">${escHtml(sid||'(없음)')}</option>`;
+  return src.map(s => `<option value="${escHtml(s.id)}" ${s.id===sid?'selected':''}>${escHtml(s.name||s.id)}</option>`).join('');
+}
+function onRewardTypeChange(i) { document.querySelectorAll('.reward-id')[i].innerHTML = getRewardIdOptions(document.querySelectorAll('.reward-type')[i].value, null); }
+function addRewardRow() { const r = collectRewards(); r.push({type:'currency',id:'',amount:1}); renderRewardsList(r); }
+function removeRewardRow(i) { const r = collectRewards(); r.splice(i,1); renderRewardsList(r); }
+function collectRewards() {
+  const items = []; document.querySelectorAll('.reward-type').forEach((el,i) => {
+    items.push({ type:el.value, id:document.querySelectorAll('.reward-id')[i].value, amount:parseInt(document.querySelectorAll('.reward-amount')[i].value)||0 });
+  }); return items;
+}
+async function saveRewards() {
+  const row = currentData.find(r => r.id === rewardsRowId); if (!row) return;
+  row[rewardsFieldName] = JSON.stringify(collectRewards());
+  try { await api(`/${currentType.tableName}/${rewardsRowId}`, 'PUT', row); renderTable(); bootstrap.Modal.getInstance(document.getElementById('rewards-modal'))?.hide(); toast('보상 저장됨', 'success'); }
+  catch (e) { toast('저장 실패: ' + e.message, 'error'); }
+}
+function formatRewards(json) {
+  if (!json) return ''; try { const a = JSON.parse(json); if (!Array.isArray(a)||!a.length) return '(비어있음)';
+    return a.map(r => `${r.type==='currency'?'🪙':'📦'} ${escHtml(String(r.id||''))} ×${parseInt(r.amount)||0}`).join(', '); } catch { return escHtml(json); }
+}
+
+// ── 검색 ──
+function filterTable(q) { renderTable(q); }
+
+// ── Export/Import ──
+async function exportData() {
+  if (!currentType) return;
+  try {
+    const res = await fetch(`${API_BASE}/_export/${currentType.tableName}`, { headers: { 'Authorization': `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob(); const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `${currentType.tableName}.json`; a.click(); URL.revokeObjectURL(url);
+    toast(`${currentType.name} 내보내기 완료`, 'success');
+  } catch (e) { toast('내보내기 실패: ' + e.message, 'error'); }
+}
+async function importData(input) {
+  if (!currentType || !input.files[0]) return;
+  const text = await input.files[0].text(); input.value = '';
+  let data; try { data = JSON.parse(text); } catch { toast('유효한 JSON 파일이 아닙니다', 'error'); return; }
+  if (!Array.isArray(data)) { toast('JSON 배열이어야 합니다', 'error'); return; }
+  if (!confirm(`${currentType.name}의 기존 데이터를 ${data.length}건으로 교체합니다. 계속?`)) return;
+  try { const res = await api(`/_import/${currentType.tableName}`, 'POST', data); toast(`${res.imported}건 가져오기 완료`, 'success');
+    currentData = await api(`/${currentType.tableName}`); renderTable(); document.getElementById('page-subtitle').textContent = `${currentData.length}건`; }
+  catch (e) { toast('가져오기 실패: ' + e.message, 'error'); }
+}
+
+// ── 관리자 목록 ──
+async function showAdmins() {
+  currentType = null;
+  document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-title').textContent = '관리자 목록';
+  hideToolbar();
+
+  const admins = await adminApi('');
+  const container = document.getElementById('table-container');
+  let html = '<table class="table table-vcenter card-table table-striped"><thead><tr>';
+  html += '<th>이메일</th><th>상태</th><th>메모</th><th>등록일</th><th>작업</th>';
+  html += '</tr></thead><tbody>';
+  for (const a of admins) {
+    const time = new Date(a.created_at).toLocaleDateString('ko-KR');
+    const safeId = escHtml(a.id||'');
+    const roleBadge = a.role === 'admin'
+      ? '<span class="badge bg-green"><i class="ti ti-check me-1"></i>관리자</span>'
+      : '<span class="badge bg-yellow"><i class="ti ti-clock me-1"></i>승인 대기</span>';
+    const approveBtn = a.role === 'pending'
+      ? `<button class="btn btn-ghost-success btn-sm" onclick="changeRole('${safeId}','admin')"><i class="ti ti-check me-1"></i>승인</button>`
+      : `<button class="btn btn-ghost-warning btn-sm" onclick="changeRole('${safeId}','pending')"><i class="ti ti-lock me-1"></i>해제</button>`;
+    html += `<tr>
+      <td><i class="ti ti-mail text-muted me-1"></i>${escHtml(a.email||'')}</td>
+      <td>${roleBadge}</td>
+      <td class="text-muted">${escHtml(a.memo||'')}</td>
+      <td class="text-muted">${escHtml(time)}</td>
+      <td><div class="btn-list flex-nowrap">${approveBtn}
+        <button class="btn btn-ghost-danger btn-icon btn-sm" onclick="removeAdmin('${safeId}')" title="삭제"><i class="ti ti-trash"></i></button>
+      </div></td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  html += `<div class="p-3 border-top">
+    <div class="text-muted small mb-2"><i class="ti ti-info-circle me-1"></i>여기서 추가한 관리자는 회원가입 후 바로 접근 가능합니다.</div>
+    <div class="row g-2 align-items-end">
+      <div class="col-4"><label class="form-label small">이메일</label><input id="admin-email" type="email" class="form-control form-control-sm" placeholder="admin@example.com"></div>
+      <div class="col-4"><label class="form-label small">메모</label><input id="admin-memo" type="text" class="form-control form-control-sm" placeholder="(선택)"></div>
+      <div class="col-auto"><button class="btn btn-primary btn-sm" onclick="addAdmin()"><i class="ti ti-plus me-1"></i>관리자 추가</button></div>
+    </div>
+    <div class="text-muted small mt-2 mb-0">
+      직접 회원가입한 유저는 "승인 대기" 상태로 등록됩니다. 위에서 승인하세요.
+    </div>
+  </div>`;
+  container.innerHTML = html;
+}
+
+async function addAdmin() {
+  const email = document.getElementById('admin-email').value;
+  const memo = document.getElementById('admin-memo').value;
+  if (!email) { toast('이메일을 입력하세요', 'error'); return; }
+  try { await adminApi('', 'POST', { email, memo }); showAdmins(); toast('관리자 추가됨', 'success'); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+async function changeRole(id, role) {
+  try { await adminApi(`/${id}/role`, 'PUT', { role }); showAdmins(); toast(role === 'admin' ? '승인 완료' : '권한 해제됨', 'info'); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+async function removeAdmin(id) {
+  if (!confirm('이 관리자를 삭제하시겠습니까?')) return;
+  try { await adminApi(`/${id}`, 'DELETE'); showAdmins(); toast('관리자 삭제됨', 'success'); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+// ── 변경 이력 ──
+let auditLogs = [];
+function showAuditJson(idx, field) {
+  const log = auditLogs[idx]; if (!log) return;
+  const json = field === 'before' ? log.before_json : log.after_json;
+  if (!json) return;
+  try { const el = document.createElement('pre'); el.textContent = JSON.stringify(JSON.parse(json), null, 2);
+    const w = window.open('', '_blank', 'width=600,height=400'); w.document.title = field; w.document.body.appendChild(el); }
+  catch { const w = window.open('', '_blank', 'width=600,height=400'); w.document.title = field; w.document.body.textContent = json; }
+}
+async function showAuditLog() {
+  currentType = null;
+  document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-title').textContent = '변경 이력';
+  hideToolbar();
+
+  auditLogs = await api('/_audit?limit=100');
+  const container = document.getElementById('table-container');
+  const badges = { create:'bg-green', update:'bg-blue', delete:'bg-red', batch:'bg-purple', import:'bg-orange', admin_add:'bg-cyan', admin_remove:'bg-pink', role_change:'bg-teal' };
+  const icons = { create:'ti-plus', update:'ti-pencil', delete:'ti-trash', batch:'ti-stack-2', import:'ti-upload', admin_add:'ti-user-plus', admin_remove:'ti-user-minus', role_change:'ti-shield' };
+  let html = '<table class="table table-vcenter card-table table-striped"><thead><tr>';
+  html += '<th>시간</th><th>작업</th><th>대상</th><th>ID</th><th>관리자</th><th>상세</th>';
+  html += '</tr></thead><tbody>';
+  for (let i = 0; i < auditLogs.length; i++) {
+    const log = auditLogs[i];
+    const time = new Date(log.created_at).toLocaleString('ko-KR');
+    const icon = icons[log.action] || 'ti-activity';
+    html += `<tr>
+      <td class="text-muted">${escHtml(time)}</td>
+      <td><span class="badge ${escHtml(badges[log.action]||'bg-secondary')}"><i class="ti ${escHtml(icon)} me-1"></i>${escHtml(log.action||'')}</span></td>
+      <td>${escHtml(log.config_type||'')}</td>
+      <td><code>${escHtml(log.row_id||'-')}</code></td>
+      <td class="text-muted" style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${escHtml(log.admin_id||'')}</td>
+      <td>
+        ${log.before_json ? `<button class="btn btn-ghost-secondary btn-sm" onclick="showAuditJson(${i},'before')"><i class="ti ti-arrow-back-up me-1"></i>이전</button>` : ''}
+        ${log.after_json ? `<button class="btn btn-ghost-primary btn-sm" onclick="showAuditJson(${i},'after')"><i class="ti ti-arrow-forward-up me-1"></i>이후</button>` : ''}
+      </td>
+    </tr>`;
+  }
+  if (auditLogs.length === 0) {
+    html += '<tr><td colspan="6" class="text-center text-muted py-4"><i class="ti ti-history me-1"></i>변경 이력이 없습니다.</td></tr>';
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════
+// ── Table (읽기 전용 + 통계 + 차트 + 크로스) ──
+// ══════════════════════════════════════════════
+
+async function selectTableType(tableName) {
+  isTableMode = true;
+  currentType = null; // Config 모드 해제
+  currentTableType = tableTypes.find(t => t.tableName === tableName);
+  if (!currentTableType) return;
+  document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
+  document.querySelector(`[data-type="${tableName}"]`)?.classList.add('active');
+  document.getElementById('page-title').textContent = currentTableType.name;
+  hideToolbar();
+  document.getElementById('page-subtitle').textContent = '';
+  tableFilters = [];
+  tablePage = 0;
+  await loadTableData();
+}
+
+async function loadTableData() {
+  if (!currentTableType) return;
+  document.getElementById('table-container').innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div></div>';
+  // 필터 쿼리스트링 빌드
+  const params = new URLSearchParams();
+  for (const f of tableFilters) {
+    const key = f.op === '=' ? f.field : `${f.field}.${({'>':'gt','>=':'gte','<':'lt','<=':'lte','like':'like'})[f.op]||'eq'}`;
+    params.set(key, f.value);
+  }
+  params.set('limit', TABLE_PAGE_SIZE);
+  params.set('offset', tablePage * TABLE_PAGE_SIZE);
+  try {
+    tableData = await tableApi(`/${currentTableType.tableName}?${params}`);
+    document.getElementById('page-subtitle').textContent = `${tableData.total}건`;
+    renderTableView();
+  } catch (e) { toast('조회 실패: ' + e.message, 'error'); }
+}
+
+function renderTableView() {
+  const container = document.getElementById('table-container');
+  const fields = currentTableType.fields;
+  const rows = tableData.rows || [];
+
+  let html = '';
+  // 필터 UI
+  html += '<div class="p-3 border-bottom bg-light">';
+  html += '<div class="d-flex flex-wrap gap-2 mb-2">';
+  tableFilters.forEach((f, i) => {
+    html += `<span class="badge bg-blue-lt p-2">${escHtml(f.field)} ${escHtml(f.op)} ${escHtml(f.value)} <a href="#" class="ms-1 text-danger" onclick="removeTableFilter(${i});return false"><i class="ti ti-x"></i></a></span>`;
+  });
+  html += '</div>';
+  html += '<div class="row g-2 align-items-end">';
+  html += `<div class="col-auto"><select id="tf-field" class="form-select form-select-sm">${fields.map(f => `<option value="${escHtml(f.name)}">${escHtml(f.name)}</option>`).join('')}</select></div>`;
+  html += '<div class="col-auto"><select id="tf-op" class="form-select form-select-sm"><option value="=">=</option><option value=">">&gt;</option><option value=">=">&gt;=</option><option value="<">&lt;</option><option value="<=">&lt;=</option><option value="like">like</option></select></div>';
+  html += '<div class="col-auto"><input id="tf-value" type="text" class="form-control form-control-sm" placeholder="값" style="width:150px"></div>';
+  html += '<div class="col-auto"><button class="btn btn-primary btn-sm" onclick="addTableFilter()"><i class="ti ti-plus me-1"></i>필터</button></div>';
+  html += '</div></div>';
+
+  // 테이블
+  if (rows.length === 0) {
+    html += '<div class="empty-state"><i class="ti ti-filter-off"></i><h3>결과 없음</h3></div>';
+  } else {
+    html += '<table class="table table-vcenter card-table table-hover table-striped"><thead><tr>';
+    for (const f of fields) html += `<th>${escHtml(f.name)}</th>`;
+    html += '</tr></thead><tbody>';
+    for (let ri = 0; ri < rows.length; ri++) {
+      const row = rows[ri];
+      const delay = Math.min(ri * 15, 300);
+      html += `<tr style="animation-delay:${delay}ms">`;
+      for (const f of fields) {
+        const val = row[f.name];
+        if (f.type === 'bool') html += `<td>${val ? '<span class="badge bg-green">true</span>' : '<span class="badge bg-red">false</span>'}</td>`;
+        else html += `<td>${escHtml(String(val ?? ''))}</td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+  }
+
+  // 페이지네이션
+  const totalPages = Math.ceil(tableData.total / TABLE_PAGE_SIZE);
+  if (totalPages > 1) {
+    html += '<div class="card-footer d-flex align-items-center"><p class="m-0 text-muted">전체 <b>' + tableData.total + '</b>건</p>';
+    html += '<ul class="pagination m-0 ms-auto">';
+    html += `<li class="page-item ${tablePage===0?'disabled':''}"><a class="page-link" href="#" onclick="goTablePage(${tablePage-1});return false"><i class="ti ti-chevron-left"></i></a></li>`;
+    const startP = Math.max(0, tablePage - 2), endP = Math.min(totalPages, startP + 5);
+    for (let p = startP; p < endP; p++) {
+      html += `<li class="page-item ${p===tablePage?'active':''}"><a class="page-link" href="#" onclick="goTablePage(${p});return false">${p+1}</a></li>`;
+    }
+    html += `<li class="page-item ${tablePage>=totalPages-1?'disabled':''}"><a class="page-link" href="#" onclick="goTablePage(${tablePage+1});return false"><i class="ti ti-chevron-right"></i></a></li>`;
+    html += '</ul></div>';
+  }
+
+  // 차트 영역 (숫자 필드가 있을 때만)
+  const numFields = fields.filter(f => ['int','long','number'].includes(f.type));
+  if (numFields.length > 0 && rows.length > 0) {
+    html += '<div class="p-3 border-top">';
+    html += '<div class="row g-3">';
+    html += '<div class="col-md-6"><div class="card card-sm"><div class="card-header"><h4 class="card-title">통계</h4>';
+    html += `<div class="ms-auto"><select id="stats-field" class="form-select form-select-sm" onchange="loadStats()" style="width:auto">${numFields.map(f => `<option value="${escHtml(f.name)}">${escHtml(f.name)}</option>`).join('')}</select></div>`;
+    html += '</div><div id="stats-body" class="card-body"><div class="text-muted">필드를 선택하세요</div></div></div></div>';
+    html += '<div class="col-md-6"><div class="card card-sm"><div class="card-header"><h4 class="card-title">분포</h4></div>';
+    html += '<div class="card-body"><canvas id="dist-chart" height="200"></canvas></div></div></div>';
+    html += '</div></div>';
+  }
+
+  container.innerHTML = html;
+  if (numFields.length > 0 && rows.length > 0) loadStats();
+}
+
+function addTableFilter() {
+  const field = document.getElementById('tf-field').value;
+  const op = document.getElementById('tf-op').value;
+  const value = document.getElementById('tf-value').value;
+  if (!value) { toast('값을 입력하세요', 'error'); return; }
+  tableFilters.push({ field, op, value });
+  tablePage = 0;
+  loadTableData();
+}
+
+function removeTableFilter(i) {
+  tableFilters.splice(i, 1);
+  tablePage = 0;
+  loadTableData();
+}
+
+function goTablePage(p) {
+  if (p < 0) return;
+  tablePage = p;
+  loadTableData();
+}
+
+async function loadStats() {
+  const field = document.getElementById('stats-field')?.value;
+  if (!field || !currentTableType) return;
+  const params = new URLSearchParams();
+  for (const f of tableFilters) {
+    const key = f.op === '=' ? f.field : `${f.field}.${({'>':'gt','>=':'gte','<':'lt','<=':'lte','like':'like'})[f.op]}`;
+    params.set(key, f.value);
+  }
+  params.set('field', field);
+  try {
+    const stats = await tableApi(`/${currentTableType.tableName}/_stats?${params}`);
+    const body = document.getElementById('stats-body');
+    if (body) body.innerHTML = `<div class="row text-center">
+      <div class="col"><div class="text-muted small">합계</div><div class="fw-bold">${Number(stats.sum).toLocaleString()}</div></div>
+      <div class="col"><div class="text-muted small">평균</div><div class="fw-bold">${Number(stats.avg).toLocaleString(undefined,{maximumFractionDigits:1})}</div></div>
+      <div class="col"><div class="text-muted small">최대</div><div class="fw-bold">${Number(stats.max).toLocaleString()}</div></div>
+      <div class="col"><div class="text-muted small">최소</div><div class="fw-bold">${Number(stats.min).toLocaleString()}</div></div>
+      <div class="col"><div class="text-muted small">건수</div><div class="fw-bold">${Number(stats.count).toLocaleString()}</div></div>
+    </div>`;
+    // 분포 차트 로드
+    const dist = await tableApi(`/${currentTableType.tableName}/_distribution?${params}&buckets=10`);
+    renderDistChart(dist.buckets || [], field);
+  } catch (e) { console.error('Stats error:', e); }
+}
+
+function renderDistChart(buckets, field) {
+  const canvas = document.getElementById('dist-chart');
+  if (!canvas) return;
+  if (chartInstance) chartInstance.destroy();
+  const labels = buckets.map(b => `${Number(b.min).toLocaleString()} ~ ${Number(b.max).toLocaleString()}`);
+  const data = buckets.map(b => b.count);
+  chartInstance = new Chart(canvas, {
+    type: 'bar',
+    data: { labels, datasets: [{ label: field, data, backgroundColor: '#206bc480', borderColor: '#206bc4', borderWidth: 1 }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { ticks: { maxRotation: 45 } } } }
+  });
+}
+
+// ── 크로스 검색 ──
+let crossConditions = [];
+function showCrossSearch() {
+  isTableMode = true;
+  currentType = null;
+  currentTableType = null;
+  document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-title').textContent = '크로스 테이블 검색';
+  document.getElementById('page-subtitle').textContent = '';
+  hideToolbar();
+  crossConditions = [];
+  renderCrossSearch();
+}
+
+function renderCrossSearch() {
+  const container = document.getElementById('table-container');
+  let html = '<div class="p-4">';
+  html += '<div class="mb-3">';
+  crossConditions.forEach((c, i) => {
+    html += `<div class="row g-2 mb-2 align-items-end">
+      <div class="col-3"><select class="form-select form-select-sm" onchange="updateCrossFields(${i},this.value)" id="cc-table-${i}">
+        ${tableTypes.map(t => `<option value="${escHtml(t.tableName)}" ${t.tableName===c.table?'selected':''}>${escHtml(t.name)}</option>`).join('')}</select></div>
+      <div class="col-3"><select class="form-select form-select-sm" id="cc-field-${i}">
+        ${(tableTypes.find(t=>t.tableName===c.table)?.fields||[]).map(f => `<option value="${escHtml(f.name)}" ${f.name===c.field?'selected':''}>${escHtml(f.name)}</option>`).join('')}</select></div>
+      <div class="col-2"><select class="form-select form-select-sm" id="cc-op-${i}">
+        <option value="=" ${c.op==='='?'selected':''}>=</option><option value=">" ${c.op==='>'?'selected':''}>&gt;</option>
+        <option value=">=" ${c.op==='>='?'selected':''}>&gt;=</option><option value="<" ${c.op==='<'?'selected':''}>&lt;</option>
+        <option value="<=" ${c.op==='<='?'selected':''}>&lt;=</option></select></div>
+      <div class="col-2"><input class="form-control form-control-sm" id="cc-val-${i}" value="${escHtml(c.value)}"></div>
+      <div class="col-2"><button class="btn btn-ghost-danger btn-icon btn-sm" onclick="removeCrossCondition(${i})"><i class="ti ti-x"></i></button></div>
+    </div>`;
+  });
+  html += '</div>';
+  html += '<div class="d-flex gap-2"><button class="btn btn-outline-primary btn-sm" onclick="addCrossCondition()"><i class="ti ti-plus me-1"></i>조건 추가</button>';
+  html += '<button class="btn btn-primary btn-sm" onclick="executeCross()"><i class="ti ti-search me-1"></i>검색</button></div>';
+  html += '<div id="cross-results" class="mt-3"></div>';
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function addCrossCondition() {
+  const t = tableTypes[0];
+  if (!t) return;
+  crossConditions.push({ table: t.tableName, field: t.fields[0]?.name || '', op: '>=', value: '' });
+  renderCrossSearch();
+}
+
+function removeCrossCondition(i) {
+  crossConditions.splice(i, 1);
+  renderCrossSearch();
+}
+
+function updateCrossFields(i, tableName) {
+  crossConditions[i].table = tableName;
+  const t = tableTypes.find(x => x.tableName === tableName);
+  crossConditions[i].field = t?.fields[0]?.name || '';
+  renderCrossSearch();
+}
+
+async function executeCross() {
+  // 현재 UI에서 값 수집
+  crossConditions = crossConditions.map((c, i) => ({
+    table: document.getElementById(`cc-table-${i}`)?.value || c.table,
+    field: document.getElementById(`cc-field-${i}`)?.value || c.field,
+    op: document.getElementById(`cc-op-${i}`)?.value || c.op,
+    value: document.getElementById(`cc-val-${i}`)?.value || c.value,
+  }));
+  if (crossConditions.length === 0 || crossConditions.some(c => !c.value)) {
+    toast('모든 조건에 값을 입력하세요', 'error'); return;
+  }
+  const results = document.getElementById('cross-results');
+  results.innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div></div>';
+  try {
+    const res = await tableApi('/_cross', 'POST', { conditions: crossConditions, limit: 100 });
+    let html = `<div class="alert alert-info"><i class="ti ti-info-circle me-1"></i><b>${res.count}명</b> 일치</div>`;
+    if (res.userIds?.length > 0 && res.details) {
+      const tables = [...new Set(crossConditions.map(c => c.table))];
+      html += '<table class="table table-vcenter table-striped table-hover"><thead><tr><th>user_id</th>';
+      for (const t of tables) {
+        const tt = tableTypes.find(x => x.tableName === t);
+        const fields = crossConditions.filter(c => c.table === t).map(c => c.field);
+        for (const f of fields) html += `<th>${escHtml(tt?.name||t)}.${escHtml(f)}</th>`;
+      }
+      html += '</tr></thead><tbody>';
+      for (const uid of res.userIds) {
+        html += `<tr><td><code>${escHtml(uid)}</code></td>`;
+        for (const t of tables) {
+          const detail = res.details[uid]?.[t] || {};
+          const fields = crossConditions.filter(c => c.table === t).map(c => c.field);
+          for (const f of fields) {
+            // detail의 키는 snake_case
+            const snakeF = f.replace(/[A-Z]/g, m => '_' + m.toLowerCase());
+            const val = detail[snakeF] ?? detail[f] ?? '';
+            html += `<td>${escHtml(String(val))}</td>`;
+          }
+        }
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+    }
+    results.innerHTML = html;
+    toast(`크로스 검색 완료: ${res.count}명`, 'success');
+  } catch (e) { results.innerHTML = ''; toast('검색 실패: ' + e.message, 'error'); }
+}
+
+// ── 유틸 ──
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+</script>
+</body>
+</html>

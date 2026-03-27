@@ -15,7 +15,7 @@ namespace Tjdtjq5.SupaRun
             public static RealtimeChannel OnChange(Action<ShopProduct> callback)
             {
                 var ch = SupaRun.Realtime.Channel("shop-products");
-                ch.OnPostgresChange<ShopProduct>("shopproducts", ChangeEvent.All, callback);
+                ch.OnPostgresChange<ShopProduct>("shop_product", ChangeEvent.All, callback);
                 return ch;
             }
         }

@@ -1,0 +1,7 @@
+{
+  "name": "시즌패스",
+  "id": "seasonpass",
+  "description": "배틀패스. 무료/유료 트랙, XP 레벨업, 레벨별 보상.",
+  "tier": 3,
+  "dependencies": ["currency", "inventory"]
+}

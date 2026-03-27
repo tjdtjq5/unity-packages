@@ -3,35 +3,38 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using Tjdtjq5.SupaRun;
 
-/// <summary>퀘스트 서비스. 진행도 추적/완료/보상 수령.</summary>
+/// <summary>퀘스트 서비스. 진행도 추적/완료/보상 즉시 지급.</summary>
 [Service]
 public class QuestService
 {
     readonly IGameDB _db;
-    readonly MailService _mail;
+    readonly CurrencyService _currency;
+    readonly InventoryService _inventory;
 
-    public QuestService(IGameDB db, MailService mail)
+    public QuestService(IGameDB db, CurrencyService currency, InventoryService inventory)
     {
         _db = db;
-        _mail = mail;
+        _currency = currency;
+        _inventory = inventory;
     }
 
     /// <summary>퀘스트 목록 + 내 진행도.</summary>
     [API]
-    public async Task<List<(QuestDef quest, QuestProgress progress)>> GetQuests(string playerId, string type = null)
+    public async Task<List<QuestWithProgress>> GetQuests(string playerId, string type = null)
     {
-        var defs = await _db.GetAll<QuestDef>(); // [Config]
+        var defs = await _db.GetAll<QuestDef>();
         var playerProgress = await _db.Query<QuestProgress>(new QueryOptions()
             .Eq("playerId", playerId));
-        var period = GetCurrentPeriod(type);
 
-        var result = new List<(QuestDef, QuestProgress)>();
+        var result = new List<QuestWithProgress>();
         foreach (var def in defs.Where(d => d.isActive && (type == null || d.type == type)).OrderBy(d => d.sortOrder))
         {
+            var period = GetCurrentPeriod(def.type);
             var progress = playerProgress.Find(p => p.questId == def.id && p.period == period);
-            result.Add((def, progress));
+            result.Add(new QuestWithProgress { quest = def, progress = progress });
         }
         return result;
     }
@@ -51,15 +54,14 @@ public class QuestService
         foreach (var def in targets)
         {
             var period = GetCurrentPeriod(def.type);
-            var progressList = await _db.Query<QuestProgress>(new QueryOptions()
-                .Eq("playerId", playerId).Eq("questId", def.id).SetLimit(1));
-            var progress = progressList.Find(p => p.period == period);
+            var id = $"{playerId}_{def.id}_{period}";
+            var progress = await _db.Get<QuestProgress>(id);
 
             if (progress == null)
             {
                 progress = new QuestProgress
                 {
-                    id = $"{playerId}_{def.id}_{period}",
+                    id = id,
                     playerId = playerId,
                     questId = def.id,
                     period = period
@@ -79,7 +81,7 @@ public class QuestService
         return updated;
     }
 
-    /// <summary>퀘스트 보상 수령. 우편으로 발송.</summary>
+    /// <summary>퀘스트 보상 즉시 수령.</summary>
     [API]
     public async Task<QuestProgress> ClaimReward(string playerId, string questId)
     {
@@ -88,24 +90,16 @@ public class QuestService
             throw new InvalidOperationException("퀘스트를 찾을 수 없습니다.");
 
         var period = GetCurrentPeriod(def.type);
-        var progressList = await _db.Query<QuestProgress>(new QueryOptions()
-            .Eq("playerId", playerId).Eq("questId", questId).SetLimit(1));
-        var progress = progressList.Find(p => p.period == period);
+        var id = $"{playerId}_{questId}_{period}";
+        var progress = await _db.Get<QuestProgress>(id);
 
         if (progress == null || !progress.completed)
             throw new InvalidOperationException("퀘스트가 완료되지 않았습니다.");
         if (progress.claimed)
             throw new InvalidOperationException("이미 보상을 수령했습니다.");
 
-        // 우편으로 보상 발송
-        await _mail.SendMail(
-            playerId,
-            $"퀘스트 완료: {def.title}",
-            $"'{def.title}' 완료 보상입니다!",
-            def.rewardType,
-            def.rewardId,
-            def.rewardAmount
-        );
+        // 보상 즉시 지급
+        await GrantRewards(playerId, def.rewards, $"quest:{questId}");
 
         progress.claimed = true;
         await _db.Save(progress);
@@ -120,6 +114,29 @@ public class QuestService
         return quests.Count(q => q.progress != null && q.progress.completed && !q.progress.claimed);
     }
 
+    // ── 보상 지급 ──
+
+    async Task GrantRewards(string playerId, string rewardsJson, string reason)
+    {
+        if (string.IsNullOrEmpty(rewardsJson)) return;
+
+        var rewards = JsonConvert.DeserializeObject<List<RewardEntry>>(rewardsJson);
+        if (rewards == null) return;
+
+        foreach (var reward in rewards)
+        {
+            switch (reward.type)
+            {
+                case "currency":
+                    await _currency.Add(playerId, reward.id, reward.amount, reason);
+                    break;
+                case "item":
+                    await _inventory.AddItem(playerId, reward.id, (int)reward.amount, reason);
+                    break;
+            }
+        }
+    }
+
     // ── 기간 계산 ──
 
     static string GetCurrentPeriod(string type)
@@ -129,7 +146,23 @@ public class QuestService
         {
             "daily" => now.ToString("yyyy-MM-dd"),
             "weekly" => $"{ISOWeek.GetYear(now)}-W{ISOWeek.GetWeekOfYear(now):D2}",
-            _ => "permanent" // achievement
+            _ => "permanent"
         };
     }
+
+    // ── DTO ──
+
+    class RewardEntry
+    {
+        public string type;
+        public string id;
+        public long amount;
+    }
+}
+
+/// <summary>퀘스트 + 진행도 조합. JSON 직렬화 가능.</summary>
+public class QuestWithProgress
+{
+    public QuestDef quest;
+    public QuestProgress progress;
 }

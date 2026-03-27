@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.FileProviders;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,16 +21,34 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.Authority = builder.Configuration["Supabase:AuthUrl"];
         options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
         {
-            ValidateAudience = false
+            ValidateAudience = false,
+            NameClaimType = "sub"
+        };
+        options.MapInboundClaims = false;
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnAuthenticationFailed = ctx =>
+            {
+                Console.WriteLine($"[Auth] FAILED: {ctx.Exception.GetType().Name}: {ctx.Exception.Message}");
+                return Task.CompletedTask;
+            },
+            OnTokenValidated = ctx =>
+            {
+                Console.WriteLine($"[Auth] OK: {ctx.Principal?.FindFirst("sub")?.Value}");
+                return Task.CompletedTask;
+            }
         };
     });
 
-// Rate Limiting (유저별)
+// Rate Limiting (유저별, 어드민 면제)
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = 429;
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
     {
+        if (context.Request.Path.StartsWithSegments("/admin/api"))
+            return RateLimitPartition.GetNoLimiter("admin");
+
         var userId = context.User?.FindFirst("sub")?.Value
                   ?? context.Connection.RemoteIpAddress?.ToString()
                   ?? "anonymous";
@@ -75,6 +95,90 @@ app.UseResponseCompression();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
+
+// Admin 정적 파일 서빙
+var adminPath = Path.Combine(AppContext.BaseDirectory, "admin");
+if (Directory.Exists(adminPath))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(adminPath),
+        RequestPath = "/admin"
+    });
+    // /admin → /admin/index.html 리다이렉트
+    app.MapGet("/admin", (HttpContext ctx) =>
+    {
+        ctx.Response.Redirect("/admin/index.html");
+        return Task.CompletedTask;
+    });
+}
+
+// Admin API 인증 미들웨어 (admin_users 테이블 기반)
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/admin/api"))
+    {
+        var userId = context.User?.FindFirst("sub")?.Value;
+        var email = context.User?.FindFirst("email")?.Value;
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("{\"error\":\"Not authenticated\"}");
+            return;
+        }
+
+        var isAdmin = false;
+        try
+        {
+            var db = context.RequestServices.GetRequiredService<IGameDB>();
+            var admins = await db.GetAll<AdminUser>();
+
+            // 기존 유저 찾기 (UUID 또는 이메일)
+            var me = admins.FirstOrDefault(a => a.user_id == userId)
+                  ?? admins.FirstOrDefault(a =>
+                      string.Equals(a.email, email, StringComparison.OrdinalIgnoreCase));
+
+            if (me != null)
+            {
+                // UUID 미등록이면 채움
+                if (string.IsNullOrEmpty(me.user_id)) { me.user_id = userId; await db.Save(me); }
+                // role이 admin이면 통과
+                isAdmin = me.role == "admin";
+            }
+            else
+            {
+                // 미등록 유저 → 자동 등록
+                var isFirst = admins.Count == 0;
+                try
+                {
+                    await db.Save(new AdminUser
+                    {
+                        id = Guid.NewGuid().ToString(),
+                        user_id = userId,
+                        email = email,
+                        role = isFirst ? "admin" : "pending",
+                        memo = isFirst ? "first admin" : "",
+                        created_at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                        created_by = isFirst ? "auto" : ""
+                    });
+                    isAdmin = isFirst;
+                }
+                catch { }
+            }
+        }
+        catch { /* admin_users 테이블 미생성 시 무시 */ }
+
+        if (!isAdmin)
+        {
+            context.Response.StatusCode = 403;
+            await context.Response.WriteAsync("{\"error\":\"Pending approval\"}");
+            return;
+        }
+    }
+    await next();
+});
+
 app.MapControllers();
 app.MapGet("/health", () => "OK");
 app.Run();

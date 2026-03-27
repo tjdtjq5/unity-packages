@@ -10,7 +10,7 @@ namespace Tjdtjq5.SupaRun.Editor
 {
     public class ServicesTab
     {
-        const string GuideUrl = "https://github.com/tjdtjq5/unity-packages/blob/main/com.tjdtjq5.gameserver/Documentation~/GUIDE.md";
+        const string GuideUrl = "https://github.com/tjdtjq5/unity-packages/blob/main/com.tjdtjq5.suparun/Documentation~/GUIDE.md";
 
         List<ServiceInfo> _cachedInfos;
         double _lastScanTime;

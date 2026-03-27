@@ -1,7 +1,7 @@
 {
   "name": "랭킹",
   "id": "ranking",
-  "description": "점수 등록/랭킹 조회/시즌 리셋. 다중 리더보드 지원.",
+  "description": "점수 등록/랭킹 조회/그룹 랭킹/시즌 보상.",
   "tier": 1,
-  "dependencies": []
+  "dependencies": ["currency", "inventory", "mail"]
 }
