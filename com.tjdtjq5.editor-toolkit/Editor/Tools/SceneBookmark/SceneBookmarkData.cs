@@ -16,7 +16,11 @@ namespace Tjdtjq5.EditorToolkit.Editor.Tools
     [Serializable]
     public class SceneBookmarkData
     {
-        const string PrefsKey = "EditorToolkit_SceneBookmarks";
+        const string LegacyPrefsKey = "EditorToolkit_SceneBookmarks";
+
+        static string FilePath => Path.Combine(
+            Path.GetDirectoryName(Application.dataPath),
+            "ProjectSettings", "SceneBookmarks.json");
 
         [SerializeField] List<SceneBookmarkEntry> entries = new();
 
@@ -26,15 +30,35 @@ namespace Tjdtjq5.EditorToolkit.Editor.Tools
 
         public static SceneBookmarkData Load()
         {
-            var json = EditorPrefs.GetString(PrefsKey, "{}");
-            var data = JsonUtility.FromJson<SceneBookmarkData>(json) ?? new SceneBookmarkData();
+            SceneBookmarkData data;
+
+            if (File.Exists(FilePath))
+            {
+                var json = File.ReadAllText(FilePath);
+                data = JsonUtility.FromJson<SceneBookmarkData>(json) ?? new SceneBookmarkData();
+            }
+            else
+            {
+                // EditorPrefs → 파일 마이그레이션
+                var legacyJson = EditorPrefs.GetString(LegacyPrefsKey, "");
+                if (!string.IsNullOrEmpty(legacyJson) && legacyJson != "{}")
+                {
+                    data = JsonUtility.FromJson<SceneBookmarkData>(legacyJson) ?? new SceneBookmarkData();
+                    EditorPrefs.DeleteKey(LegacyPrefsKey);
+                }
+                else
+                {
+                    data = new SceneBookmarkData();
+                }
+            }
+
             data.Sanitize();
             return data;
         }
 
         public void Save()
         {
-            EditorPrefs.SetString(PrefsKey, JsonUtility.ToJson(this));
+            File.WriteAllText(FilePath, JsonUtility.ToJson(this, true));
         }
 
         // --- 조작 ---
@@ -80,8 +104,10 @@ namespace Tjdtjq5.EditorToolkit.Editor.Tools
         /// <summary>존재하지 않는 씬 경로 자동 제거.</summary>
         void Sanitize()
         {
+            var projectRoot = Path.GetDirectoryName(Application.dataPath);
             var dirty = entries.RemoveAll(e =>
-                string.IsNullOrEmpty(e.scenePath) || !File.Exists(e.scenePath)) > 0;
+                string.IsNullOrEmpty(e.scenePath)
+                || !File.Exists(Path.Combine(projectRoot, e.scenePath))) > 0;
             if (dirty) Save();
         }
     }
