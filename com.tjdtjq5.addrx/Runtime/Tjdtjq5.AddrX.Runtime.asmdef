@@ -1,0 +1,17 @@
+{
+    "name": "Tjdtjq5.AddrX.Runtime",
+    "rootNamespace": "Tjdtjq5.AddrX",
+    "references": [
+        "Unity.Addressables",
+        "Unity.ResourceManager"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,16 @@
+{
+    "name": "Tjdtjq5.AddrX.Debug",
+    "rootNamespace": "Tjdtjq5.AddrX.Debug",
+    "references": [
+        "Tjdtjq5.AddrX.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
