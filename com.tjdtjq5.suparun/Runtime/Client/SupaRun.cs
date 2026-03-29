@@ -154,7 +154,10 @@ namespace Tjdtjq5.SupaRun
                     url = t.GetField("cloudRunUrl")?.GetValue(settings) as string ?? "";
                     supabaseUrl = t.GetField("supabaseUrl")?.GetValue(settings) as string ?? "";
                 }
-                anonKey = UnityEditor.EditorPrefs.GetString("SupaRun_SupabaseAnonKey", "");
+                // SupaRunSettings.SupabaseAnonKey (static property) — 리플렉션으로 접근 (Runtime→Editor 참조 불가)
+                var anonProp = settings?.GetType().GetProperty("SupabaseAnonKey",
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
+                anonKey = anonProp?.GetValue(null) as string ?? "";
             }
             #else
             // 빌드: Resources/SupaRunConfig.json에서 읽기

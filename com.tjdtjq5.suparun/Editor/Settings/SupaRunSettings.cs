@@ -6,9 +6,26 @@ namespace Tjdtjq5.SupaRun.Editor
 {
     public class SupaRunSettings : ScriptableObject
     {
-        public const string VERSION = "0.2.0";
+        public const string VERSION = "0.3.0";
         const string AssetPath = "Assets/Editor/SupaRunSettings.asset";
-        const string PREF = "SupaRun_";
+        const string PREF_LEGACY = "SupaRun_";
+
+        static string _prefixCache;
+
+        /// <summary>프로젝트별 고유 EditorPrefs 접두사. Application.dataPath 해시로 프로젝트 구분.</summary>
+        internal static string PREF
+        {
+            get
+            {
+                if (_prefixCache == null)
+                {
+                    // Application.dataPath → "C:/.../ProjectName/Assets"
+                    var hash = Application.dataPath.GetHashCode() & 0x7FFFFFFF;
+                    _prefixCache = $"SupaRun_{hash:X8}_";
+                }
+                return _prefixCache;
+            }
+        }
 
         [Header("Supabase")]
         public string supabaseUrl;
@@ -152,19 +169,23 @@ namespace Tjdtjq5.SupaRun.Editor
             AssetDatabase.SaveAssets();
         }
 
-        /// <summary>GameServer_ → SupaRun_ EditorPrefs 마이그레이션 (일회성).</summary>
+        /// <summary>레거시 접두사 → 프로젝트별 접두사 EditorPrefs 마이그레이션 (일회성).</summary>
         static void MigrateFromGameServer()
         {
-            const string OLD = "GameServer_";
+            var legacyPrefixes = new[] { "GameServer_", PREF_LEGACY };
             var keys = new[] { "SupabaseAnonKey", "SupabaseDbPassword", "GithubToken",
                                "SupabaseAccessToken", "CronSecret" };
-            foreach (var key in keys)
+            foreach (var oldPrefix in legacyPrefixes)
             {
-                var oldVal = EditorPrefs.GetString(OLD + key, "");
-                if (!string.IsNullOrEmpty(oldVal) && string.IsNullOrEmpty(EditorPrefs.GetString(PREF + key, "")))
+                foreach (var key in keys)
                 {
-                    EditorPrefs.SetString(PREF + key, oldVal);
-                    EditorPrefs.DeleteKey(OLD + key);
+                    var oldVal = EditorPrefs.GetString(oldPrefix + key, "");
+                    if (!string.IsNullOrEmpty(oldVal) && string.IsNullOrEmpty(EditorPrefs.GetString(PREF + key, "")))
+                    {
+                        EditorPrefs.SetString(PREF + key, oldVal);
+                    }
+                    if (!string.IsNullOrEmpty(oldVal))
+                        EditorPrefs.DeleteKey(oldPrefix + key);
                 }
             }
 

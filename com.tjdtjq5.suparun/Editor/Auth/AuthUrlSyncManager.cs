@@ -7,10 +7,9 @@ namespace Tjdtjq5.SupaRun.Editor
     /// <summary>Bundle ID / Cloud Run URL 변경 감지 → Supabase Management API로 자동 동기화.</summary>
     public static class AuthUrlSyncManager
     {
-        const string PREF = "SupaRun_Synced_";
-        const string KEY_BUNDLE_ID = PREF + "BundleId";
-        const string KEY_CLOUD_RUN_URL = PREF + "CloudRunUrl";
-        const string KEY_SUPABASE_URL = PREF + "SupabaseUrl";
+        static string KEY_BUNDLE_ID => SupaRunSettings.PREF + "Synced_BundleId";
+        static string KEY_CLOUD_RUN_URL => SupaRunSettings.PREF + "Synced_CloudRunUrl";
+        static string KEY_SUPABASE_URL => SupaRunSettings.PREF + "Synced_SupabaseUrl";
 
         /// <summary>마지막 동기화 결과.</summary>
         public enum SyncState { Unknown, Synced, NoToken, Error }
