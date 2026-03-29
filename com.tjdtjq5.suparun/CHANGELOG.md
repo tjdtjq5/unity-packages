@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.2] - 2026-03-30
+
+### Added
+- PostgresConnectionTester: DB 비밀번호 검증 (Management API + SCRAM-SHA-256 해시 비교)
+- Setup ⑤ 연결 테스트에 DB Password 검증 추가 (REST API + DB 2단계)
+- Settings 연결 테스트에 DB Password 검증 추가
+
+### Changed
+- SupabaseSetup: 연결 테스트를 async 방식으로 전환, 2단계 검증
+- SettingsView: RunConnectionTest에 DB 비밀번호 Phase 2 추가
+
 ## [0.3.1] - 2026-03-29
 
 ### Changed

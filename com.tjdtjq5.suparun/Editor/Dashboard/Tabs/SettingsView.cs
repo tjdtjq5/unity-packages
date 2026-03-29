@@ -926,17 +926,43 @@ namespace Tjdtjq5.SupaRun.Editor
             var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token))
             {
-                // Access Token 없으면 기존 방식 (Supabase REST로 간단 체크)
                 _dashboard.ShowNotification("Access Token을 입력하면 상세 연결 테스트가 가능합니다", EditorUI.NotificationType.Info);
                 return;
             }
 
+            // Phase 1: Management API (프로젝트 상태)
+            _dashboard.ShowNotification("1/2 프로젝트 상태 확인 중...", EditorUI.NotificationType.Info);
+
             var (ok, name, status, region, error) = await SupabaseManagementApi.GetProjectInfo(
                 settings.SupabaseProjectId, token);
-            if (ok)
-                _dashboard.ShowNotification($"{name} ({region}) — {status}", EditorUI.NotificationType.Success);
-            else
+            if (!ok)
+            {
                 _dashboard.ShowNotification($"연결 실패: {error}", EditorUI.NotificationType.Error);
+                return;
+            }
+
+            // Phase 2: DB Connection (Password 검증)
+            var dbPw = SupaRunSettings.Instance.SupabaseDbPassword;
+            if (!string.IsNullOrEmpty(dbPw))
+            {
+                _dashboard.ShowNotification("2/2 DB 비밀번호 검증 중...", EditorUI.NotificationType.Info);
+
+                var projectId = settings.SupabaseProjectId;
+                var (dbOk, dbError) = await PostgresConnectionTester.VerifyPassword(
+                    projectId, token, dbPw);
+
+                if (!dbOk)
+                {
+                    _dashboard.ShowNotification($"DB 연결 실패: {dbError}", EditorUI.NotificationType.Error);
+                    return;
+                }
+
+                _dashboard.ShowNotification($"{name} ({region}) — {status} + DB 연결 OK", EditorUI.NotificationType.Success);
+            }
+            else
+            {
+                _dashboard.ShowNotification($"{name} ({region}) — {status} (DB 비밀번호 미입력)", EditorUI.NotificationType.Success);
+            }
         }
 
         /// <summary>Provider를 Supabase에 활성화. Access Token 필요.</summary>

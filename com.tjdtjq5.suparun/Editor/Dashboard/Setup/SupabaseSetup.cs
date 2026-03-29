@@ -13,7 +13,7 @@ namespace Tjdtjq5.SupaRun.Editor
         enum TestState { None, Testing, Success, Failed }
         TestState _testState;
         string _testError;
-        UnityWebRequest _activeRequest;
+        string _testDetail; // 단계별 결과 표시
 
         // 프로젝트 목록
         SupabaseManagementApi.ProjectInfo[] _projects;
@@ -341,10 +341,12 @@ namespace Tjdtjq5.SupaRun.Editor
                     break;
 
                 case TestState.Testing:
-                    EditorUI.DrawLoading(true, "연결 테스트 중...");
+                    EditorUI.DrawLoading(true, _testDetail ?? "연결 테스트 중...");
                     break;
 
                 case TestState.Success:
+                    if (!string.IsNullOrEmpty(_testDetail))
+                        EditorUI.DrawDescription(_testDetail, EditorUI.COL_SUCCESS);
                     EditorUI.DrawDescription("✓ Supabase 연결 성공!", EditorUI.COL_SUCCESS);
                     GUILayout.Space(4);
                     if (EditorUI.DrawColorButton("다시 테스트", SupaRunDashboard.COL_SUPABASE))
@@ -352,6 +354,8 @@ namespace Tjdtjq5.SupaRun.Editor
                     break;
 
                 case TestState.Failed:
+                    if (!string.IsNullOrEmpty(_testDetail))
+                        EditorUI.DrawDescription(_testDetail, EditorUI.COL_MUTED);
                     EditorUI.DrawDescription($"✗ {_testError}", EditorUI.COL_ERROR);
                     GUILayout.Space(4);
                     if (EditorUI.DrawColorButton("다시 테스트", EditorUI.COL_ERROR))
@@ -360,7 +364,7 @@ namespace Tjdtjq5.SupaRun.Editor
             }
         }
 
-        void RunConnectionTest(SupaRunSettings settings)
+        async void RunConnectionTest(SupaRunSettings settings)
         {
             var url = settings.supabaseUrl?.TrimEnd('/');
             var key = SupaRunSettings.Instance.SupabaseAnonKey;
@@ -369,70 +373,91 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 _testState = TestState.Failed;
                 _testError = "URL이 https://xxx.supabase.co 형식이어야 합니다.";
+                _testDetail = null;
                 _dashboard.Repaint();
                 return;
             }
 
+            // ── Phase 1: REST API (URL + Anon Key) ──
             _testState = TestState.Testing;
+            _testDetail = "1/2 REST API 테스트 중...";
+            _testError = null;
             _dashboard.Repaint();
 
-            _activeRequest = new UnityWebRequest($"{url}/auth/v1/settings", "GET");
-            _activeRequest.downloadHandler = new DownloadHandlerBuffer();
-            _activeRequest.SetRequestHeader("apikey", key);
-            _activeRequest.SetRequestHeader("Authorization", $"Bearer {key}");
-            _activeRequest.timeout = 10;
-            _activeRequest.SendWebRequest();
-
-            EditorApplication.update += PollConnectionTest;
-        }
-
-        void PollConnectionTest()
-        {
-            if (_activeRequest == null || !_activeRequest.isDone) return;
-
-            EditorApplication.update -= PollConnectionTest;
-
-            var code = _activeRequest.responseCode;
-            var body = _activeRequest.downloadHandler?.text ?? "";
-            var error = _activeRequest.error ?? "";
-            var result = _activeRequest.result;
-
-            _activeRequest.Dispose();
-            _activeRequest = null;
-
-            if (result == UnityWebRequest.Result.Success)
-            {
-                _testState = TestState.Success;
-                SupaRunSettings.Instance.Save();
-            }
-            else if (code == 401 || code == 403)
+            var (restOk, restError) = await TestRestApi(url, key);
+            if (!restOk)
             {
                 _testState = TestState.Failed;
-                _testError = $"인증 실패 (HTTP {code}) — Anon Key를 확인하세요.";
+                _testError = $"REST API: {restError}";
+                _testDetail = null;
+                _dashboard.Repaint();
+                return;
             }
-            else if (code == 0)
+
+            // ── Phase 2: DB Connection (Password) ──
+            var dbPw = SupaRunSettings.Instance.SupabaseDbPassword;
+            if (!string.IsNullOrEmpty(dbPw))
             {
-                _testState = TestState.Failed;
-                _testError = $"서버에 연결할 수 없습니다 — URL을 확인하세요.";
+                _testDetail = "2/2 DB 연결 테스트 중...";
+                _dashboard.Repaint();
+
+                var projectId = settings.SupabaseProjectId;
+                var accessToken = SupaRunSettings.Instance.SupabaseAccessToken;
+                var (dbOk, dbError) = await PostgresConnectionTester.VerifyPassword(
+                    projectId, accessToken, dbPw);
+
+                if (!dbOk)
+                {
+                    _testState = TestState.Failed;
+                    _testError = $"DB 연결: {dbError}";
+                    _testDetail = "✓ REST API 통과";
+                    _dashboard.Repaint();
+                    return;
+                }
+
+                _testDetail = "✓ REST API + DB 연결 모두 통과";
             }
             else
             {
-                _testState = TestState.Failed;
-                _testError = $"HTTP {code}: {error}";
+                _testDetail = "✓ REST API 통과 (DB 비밀번호 미입력 — 스킵)";
             }
 
+            _testState = TestState.Success;
+            settings.Save();
             _dashboard.Repaint();
         }
 
-        public void Cleanup()
+        static async System.Threading.Tasks.Task<(bool ok, string error)> TestRestApi(string url, string key)
         {
-            EditorApplication.update -= PollConnectionTest;
-            if (_activeRequest != null)
+            try
             {
-                _activeRequest.Abort();
-                _activeRequest.Dispose();
-                _activeRequest = null;
+                using var request = new UnityWebRequest($"{url}/auth/v1/settings", "GET");
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("apikey", key);
+                request.SetRequestHeader("Authorization", $"Bearer {key}");
+                request.timeout = 10;
+
+                var op = request.SendWebRequest();
+                while (!op.isDone)
+                    await System.Threading.Tasks.Task.Yield();
+
+                if (request.result == UnityWebRequest.Result.Success)
+                    return (true, null);
+
+                var code = request.responseCode;
+                if (code == 401 || code == 403)
+                    return (false, $"인증 실패 (HTTP {code}) — Anon Key를 확인하세요.");
+                if (code == 0)
+                    return (false, "서버에 연결할 수 없습니다 — URL을 확인하세요.");
+
+                return (false, $"HTTP {code}: {request.error}");
+            }
+            catch (System.Exception ex)
+            {
+                return (false, ex.Message);
             }
         }
+
+        public void Cleanup() { }
     }
 }

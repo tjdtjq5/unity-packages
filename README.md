@@ -153,7 +153,7 @@ Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. 
 | 배포 | 원버튼 → GitHub push → Cloud Run 자동 배포 |
 
 ```json
-"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.3.1"
+"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.3.2"
 ```
 
 > 의존: `editor-toolkit >= 1.1.0`
