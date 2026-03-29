@@ -4,7 +4,6 @@
     "references": [
         "DOTween.Modules",
         "Unity.TextMeshPro",
-        "VContainer",
         "Tjdtjq5.EditorToolkit.Runtime"
     ],
     "includePlatforms": [],
