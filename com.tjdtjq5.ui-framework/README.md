@@ -5,7 +5,7 @@
 ## 설치
 
 ```json
-"com.tjdtjq5.ui-framework": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ui-framework#ui-framework/v2.0.0"
+"com.tjdtjq5.ui-framework": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ui-framework#ui-framework/v2.0.1"
 ```
 
 ## 의존성

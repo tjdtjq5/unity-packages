@@ -1,6 +1,6 @@
 {
   "name": "com.tjdtjq5.ui-framework",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "displayName": "UI Toolkit",
   "description": "범용 UI 도구 모음 — UIStateBinder, ButtonClickEffect, NumberCounter, SafeAreaFitter, UIFlyEffect, UIShake, UITutorialMask",
   "unity": "6000.1",
