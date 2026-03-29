@@ -5,7 +5,7 @@
 ## 설치
 
 ```
-"com.tjdtjq5.editor-toolkit": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.editor-toolkit#editor-toolkit/v1.3.2"
+"com.tjdtjq5.editor-toolkit": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.editor-toolkit#editor-toolkit/v1.3.3"
 ```
 
 ## 주요 기능

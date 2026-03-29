@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.3.3] - 2026-03-29
+
+### Fixed
+- README.md, CHANGELOG.md에 .meta 파일 추가 (immutable folder 경고 해결)
+
 ## [1.3.2] - 2026-03-29
 
 ### Changed

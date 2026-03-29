@@ -1,6 +1,6 @@
 {
   "name": "com.tjdtjq5.editor-toolkit",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "displayName": "Editor Toolkit",
   "description": "커스텀 Attribute + 에디터 프레임워크 + SceneBookmark + 유틸리티",
   "unity": "6000.1",
