@@ -55,7 +55,8 @@ namespace Tjdtjq5.AddrX.Editor
         int GetCurrentStep()
         {
             if (AddressableAssetSettingsDefaultObject.Settings == null) return 1;
-            if (!AssetDatabase.IsValidFolder(AddrXSetupRules.Instance.RootPath)) return 2;
+            var rules = AddrXSetupRules.Instance;
+            if (rules == null || !AssetDatabase.IsValidFolder(rules.RootPath)) return 2;
             if (AssetDatabase.LoadAssetAtPath<AddrXSettings>(
                     "Assets/AddrX/Resources/AddrXSettings.asset") == null) return 3;
             return -1;
@@ -620,7 +621,7 @@ namespace Tjdtjq5.AddrX.Editor
             _unregisteredCount = 0;
             _conflicts.Clear();
 
-            if (settings == null || !AssetDatabase.IsValidFolder(rules.RootPath)) return;
+            if (settings == null || rules == null || !AssetDatabase.IsValidFolder(rules.RootPath)) return;
 
             var registeredGuids = new HashSet<string>();
             foreach (var group in settings.groups)
@@ -657,7 +658,7 @@ namespace Tjdtjq5.AddrX.Editor
         {
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             var rules = AddrXSetupRules.Instance;
-            if (settings == null || !AssetDatabase.IsValidFolder(rules.RootPath)) return;
+            if (settings == null || rules == null || !AssetDatabase.IsValidFolder(rules.RootPath)) return;
 
             var guids = AssetDatabase.FindAssets("", new[] { rules.RootPath });
             var paths = new List<string>();

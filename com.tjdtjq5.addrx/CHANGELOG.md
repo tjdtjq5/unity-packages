@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1] - 2026-03-29
+
+### Fixed
+- SetupTab.GetCurrentStep()에서 AddrXSetupRules 미생성 시 NullReferenceException 수정
+- UpdateDashboardCounts(), SyncAll()에서 동일 null 가드 추가
+- 첫 설치 후 AddrX Manager 윈도우 열 때 크래시 해결
+
 ## [0.1.0] - 2026-03-29
 
 ### Added
