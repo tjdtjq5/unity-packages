@@ -7,9 +7,11 @@ namespace Tjdtjq5.SupaRun.Editor
     /// <summary>Bundle ID / Cloud Run URL 변경 감지 → Supabase Management API로 자동 동기화.</summary>
     public static class AuthUrlSyncManager
     {
-        static string KEY_BUNDLE_ID => SupaRunSettings.PREF + "Synced_BundleId";
-        static string KEY_CLOUD_RUN_URL => SupaRunSettings.PREF + "Synced_CloudRunUrl";
-        static string KEY_SUPABASE_URL => SupaRunSettings.PREF + "Synced_SupabaseUrl";
+        static string PREF => EditorPrefUtils.ProjectPrefix;
+
+        static string KEY_BUNDLE_ID => PREF + "Synced_BundleId";
+        static string KEY_CLOUD_RUN_URL => PREF + "Synced_CloudRunUrl";
+        static string KEY_SUPABASE_URL => PREF + "Synced_SupabaseUrl";
 
         /// <summary>마지막 동기화 결과.</summary>
         public enum SyncState { Unknown, Synced, NoToken, Error }
@@ -41,7 +43,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 }
             }
 
-            var token = SupaRunSettings.SupabaseAccessToken;
+            var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token))
             {
                 LastState = SyncState.NoToken;
@@ -54,7 +56,7 @@ namespace Tjdtjq5.SupaRun.Editor
         /// <summary>수동 동기화 트리거.</summary>
         public static void ForceSync(SupaRunSettings settings)
         {
-            var token = SupaRunSettings.SupabaseAccessToken;
+            var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token))
             {
                 LastState = SyncState.NoToken;
@@ -85,7 +87,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 var body = $"{{\"site_url\":\"{Escape(siteUrl)}\",\"uri_allow_list\":\"{Escape(redirectUrls)}\"}}";
 
                 var (ok, error) = await SupabaseManagementApi.PatchAuthConfig(
-                    projectRef, SupaRunSettings.SupabaseAccessToken, body);
+                    projectRef, SupaRunSettings.Instance.SupabaseAccessToken, body);
 
                 if (ok)
                 {

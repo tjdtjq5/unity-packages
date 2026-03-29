@@ -468,6 +468,31 @@ namespace Tjdtjq5.SupaRun.Editor
             return _ghReposCache;
         }
 
+        /// <summary>GitHub 레포 존재 여부 확인.</summary>
+        public static bool RepoExists(string ghRepo)
+        {
+            var path = FindGh();
+            if (path == null) return false;
+            var (code, _) = Run(path, $"repo view {ghRepo} --json name");
+            return code == 0;
+        }
+
+        /// <summary>GitHub private 레포 생성. 이미 있으면 alreadyExisted=true.</summary>
+        public static (bool success, bool alreadyExisted, string error) EnsureRepoExists(string ghRepo)
+        {
+            if (RepoExists(ghRepo)) return (true, true, null);
+
+            var path = FindGh();
+            if (path == null) return (false, false, "gh CLI를 찾을 수 없습니다.");
+
+            var (code, output) = Run(path, $"repo create {ghRepo} --private --confirm");
+            if (code != 0)
+                return (false, false, $"레포 생성 실패: {output}");
+
+            _ghReposCache = null;
+            return (true, false, null);
+        }
+
         // ── 통합 자동 설정 ──
 
         public static (bool success, string saEmail, string error) AutoSetupCloudRun(

@@ -40,7 +40,7 @@ namespace Tjdtjq5.SupaRun.Editor
             var config = new SupaRunRuntimeConfig
             {
                 supabaseUrl = settings.supabaseUrl,
-                supabaseAnonKey = SupaRunSettings.SupabaseAnonKey,
+                supabaseAnonKey = SupaRunSettings.Instance.SupabaseAnonKey,
                 cloudRunUrl = settings.cloudRunUrl
             };
 

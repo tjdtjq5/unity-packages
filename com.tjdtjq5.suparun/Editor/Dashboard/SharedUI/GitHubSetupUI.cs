@@ -11,6 +11,12 @@ namespace Tjdtjq5.SupaRun.Editor
         const string TOKEN_URL =
             "https://github.com/settings/tokens/new?scopes=repo,workflow&description=SupaRun";
 
+        static bool _repoCreated;
+        static string _checkedRepoKey;
+
+        /// <summary>레포가 생성 완료 상태인지. GcpSetupUI에서 참조.</summary>
+        public static bool IsRepoReady => _repoCreated;
+
         enum Phase { NoCli, NotLoggedIn, NoConfig, Complete }
 
         static Phase GetPhase(PrerequisiteChecker.ToolStatus gh, SupaRunSettings s)
@@ -33,10 +39,38 @@ namespace Tjdtjq5.SupaRun.Editor
                 EditorUI.DrawCellLabel($"  \u2713 {gh.Account}", 0, EditorUI.COL_SUCCESS);
             if (phase == Phase.Complete)
             {
-                EditorUI.DrawCellLabel($"  \u2713 {settings.githubRepoName}", 0, EditorUI.COL_SUCCESS);
-                GUILayout.Space(2);
-                if (EditorUI.DrawLinkButton($"GitHub ({gh.Account}/{settings.githubRepoName})"))
-                    Application.OpenURL($"https://github.com/{gh.Account}/{settings.githubRepoName}");
+                var repo = $"{gh.Account}/{settings.githubRepoName}";
+                if (_checkedRepoKey != repo)
+                {
+                    _checkedRepoKey = repo;
+                    _repoCreated = PrerequisiteChecker.RepoExists(repo);
+                }
+                if (_repoCreated)
+                {
+                    EditorUI.DrawCellLabel($"  \u2713 {settings.githubRepoName}", 0, EditorUI.COL_SUCCESS);
+                    GUILayout.Space(2);
+                    if (EditorUI.DrawLinkButton($"GitHub ({repo})"))
+                        Application.OpenURL($"https://github.com/{repo}");
+                }
+                else
+                {
+                    EditorUI.DrawCellLabel($"  \u2713 {settings.githubRepoName} (레포 미생성)", 0, EditorUI.COL_WARN);
+                    GUILayout.Space(4);
+                    if (EditorUI.DrawColorButton($"'{settings.githubRepoName}' 레포 생성", SupaRunDashboard.COL_GITHUB, 28))
+                    {
+                        var (ok, existed, err) = PrerequisiteChecker.EnsureRepoExists(repo);
+                        if (ok)
+                        {
+                            _repoCreated = true;
+                            var msg = existed ? "GitHub 레포 확인 완료 (이미 존재)" : "GitHub 레포 생성 완료!";
+                            dashboard.ShowNotification(msg, EditorUI.NotificationType.Success);
+                        }
+                        else
+                        {
+                            dashboard.ShowNotification(err, EditorUI.NotificationType.Error);
+                        }
+                    }
+                }
                 return;
             }
 
@@ -80,9 +114,9 @@ namespace Tjdtjq5.SupaRun.Editor
             if (EditorUI.DrawLinkButton("토큰 생성 (권한 자동 세팅)"))
                 Application.OpenURL(TOKEN_URL);
             GUILayout.Space(2);
-            var token = EditorUI.DrawPasswordField("Token", SupaRunSettings.GithubToken, "서버 레포 접근용");
-            if (token != SupaRunSettings.GithubToken)
-                SupaRunSettings.GithubToken = token;
+            var token = EditorUI.DrawPasswordField("Token", SupaRunSettings.Instance.GithubToken, "서버 레포 접근용");
+            if (token != SupaRunSettings.Instance.GithubToken)
+                SupaRunSettings.Instance.GithubToken = token;
             EditorUI.DrawCellLabel("  * 로컬에만 저장됩니다", 0, EditorUI.COL_MUTED);
 
             GUILayout.Space(6);
@@ -134,19 +168,18 @@ namespace Tjdtjq5.SupaRun.Editor
 
         static void DrawNewRepoInput(SupaRunSettings settings)
         {
-            using (var so = new SerializedObject(settings))
+            if (string.IsNullOrEmpty(settings.githubRepoName))
+                settings.githubRepoName = PlayerSettings.productName.Replace(" ", "") + "-server";
+
+            var newName = EditorGUILayout.TextField(
+                new GUIContent("Repo Name", "서버 코드 저장소 (자동 생성됨)"),
+                settings.githubRepoName);
+            if (newName != settings.githubRepoName)
             {
-                so.Update();
-                if (string.IsNullOrEmpty(settings.githubRepoName))
-                {
-                    so.FindProperty("githubRepoName").stringValue =
-                        PlayerSettings.productName.Replace(" ", "") + "-server";
-                }
-                EditorGUILayout.PropertyField(so.FindProperty("githubRepoName"),
-                    new GUIContent("Repo Name", "서버 코드 저장소 (자동 생성됨)"));
-                so.ApplyModifiedProperties();
+                settings.githubRepoName = newName;
+                settings.Save();
             }
-            EditorUI.DrawCellLabel("  * [배포] 시 자동 생성됩니다", 0, EditorUI.COL_MUTED);
+            EditorUI.DrawCellLabel("  * GitHub 설정 완료 후 레포 생성 버튼이 표시됩니다", 0, EditorUI.COL_MUTED);
         }
     }
 }

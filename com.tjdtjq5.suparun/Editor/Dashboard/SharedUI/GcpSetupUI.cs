@@ -37,6 +37,11 @@ namespace Tjdtjq5.SupaRun.Editor
                 EditorUI.DrawCellLabel("  \u2713 API \u2713 SA", 0, EditorUI.COL_SUCCESS);
                 GUILayout.Space(2);
 
+                // 프로젝트 변경 가능
+                var changed = false;
+                DrawProjectDropdown(settings, ref changed);
+                if (changed) return; // 프로젝트 변경 시 리셋됨 → Complete 아닌 상태로 전환
+
                 // 요약
                 EditorUI.DrawCellLabel(
                     $"  {settings.gcpRegion} | {settings.gcpServiceName} | " +
@@ -101,6 +106,47 @@ namespace Tjdtjq5.SupaRun.Editor
                 PrerequisiteChecker.RunGcloudLogin();
         }
 
+        /// <summary>프로젝트 드롭다운 (NoApi 단계에서도 변경 가능).</summary>
+        static void DrawProjectDropdown(SupaRunSettings settings, ref bool changed)
+        {
+            var projects = PrerequisiteChecker.GetGcpProjects();
+            if (projects.Length == 0)
+            {
+                var newId = EditorGUILayout.TextField(
+                    new GUIContent("Project", "GCP 프로젝트 ID"), settings.gcpProjectId);
+                if (newId != settings.gcpProjectId)
+                {
+                    settings.gcpProjectId = newId;
+                    PrerequisiteChecker.SetGcloudProject(newId);
+                    settings.gcpCloudRunApiEnabled = false;
+                    settings.gcpServiceAccountEmail = "";
+                    changed = true;
+                }
+                return;
+            }
+
+            var labels = projects.Select(p =>
+                string.IsNullOrEmpty(p.name) ? p.id : $"{p.id} ({p.name})").ToArray();
+            var currentIdx = 0;
+            for (int i = 0; i < projects.Length; i++)
+            {
+                if (projects[i].id == settings.gcpProjectId)
+                { currentIdx = i; break; }
+            }
+
+            var newIdx = EditorGUILayout.Popup(
+                new GUIContent("Project", "GCP 프로젝트"), currentIdx, labels);
+            if (projects[newIdx].id != settings.gcpProjectId)
+            {
+                settings.gcpProjectId = projects[newIdx].id;
+                PrerequisiteChecker.SetGcloudProject(settings.gcpProjectId);
+                // 프로젝트 변경 시 API/SA 상태 리셋
+                settings.gcpCloudRunApiEnabled = false;
+                settings.gcpServiceAccountEmail = "";
+                changed = true;
+            }
+        }
+
         static void DrawProjectSelector(SupaRunSettings settings)
         {
             EditorUI.DrawDescription("프로젝트를 선택하세요.\n게임 1개당 프로젝트 1개 추천합니다.");
@@ -143,12 +189,13 @@ namespace Tjdtjq5.SupaRun.Editor
             else
             {
                 // 프로젝트 목록 못 가져옴 → 수동 입력
-                using (var so = new SerializedObject(settings))
+                var newId = EditorGUILayout.TextField(
+                    new GUIContent("Project ID", "GCP 콘솔 상단에서 확인"),
+                    settings.gcpProjectId);
+                if (newId != settings.gcpProjectId)
                 {
-                    so.Update();
-                    EditorGUILayout.PropertyField(so.FindProperty("gcpProjectId"),
-                        new GUIContent("Project ID", "GCP 콘솔 상단에서 확인"));
-                    so.ApplyModifiedProperties();
+                    settings.gcpProjectId = newId;
+                    settings.Save();
                 }
             }
 
@@ -160,53 +207,53 @@ namespace Tjdtjq5.SupaRun.Editor
         static void DrawConfigAndAutoSetup(SupaRunDashboard dashboard,
             SupaRunSettings settings, PrerequisiteChecker.ToolStatus gcloud)
         {
-            using (var so = new SerializedObject(settings))
+            var changed = false;
+
+            // Project 드롭다운 (변경 가능)
+            DrawProjectDropdown(settings, ref changed);
+            GUILayout.Space(2);
+
+            // Region 드롭다운
+            var regions = new[] {
+                "asia-northeast3", "asia-northeast1", "asia-east1", "asia-southeast1",
+                "us-central1", "us-east1", "europe-west1"
+            };
+            var regionLabels = new[] {
+                "asia-northeast3 (서울) *", "asia-northeast1 (도쿄)", "asia-east1 (대만)",
+                "asia-southeast1 (싱가포르)", "us-central1 (아이오와)", "us-east1 (버지니아)",
+                "europe-west1 (벨기에)"
+            };
+            var rIdx = System.Array.IndexOf(regions, settings.gcpRegion);
+            if (rIdx < 0) rIdx = 0;
+            var newRIdx = EditorGUILayout.Popup(
+                new GUIContent("Region", "서버 위치 — 가까울수록 빠름"), rIdx, regionLabels);
+            if (newRIdx != rIdx) { settings.gcpRegion = regions[newRIdx]; changed = true; }
+
+            GUILayout.Space(2);
+
+            // Service Name (자동 소문자 + 검증)
+            if (string.IsNullOrEmpty(settings.gcpServiceName) && !string.IsNullOrEmpty(settings.githubRepoName))
             {
-                so.Update();
-
-                // Region 드롭다운
-                var regions = new[] {
-                    "asia-northeast3", "asia-northeast1", "asia-east1", "asia-southeast1",
-                    "us-central1", "us-east1", "europe-west1"
-                };
-                var regionLabels = new[] {
-                    "asia-northeast3 (서울) *", "asia-northeast1 (도쿄)", "asia-east1 (대만)",
-                    "asia-southeast1 (싱가포르)", "us-central1 (아이오와)", "us-east1 (버지니아)",
-                    "europe-west1 (벨기에)"
-                };
-                var regionProp = so.FindProperty("gcpRegion");
-                var rIdx = System.Array.IndexOf(regions, regionProp.stringValue);
-                if (rIdx < 0) rIdx = 0;
-                var newRIdx = EditorGUILayout.Popup(
-                    new GUIContent("Region", "서버 위치 — 가까울수록 빠름"), rIdx, regionLabels);
-                if (newRIdx != rIdx) regionProp.stringValue = regions[newRIdx];
-
-                GUILayout.Space(2);
-
-                // Service Name (자동 소문자 + 검증)
-                var svcProp = so.FindProperty("gcpServiceName");
-                if (string.IsNullOrEmpty(svcProp.stringValue) && !string.IsNullOrEmpty(settings.githubRepoName))
-                    svcProp.stringValue = SanitizeServiceName(settings.githubRepoName);
-
-                var newSvcName = EditorGUILayout.TextField(
-                    new GUIContent("Service Name", "Cloud Run 서비스 이름 (URL에 포함)"),
-                    svcProp.stringValue);
-                var sanitized = SanitizeServiceName(newSvcName);
-                if (sanitized != svcProp.stringValue)
-                    svcProp.stringValue = sanitized;
-
-                GUILayout.Space(2);
-
-                // Min Instances
-                var minOptions = new[] { "0 — 무료 (2~5초 대기)", "1 — 항상 켜짐 (월 ~5만원)" };
-                var minProp = so.FindProperty("gcpMinInstances");
-                var minVal = Mathf.Clamp(minProp.intValue, 0, 1);
-                var newMin = EditorGUILayout.Popup(
-                    new GUIContent("Min Instances", "서버 항상 켜둘지 여부"), minVal, minOptions);
-                if (newMin != minVal) minProp.intValue = newMin;
-
-                so.ApplyModifiedProperties();
+                settings.gcpServiceName = SanitizeServiceName(settings.githubRepoName);
+                changed = true;
             }
+
+            var newSvcName = EditorGUILayout.TextField(
+                new GUIContent("Service Name", "Cloud Run 서비스 이름 (URL에 포함)"),
+                settings.gcpServiceName);
+            var sanitized = SanitizeServiceName(newSvcName);
+            if (sanitized != settings.gcpServiceName) { settings.gcpServiceName = sanitized; changed = true; }
+
+            GUILayout.Space(2);
+
+            // Min Instances
+            var minOptions = new[] { "0 — 무료 (2~5초 대기)", "1 — 항상 켜짐 (월 ~5만원)" };
+            var minVal = Mathf.Clamp(settings.gcpMinInstances, 0, 1);
+            var newMin = EditorGUILayout.Popup(
+                new GUIContent("Min Instances", "서버 항상 켜둘지 여부"), minVal, minOptions);
+            if (newMin != minVal) { settings.gcpMinInstances = newMin; changed = true; }
+
+            if (changed) settings.Save();
 
             GUILayout.Space(8);
 
@@ -219,11 +266,11 @@ namespace Tjdtjq5.SupaRun.Editor
 
             GUILayout.Space(4);
 
-            bool canAutoSetup = settings.IsGitHubConfigured;
-            if (!canAutoSetup)
-            {
+            bool canAutoSetup = settings.IsGitHubConfigured && GitHubSetupUI.IsRepoReady;
+            if (!settings.IsGitHubConfigured)
                 EditorUI.DrawDescription("GitHub 설정을 먼저 완료하세요.", EditorUI.COL_WARN);
-            }
+            else if (!GitHubSetupUI.IsRepoReady)
+                EditorUI.DrawDescription("GitHub 레포를 먼저 생성하세요.", EditorUI.COL_WARN);
 
             using (new EditorGUI.DisabledGroupScope(!canAutoSetup))
             {

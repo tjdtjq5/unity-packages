@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.1] - 2026-03-29
+
+### Changed
+- SupaRunSettings 대규모 리팩토링 (+420줄)
+- GcpSetupUI / GitHubSetupUI 개선
+- SetupWizard / SupabaseSetup 업데이트
+- DeployManager / GitHubPusher / ServerCacheHealthChecker 안정화
+- PrerequisiteChecker 강화
+- AuthUrlSyncManager 업데이트
+- GameServer → SupaRun 네이밍 정리 (레거시 .meta 삭제)
+- Editor Utils 유틸리티 추가
+
+### Removed
+- GameServerBuildProcessor.cs.meta (레거시)
+- GameServerDashboard.cs.meta (레거시)
+- GameServerSettings.cs.meta (레거시)
+- Tjdtjq5.GameServer.Editor.asmdef.meta (레거시)
+- Runtime 레거시 .meta 파일 4개 삭제
+
 ## [0.3.0] - 2026-03-29
 
 ### Changed

@@ -91,10 +91,10 @@ namespace Tjdtjq5.SupaRun.Editor
                 Application.OpenURL("https://supabase.com/dashboard/account/tokens");
 
             GUILayout.Space(4);
-            var token = EditorUI.DrawPasswordField("Access Token", SupaRunSettings.SupabaseAccessToken);
-            if (token != SupaRunSettings.SupabaseAccessToken)
+            var token = EditorUI.DrawPasswordField("Access Token", SupaRunSettings.Instance.SupabaseAccessToken);
+            if (token != SupaRunSettings.Instance.SupabaseAccessToken)
             {
-                SupaRunSettings.SupabaseAccessToken = token;
+                SupaRunSettings.Instance.SupabaseAccessToken = token;
                 // 토큰 변경 시 프로젝트 목록 초기화
                 _projects = null;
                 _projectLabels = null;
@@ -103,7 +103,7 @@ namespace Tjdtjq5.SupaRun.Editor
             }
 
             // 토큰 입력 시 프로젝트 목록 조회 버튼
-            if (!string.IsNullOrEmpty(SupaRunSettings.SupabaseAccessToken) && _projects == null && !_loadingProjects)
+            if (!string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAccessToken) && _projects == null && !_loadingProjects)
             {
                 GUILayout.Space(4);
                 if (EditorUI.DrawColorButton("프로젝트 목록 조회", SupaRunDashboard.COL_SUPABASE, 28))
@@ -123,7 +123,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawStep3_ProjectSelect(SupaRunSettings settings)
         {
-            var hasToken = !string.IsNullOrEmpty(SupaRunSettings.SupabaseAccessToken);
+            var hasToken = !string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAccessToken);
 
             EditorUI.DrawSubLabel("③ 프로젝트 선택");
             EditorUI.BeginBody();
@@ -189,7 +189,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
             // Anon Key 미완료 시 차단
             if (_anonKeyState != AnonKeyState.Done &&
-                string.IsNullOrEmpty(SupaRunSettings.SupabaseAnonKey))
+                string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAnonKey))
             {
                 EditorUI.DrawDescription("③에서 프로젝트를 선택하면 자동으로 Anon Key가 조회됩니다.", EditorUI.COL_WARN);
                 EditorUI.EndBody();
@@ -207,9 +207,9 @@ namespace Tjdtjq5.SupaRun.Editor
             }
 
             GUILayout.Space(4);
-            var dbPw = EditorUI.DrawPasswordField("DB Password", SupaRunSettings.SupabaseDbPassword);
-            if (dbPw != SupaRunSettings.SupabaseDbPassword)
-                SupaRunSettings.SupabaseDbPassword = dbPw;
+            var dbPw = EditorUI.DrawPasswordField("DB Password", SupaRunSettings.Instance.SupabaseDbPassword);
+            if (dbPw != SupaRunSettings.Instance.SupabaseDbPassword)
+                SupaRunSettings.Instance.SupabaseDbPassword = dbPw;
 
             EditorUI.EndBody();
         }
@@ -223,7 +223,7 @@ namespace Tjdtjq5.SupaRun.Editor
             _dashboard.Repaint();
 
             var (ok, projects, error) = await SupabaseManagementApi.ListProjects(
-                SupaRunSettings.SupabaseAccessToken);
+                SupaRunSettings.Instance.SupabaseAccessToken);
 
             _loadingProjects = false;
 
@@ -279,11 +279,11 @@ namespace Tjdtjq5.SupaRun.Editor
             _dashboard.Repaint();
 
             var (ok, anonKey, error) = await SupabaseManagementApi.GetAnonKey(
-                projectRef, SupaRunSettings.SupabaseAccessToken);
+                projectRef, SupaRunSettings.Instance.SupabaseAccessToken);
 
             if (ok)
             {
-                SupaRunSettings.SupabaseAnonKey = anonKey;
+                SupaRunSettings.Instance.SupabaseAnonKey = anonKey;
                 _anonKeyState = AnonKeyState.Done;
 
                 // 익명 로그인 + Auth URL 자동 설정
@@ -300,7 +300,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         async void RunAutoAuthSetup(string projectRef)
         {
-            var token = SupaRunSettings.SupabaseAccessToken;
+            var token = SupaRunSettings.Instance.SupabaseAccessToken;
             var bundleId = PlayerSettings.applicationIdentifier;
             var settings = SupaRunSettings.Instance;
             var siteUrl = $"{bundleId}://auth";
@@ -330,7 +330,7 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 case TestState.None:
                     bool canTest = !string.IsNullOrEmpty(settings.supabaseUrl) &&
-                                   !string.IsNullOrEmpty(SupaRunSettings.SupabaseAnonKey);
+                                   !string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAnonKey);
                     using (new EditorGUI.DisabledGroupScope(!canTest))
                     {
                         if (EditorUI.DrawColorButton("연결 테스트", SupaRunDashboard.COL_SUPABASE, 28))
@@ -363,7 +363,7 @@ namespace Tjdtjq5.SupaRun.Editor
         void RunConnectionTest(SupaRunSettings settings)
         {
             var url = settings.supabaseUrl?.TrimEnd('/');
-            var key = SupaRunSettings.SupabaseAnonKey;
+            var key = SupaRunSettings.Instance.SupabaseAnonKey;
 
             if (string.IsNullOrEmpty(url) || !url.Contains("supabase"))
             {

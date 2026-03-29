@@ -177,7 +177,7 @@ namespace Tjdtjq5.SupaRun.Editor
             var state = settings.IsSupabaseConfigured ? 1 : 0;
             var summary = settings.IsSupabaseConfigured
                 ? settings.supabaseUrl : "Supabase 설정이 필요합니다";
-            var hasToken = !string.IsNullOrEmpty(SupaRunSettings.SupabaseAccessToken);
+            var hasToken = !string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAccessToken);
 
             var expanded = EditorUI.BeginServiceCard("Supabase", SupaRunDashboard.COL_SUPABASE,
                 status, state, summary, ref _supabaseExpanded);
@@ -186,11 +186,11 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 // ── Access Token (최상단) ──
                 GUILayout.Space(4);
-                var token = EditorUI.DrawPasswordField("Access Token", SupaRunSettings.SupabaseAccessToken,
+                var token = EditorUI.DrawPasswordField("Access Token", SupaRunSettings.Instance.SupabaseAccessToken,
                     "자동 설정용");
-                if (token != SupaRunSettings.SupabaseAccessToken)
+                if (token != SupaRunSettings.Instance.SupabaseAccessToken)
                 {
-                    SupaRunSettings.SupabaseAccessToken = token;
+                    SupaRunSettings.Instance.SupabaseAccessToken = token;
                     _settingsProjects = null;
                     _settingsProjectIndex = -1;
                     AuthUrlSyncManager.InvalidateCache();
@@ -229,8 +229,14 @@ namespace Tjdtjq5.SupaRun.Editor
                 }
                 else
                 {
-                    using (var so = new SerializedObject(settings))
-                        EditorUI.DrawProperty(so, "supabaseUrl", "Project URL", "https://xxx.supabase.co");
+                    var newUrl = EditorGUILayout.TextField(
+                        new GUIContent("Project URL", "https://xxx.supabase.co"),
+                        settings.supabaseUrl);
+                    if (newUrl != settings.supabaseUrl)
+                    {
+                        settings.supabaseUrl = newUrl;
+                        settings.Save();
+                    }
                 }
 
                 // ── Anon Key (읽기전용 표시) ──
@@ -238,19 +244,19 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (hasToken)
                 {
                     // 읽기전용 표시
-                    var anonDisplay = string.IsNullOrEmpty(SupaRunSettings.SupabaseAnonKey)
+                    var anonDisplay = string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAnonKey)
                         ? "(프로젝트 선택 시 자동 조회)"
-                        : SupaRunSettings.SupabaseAnonKey.Length > 20
-                            ? SupaRunSettings.SupabaseAnonKey.Substring(0, 20) + "..."
-                            : SupaRunSettings.SupabaseAnonKey;
+                        : SupaRunSettings.Instance.SupabaseAnonKey.Length > 20
+                            ? SupaRunSettings.Instance.SupabaseAnonKey.Substring(0, 20) + "..."
+                            : SupaRunSettings.Instance.SupabaseAnonKey;
                     EditorUI.DrawCellLabel($"  Anon Key: {anonDisplay}", 0,
-                        string.IsNullOrEmpty(SupaRunSettings.SupabaseAnonKey) ? EditorUI.COL_MUTED : EditorUI.COL_SUCCESS);
+                        string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAnonKey) ? EditorUI.COL_MUTED : EditorUI.COL_SUCCESS);
                 }
                 else
                 {
-                    var anonKey = EditorUI.DrawTextField("Anon Key", SupaRunSettings.SupabaseAnonKey, "수동 입력");
-                    if (anonKey != SupaRunSettings.SupabaseAnonKey)
-                        SupaRunSettings.SupabaseAnonKey = anonKey;
+                    var anonKey = EditorUI.DrawTextField("Anon Key", SupaRunSettings.Instance.SupabaseAnonKey, "수동 입력");
+                    if (anonKey != SupaRunSettings.Instance.SupabaseAnonKey)
+                        SupaRunSettings.Instance.SupabaseAnonKey = anonKey;
                     if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
                     {
                         if (EditorUI.DrawLinkButton("API Keys 페이지에서 복사"))
@@ -260,9 +266,9 @@ namespace Tjdtjq5.SupaRun.Editor
 
                 // ── DB Password ──
                 GUILayout.Space(2);
-                var dbPw = EditorUI.DrawPasswordField("DB Password", SupaRunSettings.SupabaseDbPassword, "프로젝트 생성 시 비밀번호");
-                if (dbPw != SupaRunSettings.SupabaseDbPassword)
-                    SupaRunSettings.SupabaseDbPassword = dbPw;
+                var dbPw = EditorUI.DrawPasswordField("DB Password", SupaRunSettings.Instance.SupabaseDbPassword, "프로젝트 생성 시 비밀번호");
+                if (dbPw != SupaRunSettings.Instance.SupabaseDbPassword)
+                    SupaRunSettings.Instance.SupabaseDbPassword = dbPw;
             }
 
             GUILayout.Space(4);
@@ -319,7 +325,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 GUILayout.Space(4);
 
                 // Auth config 조회 (Access Token이 있으면 펼칠 때 한번만)
-                var hasToken = !string.IsNullOrEmpty(SupaRunSettings.SupabaseAccessToken);
+                var hasToken = !string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAccessToken);
                 if (hasToken && !_authConfigLoaded && !_authConfigLoading)
                     FetchAuthConfig(settings);
 
@@ -426,7 +432,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             EditorUI.BeginBody();
             var projectId = settings.SupabaseProjectId;
-            var hasToken = !string.IsNullOrEmpty(SupaRunSettings.SupabaseAccessToken);
+            var hasToken = !string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAccessToken);
             var needsCredentials = AuthProviderGuide.RequiresClientCredentials(providerKey);
 
             // 설정 완료 체크 — 완료됐으면 상태 요약만 표시
@@ -720,7 +726,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             _providerApplyState[providerKey] = "applying";
 
-            var token = SupaRunSettings.SupabaseAccessToken;
+            var token = SupaRunSettings.Instance.SupabaseAccessToken;
             var projectRef = settings.SupabaseProjectId;
 
             // GPGS는 Google provider로 적용
@@ -824,7 +830,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             _authConfigLoading = true;
             var (ok, json, _) = await SupabaseManagementApi.GetAuthConfig(
-                settings.SupabaseProjectId, SupaRunSettings.SupabaseAccessToken);
+                settings.SupabaseProjectId, SupaRunSettings.Instance.SupabaseAccessToken);
             _authConfigLoading = false;
             if (ok)
             {
@@ -877,7 +883,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             _settingsLoadingProjects = true;
             var (ok, projects, _) = await SupabaseManagementApi.ListProjects(
-                SupaRunSettings.SupabaseAccessToken);
+                SupaRunSettings.Instance.SupabaseAccessToken);
             _settingsLoadingProjects = false;
 
             if (ok)
@@ -903,10 +909,10 @@ namespace Tjdtjq5.SupaRun.Editor
         async void FetchAnonKey(SupaRunSettings settings)
         {
             var (ok, anonKey, error) = await SupabaseManagementApi.GetAnonKey(
-                settings.SupabaseProjectId, SupaRunSettings.SupabaseAccessToken);
+                settings.SupabaseProjectId, SupaRunSettings.Instance.SupabaseAccessToken);
             if (ok)
             {
-                SupaRunSettings.SupabaseAnonKey = anonKey;
+                SupaRunSettings.Instance.SupabaseAnonKey = anonKey;
                 _dashboard.ShowNotification("Anon Key 자동 조회 완료", EditorUI.NotificationType.Success);
             }
             else
@@ -917,7 +923,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         async void RunConnectionTest(SupaRunSettings settings)
         {
-            var token = SupaRunSettings.SupabaseAccessToken;
+            var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token))
             {
                 // Access Token 없으면 기존 방식 (Supabase REST로 간단 체크)
@@ -936,7 +942,7 @@ namespace Tjdtjq5.SupaRun.Editor
         /// <summary>Provider를 Supabase에 활성화. Access Token 필요.</summary>
         async void EnableProviderOnSupabase(SupaRunSettings settings, string provider)
         {
-            var token = SupaRunSettings.SupabaseAccessToken;
+            var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token)) return;
 
             var prefix = AuthProviderGuide.GetApiFieldPrefix(provider);
@@ -955,7 +961,7 @@ namespace Tjdtjq5.SupaRun.Editor
         /// <summary>Provider를 Supabase에서 비활성화.</summary>
         async void DisableProviderOnSupabase(SupaRunSettings settings, string provider)
         {
-            var token = SupaRunSettings.SupabaseAccessToken;
+            var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token)) return;
 
             var prefix = AuthProviderGuide.GetApiFieldPrefix(provider);
@@ -977,8 +983,14 @@ namespace Tjdtjq5.SupaRun.Editor
                 return;
 
             EditorUI.BeginBody();
-            using (var so = new SerializedObject(settings))
-                EditorUI.DrawProperty(so, "serverLogToConsole", "Cloud Run 로그 -> Console", "배포된 서버 로그를 Unity Console에 표시");
+            var newVal = EditorGUILayout.Toggle(
+                new GUIContent("Cloud Run 로그 -> Console", "배포된 서버 로그를 Unity Console에 표시"),
+                settings.serverLogToConsole);
+            if (newVal != settings.serverLogToConsole)
+            {
+                settings.serverLogToConsole = newVal;
+                settings.Save();
+            }
             EditorUI.EndBody();
         }
     }

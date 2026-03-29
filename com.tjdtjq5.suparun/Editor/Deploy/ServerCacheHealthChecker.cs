@@ -8,10 +8,12 @@ namespace Tjdtjq5.SupaRun.Editor
 {
     public static class ServerCacheHealthChecker
     {
-        static string PREF_DOTNET_VERSION => SupaRunSettings.PREF + "Cache_DotnetVersion";
-        static string PREF_CODE_HASH => SupaRunSettings.PREF + "Cache_CodeHash";
-        static string PREF_LAST_DEPLOY_DATE => SupaRunSettings.PREF + "Cache_LastDeployDate";
-        static string PREF_LAST_DEPLOY_SUCCESS => SupaRunSettings.PREF + "Cache_LastDeploySuccess";
+        static string PREF => EditorPrefUtils.ProjectPrefix;
+
+        static string PREF_DOTNET_VERSION => PREF + "Cache_DotnetVersion";
+        static string PREF_CODE_HASH => PREF + "Cache_CodeHash";
+        static string PREF_LAST_DEPLOY_DATE => PREF + "Cache_LastDeployDate";
+        static string PREF_LAST_DEPLOY_SUCCESS => PREF + "Cache_LastDeploySuccess";
 
         public enum Severity { Error, Warning, Info }
 

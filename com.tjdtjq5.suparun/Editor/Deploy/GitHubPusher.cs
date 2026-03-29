@@ -140,7 +140,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             var repo = $"{gh.Account}/{settings.githubRepoName}";
             var projectId = settings.SupabaseProjectId;
-            var dbPassword = SupaRunSettings.SupabaseDbPassword;
+            var dbPassword = SupaRunSettings.Instance.SupabaseDbPassword;
 
             // Supabase 연결 문자열
             var poolSize = settings.dbPoolSize > 0 ? settings.dbPoolSize : 20;
@@ -158,11 +158,11 @@ namespace Tjdtjq5.SupaRun.Editor
             }
 
             // Cron Secret (없으면 자동 생성)
-            var cronSecret = SupaRunSettings.CronSecret;
+            var cronSecret = SupaRunSettings.Instance.CronSecret;
             if (string.IsNullOrEmpty(cronSecret))
             {
                 cronSecret = Guid.NewGuid().ToString("N");
-                SupaRunSettings.CronSecret = cronSecret;
+                SupaRunSettings.Instance.CronSecret = cronSecret;
             }
             SetSecret(repo, "CRON_SECRET", cronSecret);
 

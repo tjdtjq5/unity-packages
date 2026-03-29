@@ -278,7 +278,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 else if (_filter == LevelFilter.Warn)
                     url += "&level=eq.warn";
 
-                var anonKey = SupaRunSettings.SupabaseAnonKey;
+                var anonKey = SupaRunSettings.Instance.SupabaseAnonKey;
 
                 using var request = new UnityWebRequest(url, "GET");
                 request.downloadHandler = new DownloadHandlerBuffer();

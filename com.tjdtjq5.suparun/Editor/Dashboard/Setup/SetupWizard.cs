@@ -226,7 +226,10 @@ namespace Tjdtjq5.SupaRun.Editor
             if (_currentStep > 0)
             {
                 if (EditorUI.DrawColorButton("이전", EditorUI.COL_MUTED, 28))
+                {
                     _currentStep--;
+                    GUIUtility.ExitGUI();
+                }
             }
 
             EditorUI.FlexSpace();
@@ -237,7 +240,10 @@ namespace Tjdtjq5.SupaRun.Editor
                 using (new EditorGUI.DisabledGroupScope(!_supabaseSetup.IsCompleted))
                 {
                     if (EditorUI.DrawColorButton("다음", SupaRunDashboard.COL_PRIMARY, 28))
+                    {
                         _currentStep++;
+                        GUIUtility.ExitGUI();
+                    }
                 }
                 if (!_supabaseSetup.IsCompleted)
                     EditorUI.DrawDescription("연결 테스트를 통과해야 합니다.", EditorUI.COL_WARN);
@@ -249,10 +255,14 @@ namespace Tjdtjq5.SupaRun.Editor
                 {
                     _deploySetup.OnSkip();
                     _showCompletion = true;
+                    GUIUtility.ExitGUI();
                 }
                 GUILayout.Space(8);
                 if (EditorUI.DrawColorButton("완료", EditorUI.COL_SUCCESS, 28))
+                {
                     _showCompletion = true;
+                    GUIUtility.ExitGUI();
+                }
             }
             else
             {
@@ -260,11 +270,17 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (!IsStepCompleted(_currentStep))
                 {
                     if (EditorUI.DrawColorButton("건너뛰기", EditorUI.COL_WARN, 28))
+                    {
                         _currentStep++;
+                        GUIUtility.ExitGUI();
+                    }
                     GUILayout.Space(8);
                 }
                 if (EditorUI.DrawColorButton("다음", SupaRunDashboard.COL_PRIMARY, 28))
+                {
                     _currentStep++;
+                    GUIUtility.ExitGUI();
+                }
             }
 
             EditorUI.EndRow();

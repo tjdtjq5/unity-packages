@@ -292,7 +292,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         async Task FetchProjectInfo(SupaRunSettings settings)
         {
-            var token = SupaRunSettings.SupabaseAccessToken;
+            var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token)) return;
 
             var (ok, name, status, region, _) = await SupabaseManagementApi.GetProjectInfo(
@@ -322,7 +322,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         async Task FetchDbMaxConnections(SupaRunSettings settings)
         {
-            var token = SupaRunSettings.SupabaseAccessToken;
+            var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token)) return;
 
             var (ok, maxConn, _) = await SupabaseManagementApi.GetMaxConnections(

@@ -161,7 +161,7 @@ namespace Tjdtjq5.SupaRun.Editor
         /// <summary>어드민 회원가입 즉시 로그인을 위해 autoconfirm 보장.</summary>
         static async void EnsureAutoConfirm(SupaRunSettings settings)
         {
-            var token = SupaRunSettings.SupabaseAccessToken;
+            var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token)) return;
             var (ok, _) = await SupabaseManagementApi.PatchAuthConfig(
                 settings.SupabaseProjectId, token, "{\"mailer_autoconfirm\":true}");
@@ -172,7 +172,7 @@ namespace Tjdtjq5.SupaRun.Editor
         public static async void RegisterCronJobs()
         {
             var settings = SupaRunSettings.Instance;
-            var accessToken = SupaRunSettings.SupabaseAccessToken;
+            var accessToken = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(accessToken))
             {
                 Debug.Log("[SupaRun:Deploy] Supabase Access Token 없음 — pg_cron 스킵");
@@ -182,11 +182,11 @@ namespace Tjdtjq5.SupaRun.Editor
             var projectId = settings.SupabaseProjectId;
             var logicTypes = ScanTypes<ServiceAttribute>();
 
-            var cronSecret = SupaRunSettings.CronSecret;
+            var cronSecret = SupaRunSettings.Instance.CronSecret;
             if (string.IsNullOrEmpty(cronSecret))
             {
                 cronSecret = Guid.NewGuid().ToString("N");
-                SupaRunSettings.CronSecret = cronSecret;
+                SupaRunSettings.Instance.CronSecret = cronSecret;
             }
 
             var scheduleSqls = ServerCodeGenerator.GenerateCronScheduleSqls(
@@ -305,7 +305,7 @@ namespace Tjdtjq5.SupaRun.Editor
             content = content.Replace("{{SUPABASE_PROJECT_ID}}", settings.SupabaseProjectId);
             content = content.Replace("{{DOTNET_MAJOR}}", dotnetMajor.ToString());
             content = content.Replace("{{SUPABASE_URL}}", settings.supabaseUrl ?? "");
-            content = content.Replace("{{SUPABASE_ANON_KEY}}", SupaRunSettings.SupabaseAnonKey ?? "");
+            content = content.Replace("{{SUPABASE_ANON_KEY}}", SupaRunSettings.Instance.SupabaseAnonKey ?? "");
 
             // OAuth provider 목록 (Guest, GPGS, GameCenter 제외 = 웹 OAuth만)
             var q = '"';
