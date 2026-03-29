@@ -10,17 +10,10 @@ namespace Tjdtjq5.EditorToolkit.Editor
     /// <summary>
     /// 커스텀 어트리뷰트 통합 에디터 베이스.
     /// [InspectorButton], [BoxGroup], [StyledList] 지원.
-    /// Odin이 PropertyDrawer를 가로채므로, 모든 어트리뷰트를 CustomEditor 레벨에서 직접 처리.
-    ///
-    /// Odin 공존 중: 타입마다 2줄 에디터 생성:
-    ///   [CustomEditor(typeof(MyComponent))]
-    ///   public class MyComponentEditor : InspectorButtonEditor { }
-    ///
-    /// Odin 제거 후: 아래 주석 해제하면 모든 MonoBehaviour에 자동 적용.
+    /// 모든 MonoBehaviour에 자동 적용됨.
     /// </summary>
-    // TODO: Odin 제거 후 아래 주석 해제
-    // [CustomEditor(typeof(MonoBehaviour), true)]
-    // [CanEditMultipleObjects]
+    [CustomEditor(typeof(MonoBehaviour), true)]
+    [CanEditMultipleObjects]
     public class InspectorButtonEditor : UnityEditor.Editor
     {
         // ─── 색상 상수 (EditorTabBase 통일) ──────────────
@@ -205,7 +198,7 @@ namespace Tjdtjq5.EditorToolkit.Editor
         }
 
         // ═══════════════════════════════════════════════════
-        //  StyledList (Layout 기반, Odin 우회)
+        //  StyledList (Layout 기반 커스텀 렌더링)
         // ═══════════════════════════════════════════════════
 
         void DrawStyledList(SerializedProperty property, StyledListAttribute attr)
@@ -618,8 +611,8 @@ namespace Tjdtjq5.EditorToolkit.Editor
         }
     }
 
-    // ─── 개별 타입용 에디터 ──────────────
-    // 프로젝트에서 사용할 때:
+    // ─── 타입별 커스텀 에디터 (선택사항) ────────
+    // 특정 타입만 다르게 처리하려면:
     //   [CustomEditor(typeof(YourComponent))]
     //   public class YourComponentEditor : InspectorButtonEditor { }
 }
