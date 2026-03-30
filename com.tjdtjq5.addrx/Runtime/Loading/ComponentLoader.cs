@@ -13,22 +13,30 @@ namespace Tjdtjq5.AddrX
         [SerializeField] string _address;
 
         SafeHandle<Object> _handle;
+        Task _loadTask;
 
         /// <summary>로드된 에셋. 로드 전이면 null.</summary>
-        public Object LoadedAsset => _handle is { Status: HandleStatus.Succeeded }
+        public Object LoadedAsset => _handle is { IsReady: true }
             ? _handle.Value
             : null;
 
         /// <summary>로드 완료 여부.</summary>
-        public bool IsLoaded => _handle is { Status: HandleStatus.Succeeded };
+        public bool IsLoaded => _handle is { IsReady: true };
 
         /// <summary>현재 상태.</summary>
         public HandleStatus Status => _handle?.Status ?? HandleStatus.None;
 
-        async void Awake()
+        /// <summary>로드 완료를 대기. 외부에서 await 가능.</summary>
+        public Task WaitForLoad() => _loadTask ?? Task.CompletedTask;
+
+        void Awake()
         {
             if (string.IsNullOrEmpty(_address)) return;
+            _loadTask = LoadAsync();
+        }
 
+        async Task LoadAsync()
+        {
             try
             {
                 _handle = await AddrX.LoadAsync<Object>(_address);

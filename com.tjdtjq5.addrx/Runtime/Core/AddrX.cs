@@ -13,6 +13,9 @@ namespace Tjdtjq5.AddrX
 
         static bool _initialized;
         static Task _initTask;
+        static readonly object _initLock = new();
+        static int _initFailCount;
+        const int MaxInitAttempts = 3;
 
         /// <summary>초기화 완료 여부.</summary>
         public static bool IsInitialized => _initialized;
@@ -24,22 +27,27 @@ namespace Tjdtjq5.AddrX
         {
             _initialized = false;
             _initTask = null;
+            _initFailCount = 0;
         }
 #endif
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoInitialize()
         {
             if (!AddrXSettings.Instance.AutoInitialize) return;
-            _initTask = InitializeCore();
+            _initTask ??= InitializeCore();
         }
 
         /// <summary>수동 초기화. 이미 초기화됐으면 즉시 반환.</summary>
         public static Task Initialize()
         {
             if (_initialized) return Task.CompletedTask;
-            _initTask ??= InitializeCore();
-            return _initTask;
+            lock (_initLock)
+            {
+                if (_initialized) return Task.CompletedTask;
+                _initTask ??= InitializeCore();
+                return _initTask;
+            }
         }
 
         /// <summary>Addressable 에셋을 로드하고 SafeHandle로 감싸서 반환한다.</summary>
@@ -67,10 +75,22 @@ namespace Tjdtjq5.AddrX
 
         static async Task InitializeCore()
         {
+            if (_initFailCount >= MaxInitAttempts)
+                throw new InvalidOperationException(
+                    $"AddrX 초기화 최대 재시도 {MaxInitAttempts}회 초과");
+
             try
             {
                 AddrXSettings.Instance.Apply();
                 AddrXLog.Info(Tag, "Addressables 초기화 시작");
+
+                // Addressables가 이미 초기화됐으면 InitializeAsync()가 invalid handle을 반환함
+                if (Addressables.ResourceLocators.GetEnumerator().MoveNext())
+                {
+                    _initialized = true;
+                    AddrXLog.Info(Tag, "Addressables 이미 초기화됨 (스킵)");
+                    return;
+                }
 
                 var op = Addressables.InitializeAsync();
                 await op.Task;
@@ -78,18 +98,19 @@ namespace Tjdtjq5.AddrX
                 if (op.Status == AsyncOperationStatus.Succeeded)
                 {
                     _initialized = true;
+                    _initFailCount = 0;
                     AddrXLog.Info(Tag, "Addressables 초기화 완료");
                 }
                 else
                 {
-                    AddrXLog.Error(Tag, "Addressables 초기화 실패");
                     throw new Exception("Addressables 초기화에 실패했습니다.");
                 }
             }
             catch (Exception e)
             {
-                AddrXLog.Error(Tag, $"초기화 중 예외: {e.Message}");
-                _initTask = null; // 재시도 허용
+                _initFailCount++;
+                _initTask = null;
+                AddrXLog.Error(Tag, $"초기화 실패 ({_initFailCount}/{MaxInitAttempts}): {e.Message}");
                 throw;
             }
         }

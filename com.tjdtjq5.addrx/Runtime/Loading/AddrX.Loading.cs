@@ -124,24 +124,27 @@ namespace Tjdtjq5.AddrX
             var locationsOp = Addressables.LoadResourceLocationsAsync(label, typeof(T));
             await locationsOp.Task;
 
-            if (locationsOp.Status == AsyncOperationStatus.Failed)
+            try
             {
-                AddrXLog.Error(Tag, $"라벨 위치 조회 실패: {label}");
-                Addressables.Release(locationsOp);
-                return Array.Empty<SafeHandle<T>>();
-            }
+                if (locationsOp.Status == AsyncOperationStatus.Failed)
+                {
+                    AddrXLog.Error(Tag, $"라벨 위치 조회 실패: {label}");
+                    return Array.Empty<SafeHandle<T>>();
+                }
 
-            var locations = locationsOp.Result;
-            if (locations.Count == 0)
+                var locations = locationsOp.Result;
+                if (locations.Count == 0)
+                {
+                    AddrXLog.Warning(Tag, $"라벨 '{label}'에 해당하는 에셋 없음");
+                    return Array.Empty<SafeHandle<T>>();
+                }
+
+                return await LoadFromLocations<T>(locations, $"라벨 '{label}'", onProgress);
+            }
+            finally
             {
-                AddrXLog.Warning(Tag, $"라벨 '{label}'에 해당하는 에셋 없음");
                 Addressables.Release(locationsOp);
-                return Array.Empty<SafeHandle<T>>();
             }
-
-            var result = await LoadFromLocations<T>(locations, $"라벨 '{label}'", onProgress);
-            Addressables.Release(locationsOp);
-            return result;
         }
 
         /// <summary>여러 라벨 조합으로 에셋을 로드한다. Union(합집합) 또는 Intersection(교집합).</summary>
@@ -156,26 +159,29 @@ namespace Tjdtjq5.AddrX
                 (IEnumerable)labels, mergeMode, typeof(T));
             await locationsOp.Task;
 
-            if (locationsOp.Status == AsyncOperationStatus.Failed)
+            try
             {
-                AddrXLog.Error(Tag, $"라벨 위치 조회 실패: [{string.Join(", ", labels)}]");
-                Addressables.Release(locationsOp);
-                return Array.Empty<SafeHandle<T>>();
-            }
+                if (locationsOp.Status == AsyncOperationStatus.Failed)
+                {
+                    AddrXLog.Error(Tag, $"라벨 위치 조회 실패: [{string.Join(", ", labels)}]");
+                    return Array.Empty<SafeHandle<T>>();
+                }
 
-            var locations = locationsOp.Result;
-            if (locations.Count == 0)
+                var locations = locationsOp.Result;
+                if (locations.Count == 0)
+                {
+                    AddrXLog.Warning(Tag,
+                        $"라벨 [{string.Join(", ", labels)}]에 해당하는 에셋 없음 ({mergeMode})");
+                    return Array.Empty<SafeHandle<T>>();
+                }
+
+                var desc = $"라벨 [{string.Join(", ", labels)}] ({mergeMode})";
+                return await LoadFromLocations<T>(locations, desc, onProgress);
+            }
+            finally
             {
-                AddrXLog.Warning(Tag,
-                    $"라벨 [{string.Join(", ", labels)}]에 해당하는 에셋 없음 ({mergeMode})");
                 Addressables.Release(locationsOp);
-                return Array.Empty<SafeHandle<T>>();
             }
-
-            var desc = $"라벨 [{string.Join(", ", labels)}] ({mergeMode})";
-            var result = await LoadFromLocations<T>(locations, desc, onProgress);
-            Addressables.Release(locationsOp);
-            return result;
         }
 
         /// <summary>리소스 위치 목록에서 개별 SafeHandle로 로드하는 내부 공통 로직.</summary>
