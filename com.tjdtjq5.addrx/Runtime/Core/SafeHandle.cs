@@ -53,6 +53,9 @@ namespace Tjdtjq5.AddrX
         /// <summary>핸들 유효 여부 (해제되지 않았고 원본이 유효한 경우 true).</summary>
         public bool IsValid => !_released && _handle.IsValid();
 
+        /// <summary>에셋 로드 완료 및 성공 상태. Value 접근 안전 보장.</summary>
+        public bool IsReady => IsValid && _handle.Status == AsyncOperationStatus.Succeeded;
+
         /// <summary>로딩 진행률 (0~1).</summary>
         public float Progress => _handle.IsValid() ? _handle.PercentComplete : 0f;
 
