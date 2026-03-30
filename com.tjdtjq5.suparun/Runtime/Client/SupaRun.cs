@@ -143,21 +143,25 @@ namespace Tjdtjq5.SupaRun
             var anonKey = "";
 
             #if UNITY_EDITOR
-            var guids = UnityEditor.AssetDatabase.FindAssets("t:ScriptableObject SupaRunSettings");
-            if (guids.Length > 0)
+            // UserSettings/SupaRunSettings.json에서 직접 읽기
+            const string settingsPath = "UserSettings/SupaRunSettings.json";
+            if (System.IO.File.Exists(settingsPath))
             {
-                var path = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]);
-                var settings = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.ScriptableObject>(path);
-                if (settings != null)
+                try
                 {
-                    var t = settings.GetType();
-                    url = t.GetField("cloudRunUrl")?.GetValue(settings) as string ?? "";
-                    supabaseUrl = t.GetField("supabaseUrl")?.GetValue(settings) as string ?? "";
+                    var json = System.IO.File.ReadAllText(settingsPath);
+                    var dict = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.Dictionary<string, object>>(json);
+                    if (dict != null)
+                    {
+                        url = dict.TryGetValue("cloudRunUrl", out var u) ? u?.ToString() ?? "" : "";
+                        supabaseUrl = dict.TryGetValue("supabaseUrl", out var s) ? s?.ToString() ?? "" : "";
+                        anonKey = dict.TryGetValue("supabaseAnonKey", out var k) ? k?.ToString() ?? "" : "";
+                    }
                 }
-                // SupaRunSettings.SupabaseAnonKey (static property) — 리플렉션으로 접근 (Runtime→Editor 참조 불가)
-                var anonProp = settings?.GetType().GetProperty("SupabaseAnonKey",
-                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
-                anonKey = anonProp?.GetValue(null) as string ?? "";
+                catch (System.Exception ex)
+                {
+                    UnityEngine.Debug.LogWarning($"[SupaRun] {settingsPath} 파싱 실패: {ex.Message}");
+                }
             }
             #else
             // 빌드: Resources/SupaRunConfig.json에서 읽기

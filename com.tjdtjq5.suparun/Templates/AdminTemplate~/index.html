@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SupaRun Admin</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/css/tabler.min.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.2.0/dist/css/tabler.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
 <style>
   .cell-edit{cursor:pointer;min-height:1.5em;padding:2px 6px;border-radius:4px;transition:background .15s}
   .cell-edit:hover{background:#e8f0fe}
@@ -41,6 +41,10 @@
   .page-transition{animation:pageTransition .3s ease}
   @keyframes pageTransition{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
   tbody tr{animation:rowStagger .25s ease both}
+  #json-editor-rows table{table-layout:auto!important}
+  #json-editor-rows th{font-size:.7rem;text-transform:uppercase;letter-spacing:.03em;color:#667382;position:sticky;top:0;background:#fff;z-index:1}
+  #json-editor-rows td{padding:4px 6px}
+  #json-editor-rows input[type="text"],#json-editor-rows input[type="number"]{min-width:60px}
   .row-highlight{animation:rowHighlight 1s ease}
   @keyframes rowHighlight{0%{background:#dbeafe;box-shadow:inset 3px 0 0 #206bc4}100%{background:transparent;box-shadow:none}}
 </style>
@@ -194,7 +198,28 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/js/tabler.min.js"></script>
+<!-- ── 범용 JSON 배열 에디터 모달 ── -->
+<div class="modal modal-blur fade" id="json-editor-modal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="json-editor-title">JSON 편집</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0" style="max-height:60vh;overflow:auto">
+        <div id="json-editor-rows"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary btn-sm me-auto" onclick="jsonEditorAddRow()"><i class="ti ti-plus me-1"></i>행 추가</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary" onclick="saveJsonEditor()"><i class="ti ti-check me-1"></i>저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.2.0/dist/js/tabler.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
@@ -489,12 +514,12 @@ async function loadRewardSources() {
       if (f.foreignKey) fkTargets.add(f.foreignKey);
     }
   }
-  for (const name of fkTargets) {
+  await Promise.all([...fkTargets].map(async name => {
     const t = types.find(x => x.name === name);
     if (t && !fkSources[name]) {
       try { fkSources[name] = await api(`/${t.tableName}`); } catch {}
     }
-  }
+  }));
 }
 
 // ── 사이드바 ──
@@ -600,8 +625,8 @@ function renderTable(filter = '') {
     html += `<tr data-id="${sid}" style="animation-delay:${delay}ms">`;
     for (const f of fields) html += '<td>' + renderCell(row, f) + '</td>';
     html += `<td><div class="btn-list flex-nowrap">
-      <button class="btn btn-ghost-primary btn-icon btn-sm" onclick="copyRowIdx(${ri})" title="복사"><i class="ti ti-copy"></i></button>
-      <button class="btn btn-ghost-danger btn-icon btn-sm" onclick="requestDeleteIdx(${ri})" title="삭제"><i class="ti ti-trash"></i></button>
+      <button class="btn btn-ghost-primary btn-icon btn-sm" onclick="copyRow('${sid}')" title="복사"><i class="ti ti-copy"></i></button>
+      <button class="btn btn-ghost-danger btn-icon btn-sm" onclick="requestDelete('${sid}')" title="삭제"><i class="ti ti-trash"></i></button>
     </div></td></tr>`;
   }
   html += '</tbody></table>';
@@ -626,8 +651,13 @@ function renderCell(row, field) {
     return `<select class="form-select form-select-sm" onchange="debounceSave('${sid}','${sfn}',this.value)">${opts}</select>`;
   }
   if (field.isJson) {
-    const display = formatRewards(val);
-    return `<span class="badge bg-blue-lt json-badge" title="${escHtml(val||'[]')}" onclick="openRewards('${sid}','${sfn}')"><i class="ti ti-gift me-1"></i>${display||'(비어있음)'}</span>`;
+    const isReward = field.name === 'rewards' || field.name.endsWith('_rewards');
+    if (isReward) {
+      const display = formatRewards(val);
+      return `<span class="badge bg-blue-lt json-badge" title="${escHtml(val||'[]')}" onclick="openRewards('${sid}','${sfn}')"><i class="ti ti-gift me-1"></i>${display||'(비어있음)'}</span>`;
+    }
+    const display = formatJsonArray(val);
+    return `<span class="badge bg-cyan-lt json-badge" title="${escHtml(val||'[]')}" onclick="openJsonEditor('${sid}','${sfn}')"><i class="ti ti-code me-1"></i>${display}</span>`;
   }
   if (field.isPrimaryKey) return `<code class="cell-edit text-muted" onclick="startEdit(this,'${sid}','${sfn}','${escHtml(field.type)}')">${escHtml(String(val??''))}</code>`;
   return `<span class="cell-edit" onclick="startEdit(this,'${sid}','${sfn}','${escHtml(field.type)}')">${escHtml(String(val??''))}</span>`;
@@ -658,12 +688,19 @@ function debounceSave(rowId, fieldName, value) {
 
 async function commitSave(rowId, fieldName, value) {
   const row = currentData.find(r => r.id === rowId); if (!row) return;
+  const oldId = row.id;
   row[fieldName] = value;
   try {
-    await api(`/${currentType.tableName}/${rowId}`, 'PUT', row);
-    const cell = document.querySelector(`tr[data-id="${rowId}"] .cell-edit`);
-    if (cell) { cell.classList.add('cell-saved'); setTimeout(() => cell.classList.remove('cell-saved'), 800); }
-    toast('저장됨', 'success');
+    const saved = await api(`/${currentType.tableName}/${encodeURIComponent(oldId)}`, 'PUT', row);
+    if (saved && saved.id !== oldId) {
+      row.id = saved.id;
+      renderTable();
+      toast(`ID 변경: ${oldId} → ${saved.id}`, 'success');
+    } else {
+      const cell = document.querySelector(`tr[data-id="${oldId}"] .cell-edit`);
+      if (cell) { cell.classList.add('cell-saved'); setTimeout(() => cell.classList.remove('cell-saved'), 800); }
+      toast('저장됨', 'success');
+    }
   } catch (e) { toast('저장 실패: ' + e.message, 'error'); }
 }
 
@@ -680,7 +717,11 @@ async function addRow() {
   if (!currentType) return;
   const row = {};
   for (const f of currentType.fields) {
-    if (f.type === 'string') row[f.name] = f.isPrimaryKey ? prompt('ID를 입력하세요:', 'new_' + Date.now()) || '' : (f.isRequired ? 'new' : '');
+    if (f.type === 'string' && f.isPrimaryKey) {
+      const id = prompt('ID를 입력하세요:', 'new_' + Date.now());
+      if (id === null || id.trim() === '') return;
+      row[f.name] = id.trim();
+    } else if (f.type === 'string') row[f.name] = f.isRequired ? 'new' : '';
     else if (['int','long','number'].includes(f.type)) row[f.name] = 0;
     else if (f.type === 'bool') row[f.name] = false;
     else row[f.name] = '';
@@ -694,7 +735,6 @@ async function addRow() {
   } catch (e) { toast('추가 실패: ' + e.message, 'error'); }
 }
 
-function copyRowIdx(idx) { const row = currentData[idx]; if (row) copyRow(row.id); }
 async function copyRow(rowId) {
   const src = currentData.find(r => r.id === rowId); if (!src) return;
   const copy = { ...src, id: src.id + '_copy' };
@@ -705,14 +745,17 @@ async function copyRow(rowId) {
   } catch (e) { toast('복사 실패: ' + e.message, 'error'); }
 }
 
-function requestDeleteIdx(idx) { const row = currentData[idx]; if (row) requestDelete(row.id); }
 function requestDelete(rowId) {
   document.getElementById('delete-target').textContent = `ID: ${rowId}`;
   deleteCallback = () => doDeleteRow(rowId);
   new bootstrap.Modal(document.getElementById('delete-modal')).show();
 }
-function confirmDelete() { if (deleteCallback) deleteCallback(); bootstrap.Modal.getInstance(document.getElementById('delete-modal'))?.hide(); }
+async function confirmDelete() {
+  bootstrap.Modal.getInstance(document.getElementById('delete-modal'))?.hide();
+  if (deleteCallback) await deleteCallback();
+}
 async function doDeleteRow(rowId) {
+  if (rowId === '' || rowId == null) { toast('ID가 비어있는 행입니다. Supabase 대시보드에서 직접 삭제하세요.', 'error'); return; }
   try {
     await api(`/${currentType.tableName}/${encodeURIComponent(rowId)}`, 'DELETE');
     currentData = currentData.filter(r => r.id !== rowId); renderTable();
@@ -769,6 +812,131 @@ async function saveRewards() {
 function formatRewards(json) {
   if (!json) return ''; try { const a = JSON.parse(json); if (!Array.isArray(a)||!a.length) return '(비어있음)';
     return a.map(r => `${r.type==='currency'?'🪙':'📦'} ${escHtml(String(r.id||''))} ×${parseInt(r.amount)||0}`).join(', '); } catch { return escHtml(json); }
+}
+
+// ── 범용 JSON 배열 에디터 ──
+let jsonEditorRowId = null, jsonEditorFieldName = null, jsonEditorSchema = [];
+
+function formatJsonArray(json) {
+  if (!json) return '(비어있음)';
+  try { const a = JSON.parse(json); if (!Array.isArray(a)||!a.length) return '(비어있음)'; return `${a.length}개 항목`; }
+  catch { return escHtml(json.substring(0, 30) + '...'); }
+}
+
+function openJsonEditor(rowId, fieldName) {
+  jsonEditorRowId = rowId; jsonEditorFieldName = fieldName;
+  const row = currentData.find(r => r.id === rowId);
+  let items = []; try { items = JSON.parse(row[fieldName] || '[]'); } catch {}
+  if (!Array.isArray(items)) items = [];
+  // 스키마 자동 감지 (첫 번째 항목 기반)
+  jsonEditorSchema = items.length > 0 ? detectSchema(items[0]) : [];
+  document.getElementById('json-editor-title').textContent = fieldName.replace(/_/g, ' ');
+  renderJsonEditorRows(items);
+  new bootstrap.Modal(document.getElementById('json-editor-modal')).show();
+}
+
+function detectSchema(obj) {
+  return Object.keys(obj).map(key => {
+    const val = obj[key];
+    let type = 'string';
+    if (typeof val === 'number') type = Number.isInteger(val) ? 'int' : 'float';
+    else if (typeof val === 'boolean') type = 'bool';
+    return { key, type };
+  });
+}
+
+const JE_COL_WIDTHS = { bool: '60px', int: '80px', float: '90px', string: '160px' };
+
+function renderJsonEditorRows(items) {
+  const c = document.getElementById('json-editor-rows'); c.innerHTML = '';
+  if (jsonEditorSchema.length === 0 && items.length === 0) {
+    c.innerHTML = '<div class="text-muted text-center py-4">데이터가 없습니다. "행 추가"를 클릭하세요.</div>';
+    return;
+  }
+  const schema = jsonEditorSchema.length > 0 ? jsonEditorSchema : (items.length > 0 ? detectSchema(items[0]) : []);
+  if (jsonEditorSchema.length === 0 && schema.length > 0) jsonEditorSchema = schema;
+
+  let html = '<table class="table table-vcenter table-hover mb-0" style="table-layout:fixed"><thead><tr>';
+  html += '<th style="width:40px">#</th>';
+  schema.forEach(s => {
+    const w = JE_COL_WIDTHS[s.type] || JE_COL_WIDTHS.string;
+    html += `<th style="min-width:${w};white-space:nowrap">${escHtml(s.key)}</th>`;
+  });
+  html += '<th style="width:40px"></th></tr></thead><tbody>';
+
+  items.forEach((item, i) => {
+    html += '<tr>';
+    html += `<td class="text-muted">${i+1}</td>`;
+    schema.forEach(s => {
+      const val = item[s.key] ?? '';
+      const eid = `je_${i}_${s.key}`;
+      if (s.type === 'bool') {
+        html += `<td><input type="checkbox" class="form-check-input" id="${eid}" ${val?'checked':''}></td>`;
+      } else if (s.type === 'int' || s.type === 'float') {
+        html += `<td><input type="number" class="form-control form-control-sm" id="${eid}" value="${val}" ${s.type==='float'?'step="0.01"':''}></td>`;
+      } else {
+        html += `<td><input type="text" class="form-control form-control-sm" id="${eid}" value="${escHtml(String(val))}"></td>`;
+      }
+    });
+    html += `<td><button class="btn btn-ghost-danger btn-icon btn-sm" onclick="jsonEditorRemoveRow(${i})"><i class="ti ti-x"></i></button></td>`;
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  c.innerHTML = html;
+}
+
+function jsonEditorAddRow() {
+  if (jsonEditorSchema.length === 0) {
+    const keys = prompt('필드 이름을 쉼표로 입력하세요:\n예) State,StartRow,FrameCount,FrameTime,Loop');
+    if (!keys) return;
+    jsonEditorSchema = keys.split(',').map(k => ({ key: k.trim(), type: 'string' }));
+  }
+  const items = collectJsonEditorRows();
+  const newItem = {};
+  jsonEditorSchema.forEach(s => {
+    if (s.type === 'bool') newItem[s.key] = false;
+    else if (s.type === 'int' || s.type === 'float') newItem[s.key] = 0;
+    else newItem[s.key] = '';
+  });
+  items.push(newItem);
+  renderJsonEditorRows(items);
+}
+
+function jsonEditorRemoveRow(i) {
+  const items = collectJsonEditorRows();
+  items.splice(i, 1);
+  renderJsonEditorRows(items);
+}
+
+function collectJsonEditorRows() {
+  const items = [];
+  const container = document.getElementById('json-editor-rows');
+  const cards = container.querySelectorAll('.card');
+  cards.forEach((card, i) => {
+    const item = {};
+    jsonEditorSchema.forEach(s => {
+      const el = document.getElementById(`je_${i}_${s.key}`);
+      if (!el) return;
+      if (s.type === 'bool') item[s.key] = el.checked;
+      else if (s.type === 'int') item[s.key] = parseInt(el.value) || 0;
+      else if (s.type === 'float') item[s.key] = parseFloat(el.value) || 0;
+      else item[s.key] = el.value;
+    });
+    items.push(item);
+  });
+  return items;
+}
+
+async function saveJsonEditor() {
+  const row = currentData.find(r => r.id === jsonEditorRowId); if (!row) return;
+  row[jsonEditorFieldName] = JSON.stringify(collectJsonEditorRows());
+  try {
+    await api(`/${currentType.tableName}/${jsonEditorRowId}`, 'PUT', row);
+    renderTable();
+    bootstrap.Modal.getInstance(document.getElementById('json-editor-modal'))?.hide();
+    toast('저장됨', 'success');
+  } catch (e) { toast('저장 실패: ' + e.message, 'error'); }
 }
 
 // ── 검색 ──

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.3] - 2026-03-30
+
+### Fixed
+- AutoInitialize: SO 검색 → UserSettings/SupaRunSettings.json 직접 읽기로 변경 (에디터 Play 모드에서 _restClient null 이슈)
+- 어드민 페이지: bootstrap.Modal 미정의 에러 수정 (Bootstrap 5 JS 별도 로드)
+- 어드민 페이지: 필터링 시 삭제/복사 인덱스 불일치 수정 (row.id 기반으로 전환)
+- 어드민 페이지: confirmDelete async 미대기 수정
+- 어드민 페이지: 빈 ID 행 삭제 시 405 에러 방어
+- 어드민 페이지: addRow 취소 시 빈 ID 행 생성 방지
+- 서버: PUT으로 ID 변경 시 기존 행 삭제 + 새 행 생성 (rename 지원)
+- 서버: [Json] attribute stub 누락으로 빌드 실패 수정
+
+### Added
+- [Json] Attribute: string 필드가 JSON 데이터임을 표시, 어드민 페이지 JSON 에디터 자동 연동
+- 어드민 페이지: 범용 JSON 배열 에디터 (테이블 레이아웃, 타입별 컬럼 폭, 가로 스크롤)
+- CDN 버전 고정 (Tabler 1.2.0, Icons 3.30.0, Bootstrap 5.3.3)
+- FK 소스 병렬 로드 (Promise.all)
+- Feature.md 11개 + FEATURE_INDEX.md (피처 구조 도입)
+
 ## [0.3.2] - 2026-03-30
 
 ### Added

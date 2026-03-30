@@ -82,7 +82,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
             string[] attrs = { "Table", "Config", "Service", "API", "Cron",
                 "PrimaryKey", "ForeignKey", "Index", "Unique", "NotNull", "Default",
-                "MaxLength", "Hidden", "RenamedFrom", "CreatedAt", "UpdatedAt",
+                "MaxLength", "Hidden", "Json", "RenamedFrom", "CreatedAt", "UpdatedAt",
                 "Public", "Private" };
 
             foreach (var a in attrs)
@@ -1284,10 +1284,13 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             sb.AppendLine("        {");
             sb.AppendLine("            var before = await GetOne(typeName, id);");
             sb.AppendLine("            var entity = _deserialize[typeName](body.GetRawText());");
-            sb.AppendLine("            entity.GetType().GetField(\"id\")?.SetValue(entity, id);");
+            sb.AppendLine("            var newId = entity.GetType().GetField(\"id\")?.GetValue(entity) as string;");
+            sb.AppendLine("            var idChanged = !string.IsNullOrEmpty(newId) && newId != id;");
+            sb.AppendLine("            if (!idChanged) entity.GetType().GetField(\"id\")?.SetValue(entity, id);");
             sb.AppendLine("            var err = Validate(entity, typeName); if (err != null) return BadRequest(new { error = err });");
+            sb.AppendLine("            if (idChanged) await _delete[typeName](_db, id);");
             sb.AppendLine("            await _save[typeName](_db, entity);");
-            sb.AppendLine("            await Audit(\"update\", typeName, id, before, entity);");
+            sb.AppendLine("            await Audit(idChanged ? \"rename\" : \"update\", typeName, idChanged ? $\"{id} → {newId}\" : id, before, entity);");
             sb.AppendLine("            return Ok(entity);");
             sb.AppendLine("        }");
             sb.AppendLine("        catch (Exception ex)");
@@ -1508,10 +1511,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
                     if (f.GetCustomAttribute<NotNullAttribute>() != null)
                         parts.Add("\"isRequired\":true");
 
-                    // rewards, metadata 등 JSON 필드 판정
+                    // JSON 필드 판정: [Json] Attribute 또는 이름 기반
                     var nameLower = f.Name.ToLower();
                     if (f.FieldType == typeof(string) &&
-                        (nameLower == "rewards" || nameLower == "metadata" || nameLower.EndsWith("json")))
+                        (f.GetCustomAttribute<JsonAttribute>() != null ||
+                         nameLower == "rewards" || nameLower == "metadata" || nameLower.EndsWith("json")))
                         parts.Add("\"isJson\":true");
 
                     // ForeignKey
