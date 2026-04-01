@@ -210,6 +210,7 @@ namespace Tjdtjq5.AddrX.Editor.Update
 
         string FindContentStateFile()
         {
+            // 우선순위: Addressables 기본 경로 → Assets 전체 → 프로젝트 루트
             var searchPaths = new[]
             {
                 "Assets/AddressableAssetsData",
@@ -222,8 +223,13 @@ namespace Tjdtjq5.AddrX.Editor.Update
                 if (!Directory.Exists(dir)) continue;
                 var files = Directory.GetFiles(dir, "addressables_content_state.bin",
                     SearchOption.AllDirectories);
-                if (files.Length > 0)
-                    return files[0].Replace('\\', '/');
+                if (files.Length == 0) continue;
+
+                if (files.Length > 1)
+                    AddrXLog.Warning("Update",
+                        $"Content State 파일이 {files.Length}개 발견됨. 첫 번째 사용: {files[0]}");
+
+                return files[0].Replace('\\', '/');
             }
             return null;
         }

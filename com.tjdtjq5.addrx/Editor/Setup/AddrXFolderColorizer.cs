@@ -16,34 +16,40 @@ namespace Tjdtjq5.AddrX.Editor
             EditorApplication.projectWindowItemOnGUI += OnProjectWindowItem;
         }
 
+        static string _cachedRoot;
+
         static void OnProjectWindowItem(string guid, Rect rect)
         {
+            // 아이콘 모드/큰 행에서는 스킵 (가장 빈번한 조기 탈출)
+            if (rect.height > 20f) return;
+
             var rules = AddrXSetupRules.Instance;
             if (rules == null) return;
 
+            _cachedRoot ??= rules.RootPath + "/";
+
             var path = AssetDatabase.GUIDToAssetPath(guid);
             if (string.IsNullOrEmpty(path)) return;
+            if (!path.StartsWith(_cachedRoot)) return;
             if (!AssetDatabase.IsValidFolder(path)) return;
 
-            var root = rules.RootPath + "/";
-            if (!path.StartsWith(root)) return;
-
-            var relative = path.Substring(root.Length);
-            // 1뎁스 폴더만 (그룹 폴더)
+            var relative = path.Substring(_cachedRoot.Length);
             if (relative.Contains("/")) return;
 
             Color color = rules.IsGroupRemote(relative) ? COL_REMOTE : COL_LOCAL;
 
-            // 폴더명 우측에 색상 원(●) 뱃지 표시
-            if (rect.height > 20f) return; // 아이콘 모드에서는 스킵
-            var badgeRect = new Rect(rect.xMax - 14f, rect.y + (rect.height - 8f) * 0.5f, 8f, 8f);
-            EditorGUI.DrawRect(badgeRect, color);
-            // 원형 느낌을 위해 모서리에 배경색 덮기
-            var bg = EditorGUIUtility.isProSkin ? new Color(0.22f, 0.22f, 0.22f) : new Color(0.76f, 0.76f, 0.76f);
-            EditorGUI.DrawRect(new Rect(badgeRect.x, badgeRect.y, 1f, 1f), bg);
-            EditorGUI.DrawRect(new Rect(badgeRect.xMax - 1f, badgeRect.y, 1f, 1f), bg);
-            EditorGUI.DrawRect(new Rect(badgeRect.x, badgeRect.yMax - 1f, 1f, 1f), bg);
-            EditorGUI.DrawRect(new Rect(badgeRect.xMax - 1f, badgeRect.yMax - 1f, 1f, 1f), bg);
+            float bx = rect.xMax - 14f;
+            float by = rect.y + (rect.height - 8f) * 0.5f;
+            EditorGUI.DrawRect(new Rect(bx, by, 8f, 8f), color);
+
+            // 모서리 픽셀을 배경색으로 덮어 원형 느낌
+            var bg = EditorGUIUtility.isProSkin
+                ? new Color(0.22f, 0.22f, 0.22f)
+                : new Color(0.76f, 0.76f, 0.76f);
+            EditorGUI.DrawRect(new Rect(bx, by, 1f, 1f), bg);
+            EditorGUI.DrawRect(new Rect(bx + 7f, by, 1f, 1f), bg);
+            EditorGUI.DrawRect(new Rect(bx, by + 7f, 1f, 1f), bg);
+            EditorGUI.DrawRect(new Rect(bx + 7f, by + 7f, 1f, 1f), bg);
         }
     }
 }

@@ -84,27 +84,40 @@ namespace Tjdtjq5.AddrX
                 AddrXSettings.Instance.Apply();
                 AddrXLog.Info(Tag, "Addressables 초기화 시작");
 
-                // Addressables가 이미 초기화됐으면 InitializeAsync()가 invalid handle을 반환함
-                if (Addressables.ResourceLocators.GetEnumerator().MoveNext())
+                // 1) 카탈로그가 이미 로드되었으면 즉시 완료
+                if (HasResourceLocators())
                 {
                     _initialized = true;
                     AddrXLog.Info(Tag, "Addressables 이미 초기화됨 (스킵)");
                     return;
                 }
 
-                var op = Addressables.InitializeAsync();
-                await op.Task;
+                // 2) 직접 초기화 시도
+                //    Unity 자동 초기화가 이미 진행 중이면 invalid handle이 발생할 수 있음
+                try
+                {
+                    var op = Addressables.InitializeAsync();
+                    await op.Task;
 
-                if (op.Status == AsyncOperationStatus.Succeeded)
-                {
-                    _initialized = true;
-                    _initFailCount = 0;
-                    AddrXLog.Info(Tag, "Addressables 초기화 완료");
+                    if (op.Status == AsyncOperationStatus.Succeeded)
+                    {
+                        _initialized = true;
+                        _initFailCount = 0;
+                        AddrXLog.Info(Tag, "Addressables 초기화 완료");
+                        return;
+                    }
                 }
-                else
+                catch (Exception e)
                 {
-                    throw new Exception("Addressables 초기화에 실패했습니다.");
+                    AddrXLog.Verbose(Tag,
+                        $"InitializeAsync 경합 감지, 자동 초기화 완료 대기: {e.Message}");
                 }
+
+                // 3) 폴백: Unity 자동 초기화 완료 대기
+                await WaitForResourceLocators();
+                _initialized = true;
+                _initFailCount = 0;
+                AddrXLog.Info(Tag, "Addressables 초기화 완료 (자동 초기화 대기)");
             }
             catch (Exception e)
             {
@@ -113,6 +126,23 @@ namespace Tjdtjq5.AddrX
                 AddrXLog.Error(Tag, $"초기화 실패 ({_initFailCount}/{MaxInitAttempts}): {e.Message}");
                 throw;
             }
+        }
+
+        static bool HasResourceLocators()
+        {
+            return Addressables.ResourceLocators.GetEnumerator().MoveNext();
+        }
+
+        static async Task WaitForResourceLocators()
+        {
+            const int maxFrames = 300; // ~5초 @60fps
+            for (int i = 0; i < maxFrames; i++)
+            {
+                if (HasResourceLocators()) return;
+                await Task.Yield();
+            }
+            throw new TimeoutException(
+                "Addressables 자동 초기화 대기 시간 초과 (300 frames)");
         }
     }
 }

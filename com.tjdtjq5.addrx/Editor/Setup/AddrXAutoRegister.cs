@@ -28,15 +28,8 @@ namespace Tjdtjq5.AddrX.Editor
             SyncFoldersToRules(importedAssets, deletedAssets, movedAssets, movedFromAssetPaths, rules, root);
 
             // ── 에셋 등록/해제 ──
-            var toRegister = importedAssets
-                .Concat(movedAssets)
-                .Where(p => p.StartsWith(root) && !AssetDatabase.IsValidFolder(p))
-                .ToList();
-
-            var toRemove = deletedAssets
-                .Concat(movedFromAssetPaths)
-                .Where(p => p.StartsWith(root) && !AssetDatabase.IsValidFolder(p))
-                .ToList();
+            var toRegister = FilterAssets(importedAssets, movedAssets, root);
+            var toRemove = FilterAssets(deletedAssets, movedFromAssetPaths, root);
 
             if (toRegister.Count == 0 && toRemove.Count == 0) return;
 
@@ -56,7 +49,7 @@ namespace Tjdtjq5.AddrX.Editor
             AddrXSetupRules rules, string root)
         {
             // 새 폴더 → Addressables 그룹 생성
-            foreach (var path in imported.Concat(moved))
+            foreach (var path in ConcatArrays(imported, moved))
             {
                 if (!path.StartsWith(root) || !AssetDatabase.IsValidFolder(path)) continue;
 
@@ -77,7 +70,7 @@ namespace Tjdtjq5.AddrX.Editor
             }
 
             // 삭제된 폴더 → Addressables 그룹 삭제
-            foreach (var path in deleted.Concat(movedFrom))
+            foreach (var path in ConcatArrays(deleted, movedFrom))
             {
                 if (!path.StartsWith(root)) continue;
 
@@ -191,6 +184,24 @@ namespace Tjdtjq5.AddrX.Editor
                 schema.BuildPath.SetVariableByName(settings, isRemote ? "RemoteBuildPath" : "LocalBuildPath");
             if (!string.IsNullOrEmpty(loadPath))
                 schema.LoadPath.SetVariableByName(settings, isRemote ? "RemoteLoadPath" : "LocalLoadPath");
+        }
+
+        static List<string> FilterAssets(string[] a, string[] b, string root)
+        {
+            var result = new List<string>(a.Length + b.Length);
+            foreach (var p in a)
+                if (p.StartsWith(root) && !AssetDatabase.IsValidFolder(p))
+                    result.Add(p);
+            foreach (var p in b)
+                if (p.StartsWith(root) && !AssetDatabase.IsValidFolder(p))
+                    result.Add(p);
+            return result;
+        }
+
+        static IEnumerable<string> ConcatArrays(string[] a, string[] b)
+        {
+            foreach (var s in a) yield return s;
+            foreach (var s in b) yield return s;
         }
 
         /// <summary>같은 그룹 내 주소 중복 감지.</summary>

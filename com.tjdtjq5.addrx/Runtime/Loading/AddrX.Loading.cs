@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
@@ -43,8 +44,8 @@ namespace Tjdtjq5.AddrX
                 {
                     ops[i].Completed += _ =>
                     {
-                        completed++;
-                        try { onProgress((float)completed / count); }
+                        int cur = Interlocked.Increment(ref completed);
+                        try { onProgress((float)cur / count); }
                         catch (Exception e)
                         {
                             AddrXLog.Error(Tag,
@@ -206,8 +207,8 @@ namespace Tjdtjq5.AddrX
                 {
                     ops[i].Completed += _ =>
                     {
-                        completed++;
-                        try { onProgress((float)completed / count); }
+                        int cur = Interlocked.Increment(ref completed);
+                        try { onProgress((float)cur / count); }
                         catch (Exception e)
                         {
                             AddrXLog.Error(Tag, $"진행률 콜백 예외: {e.Message}");
@@ -244,12 +245,17 @@ namespace Tjdtjq5.AddrX
 
         static async Task EnsureInitialized()
         {
-            if (!_initialized && _initTask != null)
-                await _initTask;
+            if (_initialized) return;
 
-            if (!_initialized)
-                throw new InvalidOperationException(
-                    "AddrX가 초기화되지 않았습니다. AddrX.Initialize()를 먼저 호출하세요.");
+            // 진행 중인 초기화가 있으면 대기
+            if (_initTask != null)
+            {
+                await _initTask;
+                if (_initialized) return;
+            }
+
+            // 초기화 안 됐으면 자동 시도 (AutoInitialize가 꺼져있거나 이전 시도 실패 시)
+            await Initialize();
         }
     }
 }

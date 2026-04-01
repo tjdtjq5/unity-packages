@@ -14,24 +14,29 @@ namespace Tjdtjq5.AddrX
         public static async Task<List<string>> CheckForUpdatesAsync()
         {
             var op = Addressables.CheckForCatalogUpdates(false);
-            await op.Task;
-
-            if (op.Status != AsyncOperationStatus.Succeeded)
+            try
             {
-                AddrXLog.Error(Tag, $"카탈로그 업데이트 확인 실패: {op.OperationException?.Message}");
-                Addressables.Release(op);
-                return new List<string>();
+                await op.Task;
+
+                if (op.Status != AsyncOperationStatus.Succeeded)
+                {
+                    AddrXLog.Error(Tag, $"카탈로그 업데이트 확인 실패: {op.OperationException?.Message}");
+                    return new List<string>();
+                }
+
+                var catalogs = new List<string>(op.Result);
+
+                if (catalogs.Count > 0)
+                    AddrXLog.Info(Tag, $"업데이트 가능한 카탈로그: {catalogs.Count}개");
+                else
+                    AddrXLog.Verbose(Tag, "카탈로그 최신 상태");
+
+                return catalogs;
             }
-
-            var catalogs = new List<string>(op.Result);
-            Addressables.Release(op);
-
-            if (catalogs.Count > 0)
-                AddrXLog.Info(Tag, $"업데이트 가능한 카탈로그: {catalogs.Count}개");
-            else
-                AddrXLog.Verbose(Tag, "카탈로그 최신 상태");
-
-            return catalogs;
+            finally
+            {
+                Addressables.Release(op);
+            }
         }
 
         /// <summary>업데이트 가능한 카탈로그를 적용한다.</summary>
@@ -43,18 +48,23 @@ namespace Tjdtjq5.AddrX
             AddrXLog.Info(Tag, $"카탈로그 업데이트 시작: {catalogIds.Count}개");
 
             var op = Addressables.UpdateCatalogs(catalogIds, false);
-            await op.Task;
-
-            if (op.Status == AsyncOperationStatus.Succeeded)
+            try
             {
-                AddrXLog.Info(Tag, "카탈로그 업데이트 완료");
-                Addressables.Release(op);
-                return true;
-            }
+                await op.Task;
 
-            AddrXLog.Error(Tag, $"카탈로그 업데이트 실패: {op.OperationException?.Message}");
-            Addressables.Release(op);
-            return false;
+                if (op.Status == AsyncOperationStatus.Succeeded)
+                {
+                    AddrXLog.Info(Tag, "카탈로그 업데이트 완료");
+                    return true;
+                }
+
+                AddrXLog.Error(Tag, $"카탈로그 업데이트 실패: {op.OperationException?.Message}");
+                return false;
+            }
+            finally
+            {
+                Addressables.Release(op);
+            }
         }
     }
 }

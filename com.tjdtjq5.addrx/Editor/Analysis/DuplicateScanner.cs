@@ -22,6 +22,7 @@ namespace Tjdtjq5.AddrX.Editor.Analysis
 
             // 에셋 경로 → 참조하는 그룹 이름 집합
             var assetToGroups = new Dictionary<string, HashSet<string>>();
+            var depsCache = new Dictionary<string, string[]>();
 
             foreach (var group in settings.groups)
             {
@@ -32,8 +33,12 @@ namespace Tjdtjq5.AddrX.Editor.Analysis
                     var path = entry.AssetPath;
                     AddAssetGroup(assetToGroups, path, group.Name);
 
-                    // 암시적 의존성도 체크
-                    var deps = AssetDatabase.GetDependencies(path, true);
+                    // 암시적 의존성도 체크 (캐싱)
+                    if (!depsCache.TryGetValue(path, out var deps))
+                    {
+                        deps = AssetDatabase.GetDependencies(path, true);
+                        depsCache[path] = deps;
+                    }
                     foreach (var dep in deps)
                     {
                         if (dep == path) continue;

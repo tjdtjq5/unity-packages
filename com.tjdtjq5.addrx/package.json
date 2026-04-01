@@ -1,6 +1,6 @@
 {
   "name": "com.tjdtjq5.addrx",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "displayName": "AddrX",
   "description": "Unity Addressables 안전 래퍼 — SafeHandle 기반 자동 해제, 누수 감지, 에디터 분석 도구",
   "unity": "6000.1",

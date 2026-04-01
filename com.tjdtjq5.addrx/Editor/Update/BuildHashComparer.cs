@@ -53,27 +53,27 @@ namespace Tjdtjq5.AddrX.Editor.Update
             return new CompareReport(added, changed, removed, unchanged);
         }
 
-        /// <summary>카탈로그 JSON에서 번들명 → 해시 매핑을 추출한다.</summary>
+        /// <summary>
+        /// 카탈로그 JSON에서 번들명 → 해시 매핑을 추출한다.
+        /// 주의: 문자열 기반 휴리스틱 파싱. Addressables 카탈로그 포맷 변경 시 깨질 수 있음.
+        /// "bundlename_hashvalue.bundle" 패턴에 의존한다.
+        /// </summary>
         static Dictionary<string, string> ParseBundleHashes(string catalogJson)
         {
             var result = new Dictionary<string, string>();
+            if (string.IsNullOrEmpty(catalogJson)) return result;
 
-            // Addressables 카탈로그 JSON에서 InternalId(번들 경로)와 해시를 추출
-            // 번들 파일명에 해시가 포함된 패턴: bundlename_hashvalue.bundle
             var lines = catalogJson.Split('\n');
             foreach (var line in lines)
             {
                 var trimmed = line.Trim().Trim('"', ',');
 
-                // .bundle 파일 참조 찾기
                 if (!trimmed.Contains(".bundle")) continue;
 
-                // 경로에서 파일명 추출
                 var fileName = Path.GetFileName(trimmed);
                 if (string.IsNullOrEmpty(fileName)) continue;
                 if (!fileName.EndsWith(".bundle")) continue;
 
-                // 파일명에서 해시 추출 (bundlename_hash.bundle)
                 var nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
                 var lastUnderscore = nameWithoutExt.LastIndexOf('_');
 

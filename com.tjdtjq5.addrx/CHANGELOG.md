@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.3] - 2026-04-01
+
+### Fixed
+- InitializeCore 3단계 안전 초기화 (Unity 자동 초기화 경합 해결, WaitForResourceLocators 폴백)
+- EnsureInitialized 경합 조건 — 실패 후 자동 Initialize() 재시도
+- CatalogChecker/UpdateCatalogsAsync try-finally로 핸들 누수 방지
+- LoadBatchAsync/LoadFromLocations completed++ → Interlocked.Increment (동시성 안전)
+- AddrXAutoRegister LINQ Concat().Where().ToList() → 수동 루프 (GC 할당 감소)
+- AnalysisTab 중복 LINQ Count/Any 호출 → 캐싱 변수로 통합
+- DuplicateScanner GetDependencies 결과 캐싱 (O(n²) 완화)
+- AddrXFolderColorizer 조기 반환 강화 + RootPath 캐싱
+- VersionRouteManager 비숫자 버전 파트 경고 로그 추가
+- BuildHashComparer null 방어 + 파싱 한계 문서화
+- UpdateTab FindContentStateFile 중복 파일 경고 추가
+- AddrXDownloader 재시도 대기 매직 넘버 → RetryBaseDelayMs 상수화
+
 ## [0.1.2] - 2026-03-30
 
 ### Fixed

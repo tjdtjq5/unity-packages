@@ -73,10 +73,19 @@ namespace Tjdtjq5.AddrX.Editor.Update
 
             for (int i = 0; i < len; i++)
             {
-                int av = i < aParts.Length && int.TryParse(aParts[i], out var ai) ? ai : 0;
-                int bv = i < bParts.Length && int.TryParse(bParts[i], out var bi) ? bi : 0;
+                int av = ParseVersionPart(aParts, i, a);
+                int bv = ParseVersionPart(bParts, i, b);
                 if (av != bv) return av - bv;
             }
+            return 0;
+        }
+
+        static int ParseVersionPart(string[] parts, int index, string fullVersion)
+        {
+            if (index >= parts.Length) return 0;
+            if (int.TryParse(parts[index], out var value)) return value;
+            AddrXLog.Warning("VersionRoute",
+                $"버전 '{fullVersion}'의 파트 '{parts[index]}'가 숫자가 아닙니다. 0으로 처리됨.");
             return 0;
         }
     }

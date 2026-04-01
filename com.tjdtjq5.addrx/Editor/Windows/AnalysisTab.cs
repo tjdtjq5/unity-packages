@@ -34,6 +34,10 @@ namespace Tjdtjq5.AddrX.Editor
         List<ImpactReport> _impactAll;
         List<NondeterminismWarning> _nondetWarnings;
 
+        // 캐싱된 집계값
+        int _lowHealthCount;
+        int _heavyImpactCount;
+
         // 섹션 접기/펼치기
         bool _foldDup = true;
         bool _foldHealth = true;
@@ -111,12 +115,13 @@ namespace Tjdtjq5.AddrX.Editor
             _assetCache.Clear();
             _analyzed = true;
 
-            int heavyImpact = _impactAll?.Count(r => r.BundleCount > 1) ?? 0;
+            _heavyImpactCount = _impactAll?.Count(r => r.BundleCount > 1) ?? 0;
+            _lowHealthCount = _healthScores?.Count(s => s.Score < 50) ?? 0;
             int issues = (_dupReport?.Count ?? 0)
                        + (_budgetViolations?.Count ?? 0)
                        + (_diffWarnings?.Count ?? 0)
-                       + (_healthScores?.Count(s => s.Score < 50) ?? 0)
-                       + heavyImpact
+                       + _lowHealthCount
+                       + _heavyImpactCount
                        + (_nondetWarnings?.Count ?? 0);
 
             _notification = issues > 0
@@ -131,27 +136,24 @@ namespace Tjdtjq5.AddrX.Editor
 
         void DrawSummaryCards()
         {
+            int dupCount = _dupReport?.Count ?? 0;
+            int budgetCount = _budgetViolations?.Count ?? 0;
+            int diffCount = _diffWarnings?.Count ?? 0;
+            int nondetCount = _nondetWarnings?.Count ?? 0;
+
             EditorUI.BeginRow();
             EditorUI.DrawStatCard("Duplicates",
-                $"{_dupReport?.Count ?? 0}",
-                (_dupReport?.Count ?? 0) > 0 ? COL_ERROR : COL_SUCCESS);
+                $"{dupCount}", dupCount > 0 ? COL_ERROR : COL_SUCCESS);
             EditorUI.DrawStatCard("Low Health",
-                $"{_healthScores?.Count(s => s.Score < 50) ?? 0}",
-                (_healthScores?.Any(s => s.Score < 50) ?? false)
-                    ? COL_ERROR : COL_SUCCESS);
+                $"{_lowHealthCount}", _lowHealthCount > 0 ? COL_ERROR : COL_SUCCESS);
             EditorUI.DrawStatCard("Over Budget",
-                $"{_budgetViolations?.Count ?? 0}",
-                (_budgetViolations?.Count ?? 0) > 0 ? COL_ERROR : COL_SUCCESS);
+                $"{budgetCount}", budgetCount > 0 ? COL_ERROR : COL_SUCCESS);
             EditorUI.DrawStatCard("Diff Warnings",
-                $"{_diffWarnings?.Count ?? 0}",
-                (_diffWarnings?.Count ?? 0) > 0 ? COL_WARN : COL_SUCCESS);
+                $"{diffCount}", diffCount > 0 ? COL_WARN : COL_SUCCESS);
             EditorUI.DrawStatCard("Heavy Impact",
-                $"{_impactAll?.Count(r => r.BundleCount > 1) ?? 0}",
-                (_impactAll?.Any(r => r.BundleCount > 1) ?? false)
-                    ? COL_WARN : COL_SUCCESS);
+                $"{_heavyImpactCount}", _heavyImpactCount > 0 ? COL_WARN : COL_SUCCESS);
             EditorUI.DrawStatCard("Non-det",
-                $"{_nondetWarnings?.Count ?? 0}",
-                (_nondetWarnings?.Count ?? 0) > 0 ? COL_WARN : COL_SUCCESS);
+                $"{nondetCount}", nondetCount > 0 ? COL_WARN : COL_SUCCESS);
             EditorUI.EndRow();
         }
 

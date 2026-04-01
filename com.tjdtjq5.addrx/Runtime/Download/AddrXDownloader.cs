@@ -14,6 +14,7 @@ namespace Tjdtjq5.AddrX
     {
         const string Tag = "Downloader";
         const int DefaultMaxRetries = 3;
+        const int RetryBaseDelayMs = 1000;
 
         readonly List<string> _keys = new();
         int _maxRetries = DefaultMaxRetries;
@@ -152,7 +153,7 @@ namespace Tjdtjq5.AddrX
                 {
                     AddrXLog.Warning(Tag,
                         $"[{index + 1}/{_keys.Count}] '{key}' — 실패: {error}, 재시도 예정");
-                    await Task.Delay(1000 * (attempt + 1)); // 1초, 2초, 3초 대기
+                    await Task.Delay(RetryBaseDelayMs * (attempt + 1));
                 }
                 else
                 {
