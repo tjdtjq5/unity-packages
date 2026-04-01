@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.4] - 2026-04-01
+
+### Improved
+- SafeHandle Finalizer 경고에 Key + 할당 스택 트레이스 포함 — 누수 원인 즉시 추적 가능
+
 ## [0.1.3] - 2026-04-01
 
 ### Fixed

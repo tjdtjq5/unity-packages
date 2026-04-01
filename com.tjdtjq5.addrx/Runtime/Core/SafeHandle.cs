@@ -19,16 +19,20 @@ namespace Tjdtjq5.AddrX
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         readonly int _trackingId;
+        readonly string _debugKey;
+        readonly string _debugStackTrace;
 #endif
 
         internal SafeHandle(AsyncOperationHandle<T> handle, object key = null)
         {
             _handle = handle;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
+            _debugKey = key?.ToString();
             if (AddrXSettings.Instance.EnableTracking)
             {
                 _trackingId = HandleTracking.NextId();
-                HandleTracking.NotifyCreated(_trackingId, key?.ToString(), typeof(T));
+                _debugStackTrace = Environment.StackTrace;
+                HandleTracking.NotifyCreated(_trackingId, _debugKey, typeof(T));
             }
 #endif
         }
@@ -114,9 +118,11 @@ namespace Tjdtjq5.AddrX
         {
             if (!_released && _handle.IsValid())
             {
+                var keyInfo = string.IsNullOrEmpty(_debugKey) ? "" : $"\n  Key: {_debugKey}";
+                var stackInfo = string.IsNullOrEmpty(_debugStackTrace) ? "" : $"\n  할당 위치:\n{_debugStackTrace}";
                 Debug.LogWarning(
                     $"[AddrX] SafeHandle<{typeof(T).Name}>이 Dispose 없이 GC 수집됨. " +
-                    "using 블록이나 BindTo()를 사용하세요.");
+                    $"using 블록이나 BindTo()를 사용하세요.{keyInfo}{stackInfo}");
             }
         }
 #endif
