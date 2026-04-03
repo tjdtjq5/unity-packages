@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.4] - 2026-04-04
+
+### Fixed
+- DeployManager: 서버 빌드 시 Unity 전처리기 블록(`#if UNITY`) 제거 로직 추가
+- DeployManager: using 필터링을 화이트리스트 방식으로 개선 (System, Tjdtjq5, Newtonsoft, Microsoft만 허용)
+- DeployManager: `[Json(typeof(...))]` → `[Json]` 서버 빌드 시 자동 변환
+- DeployManager: `[EnumType(typeof(...))]` 서버 빌드 시 자동 제거
+
+### Added
+- `[EnumType]` Attribute: enum 타입 힌트 (Source Generator용)
+- `[Config("group")]` 그룹 파라미터 지원 (ConfigAttribute 생성자 이미 존재, 배포 반영)
+
 ## [0.3.3] - 2026-03-30
 
 ### Fixed

@@ -340,7 +340,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 var sourceFile = FindSourceFile(type);
                 if (sourceFile == null) continue;
 
-                var content = StripUnityUsings(File.ReadAllText(sourceFile));
+                var content = StripForServer(File.ReadAllText(sourceFile));
                 var category = type.GetCustomAttribute<TableAttribute>() != null ? "Table"
                     : type.GetCustomAttribute<ConfigAttribute>() != null ? "Config"
                     : "Service";
@@ -364,7 +364,7 @@ namespace Tjdtjq5.SupaRun.Editor
                     {
                         var src = FindSourceFile(returnType);
                         if (src != null)
-                            files.Add(new GeneratedFile($"Shared/Models/{returnType.Name}.cs", StripUnityUsings(File.ReadAllText(src))));
+                            files.Add(new GeneratedFile($"Shared/Models/{returnType.Name}.cs", StripForServer(File.ReadAllText(src))));
                     }
                 }
             }
@@ -372,24 +372,79 @@ namespace Tjdtjq5.SupaRun.Editor
             return files;
         }
 
-        static string StripUnityUsings(string content)
+        static string StripForServer(string content)
         {
+            // 1) [Json(typeof(...))] → [Json]  (타입 힌트는 클라이언트 Source Generator 전용)
+            content = System.Text.RegularExpressions.Regex.Replace(
+                content, @"\[Json\(typeof\(.+?\)\)\]", "[Json]");
+
+            // 2) [EnumType(typeof(...))] 어트리뷰트 통째로 제거 (서버에서 불필요)
+            content = System.Text.RegularExpressions.Regex.Replace(
+                content, @"\s*\[EnumType\(typeof\(.+?\)\)\]", "");
+
+            // 3) #if UNITY 전처리기 블록 제거
+            content = StripUnityPreprocessorBlocks(content);
+
+            // 4) 서버 비호환 using 제거 (화이트리스트: System, Tjdtjq5, Newtonsoft, Microsoft)
             var lines = content.Split('\n');
             var sb = new System.Text.StringBuilder();
             foreach (var line in lines)
             {
                 var trimmed = line.TrimStart();
-                if (trimmed.StartsWith("using UnityEngine") ||
-                    trimmed.StartsWith("using UnityEditor") ||
-                    trimmed.StartsWith("using Unity."))
-                    continue;
-                // #if UNITY_EDITOR / #endif 전처리기 지시문 제거
-                if (trimmed.StartsWith("#if UNITY_EDITOR") ||
-                    trimmed.StartsWith("#endif // UNITY_EDITOR"))
+                if (trimmed.StartsWith("using ") && !IsServerSafeUsing(trimmed))
                     continue;
                 sb.AppendLine(line.TrimEnd('\r'));
             }
             return sb.ToString().TrimEnd();
+        }
+
+        static bool IsServerSafeUsing(string usingLine)
+        {
+            // using alias (예: using SkillDef = Tjdtjq5.SupaRun.Defs.SkillDef;) → 우변 체크
+            var checkTarget = usingLine;
+            int eqIdx = usingLine.IndexOf('=');
+            if (eqIdx > 0)
+                checkTarget = "using " + usingLine.Substring(eqIdx + 1).TrimStart();
+
+            return checkTarget.StartsWith("using System") ||
+                   checkTarget.StartsWith("using Tjdtjq5") ||
+                   checkTarget.StartsWith("using Newtonsoft") ||
+                   checkTarget.StartsWith("using Microsoft");
+        }
+
+        static string StripUnityPreprocessorBlocks(string content)
+        {
+            var lines = content.Split('\n');
+            var sb = new System.Text.StringBuilder();
+            int skipDepth = 0;
+
+            foreach (var line in lines)
+            {
+                var trimmed = line.TrimStart();
+
+                if (trimmed.StartsWith("#if UNITY"))
+                {
+                    skipDepth++;
+                    continue;
+                }
+                if (skipDepth > 0 && trimmed.StartsWith("#if"))
+                {
+                    skipDepth++;
+                    continue;
+                }
+                if (skipDepth > 0 && trimmed.StartsWith("#else"))
+                    continue;
+                if (skipDepth > 0 && trimmed.StartsWith("#endif"))
+                {
+                    skipDepth--;
+                    continue;
+                }
+                if (skipDepth > 0)
+                    continue;
+
+                sb.AppendLine(line.TrimEnd('\r'));
+            }
+            return sb.ToString();
         }
 
         static string FindSourceFile(Type type)

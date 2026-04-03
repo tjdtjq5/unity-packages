@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "IwIhtCWyoPo=",
+  "dgSpecHash": "q0YwiVyTNYs=",
   "success": true,
-  "projectFilePath": "C:\\workspace\\unity\\ServerTest\\Packages\\com.tjdtjq5.gameserver\\SourceGen~\\Tjdtjq5.SupaRun.SourceGen.csproj",
+  "projectFilePath": "C:\\workspace\\unity\\unity-packages\\com.tjdtjq5.suparun\\SourceGen~\\Tjdtjq5.SupaRun.SourceGen.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\tjdtj\\.nuget\\packages\\microsoft.codeanalysis.analyzers\\3.3.4\\microsoft.codeanalysis.analyzers.3.3.4.nupkg.sha512",
     "C:\\Users\\tjdtj\\.nuget\\packages\\microsoft.codeanalysis.common\\4.3.0\\microsoft.codeanalysis.common.4.3.0.nupkg.sha512",

@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\workspace\\unity\\ServerTest\\Packages\\com.tjdtjq5.gameserver\\SourceGen~\\Tjdtjq5.SupaRun.SourceGen.csproj": {}
+    "C:\\workspace\\unity\\unity-packages\\com.tjdtjq5.suparun\\SourceGen~\\Tjdtjq5.SupaRun.SourceGen.csproj": {}
   },
   "projects": {
-    "C:\\workspace\\unity\\ServerTest\\Packages\\com.tjdtjq5.gameserver\\SourceGen~\\Tjdtjq5.SupaRun.SourceGen.csproj": {
+    "C:\\workspace\\unity\\unity-packages\\com.tjdtjq5.suparun\\SourceGen~\\Tjdtjq5.SupaRun.SourceGen.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\workspace\\unity\\ServerTest\\Packages\\com.tjdtjq5.gameserver\\SourceGen~\\Tjdtjq5.SupaRun.SourceGen.csproj",
+        "projectUniqueName": "C:\\workspace\\unity\\unity-packages\\com.tjdtjq5.suparun\\SourceGen~\\Tjdtjq5.SupaRun.SourceGen.csproj",
         "projectName": "Tjdtjq5.SupaRun.SourceGen",
-        "projectPath": "C:\\workspace\\unity\\ServerTest\\Packages\\com.tjdtjq5.gameserver\\SourceGen~\\Tjdtjq5.SupaRun.SourceGen.csproj",
+        "projectPath": "C:\\workspace\\unity\\unity-packages\\com.tjdtjq5.suparun\\SourceGen~\\Tjdtjq5.SupaRun.SourceGen.csproj",
         "packagesPath": "C:\\Users\\tjdtj\\.nuget\\packages\\",
-        "outputPath": "C:\\workspace\\unity\\ServerTest\\Packages\\com.tjdtjq5.gameserver\\SourceGen~\\obj\\",
+        "outputPath": "C:\\workspace\\unity\\unity-packages\\com.tjdtjq5.suparun\\SourceGen~\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
