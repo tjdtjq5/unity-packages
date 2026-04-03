@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.6] - 2026-04-04
+
+### Fixed
+- StripForServer: `#if UNITY_EDITOR` 블록 내용 보존 (래핑만 제거). Service 코드가 서버 빌드에서 사라지는 문제 수정
+- SupaRunBuildProcessor: `GenerateBuildProxy()` 호출 추가 — 앱 빌드 시 Service HTTP 프록시 자동 생성
+
 ## [0.3.5] - 2026-04-04
 
 ### Fixed

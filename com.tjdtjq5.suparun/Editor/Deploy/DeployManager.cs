@@ -416,31 +416,47 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             var lines = content.Split('\n');
             var sb = new System.Text.StringBuilder();
-            int skipDepth = 0;
+            int stripDepth = 0;  // 내용까지 삭제하는 블록 깊이
+            int unwrapDepth = 0; // 래핑만 벗기는 블록 깊이 (#if UNITY_EDITOR)
 
             foreach (var line in lines)
             {
                 var trimmed = line.TrimStart();
 
+                // #if UNITY_EDITOR → 래핑만 벗기기 (내용 유지, Service 코드 보존)
+                if (trimmed.StartsWith("#if UNITY_EDITOR"))
+                {
+                    unwrapDepth++;
+                    continue; // #if 줄만 제거
+                }
+                // #if UNITY (EDITOR 아닌 것) → 블록 통째 삭제
                 if (trimmed.StartsWith("#if UNITY"))
                 {
-                    skipDepth++;
+                    stripDepth++;
                     continue;
                 }
-                if (skipDepth > 0 && trimmed.StartsWith("#if"))
+                // 삭제 블록 내부의 중첩 #if
+                if (stripDepth > 0 && trimmed.StartsWith("#if"))
                 {
-                    skipDepth++;
+                    stripDepth++;
                     continue;
                 }
-                if (skipDepth > 0 && trimmed.StartsWith("#else"))
-                    continue;
-                if (skipDepth > 0 && trimmed.StartsWith("#endif"))
+                // 래핑 블록 내부의 중첩 #if (내용 유지 중이므로 그대로 출력)
+                // → 별도 처리 불필요, 아래로 통과
+
+                if (trimmed.StartsWith("#else"))
                 {
-                    skipDepth--;
-                    continue;
+                    if (stripDepth > 0) continue;    // 삭제 블록의 #else → 스킵
+                    if (unwrapDepth > 0) continue;    // 래핑 블록의 #else → 스킵 (else 이후는 non-editor 코드)
                 }
-                if (skipDepth > 0)
-                    continue;
+                if (trimmed.StartsWith("#endif"))
+                {
+                    if (stripDepth > 0) { stripDepth--; continue; }
+                    if (unwrapDepth > 0) { unwrapDepth--; continue; } // #endif 줄만 제거
+                }
+
+                if (stripDepth > 0)
+                    continue; // 삭제 블록 내부 → 스킵
 
                 sb.AppendLine(line.TrimEnd('\r'));
             }

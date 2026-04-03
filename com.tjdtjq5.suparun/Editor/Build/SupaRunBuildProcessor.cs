@@ -63,7 +63,10 @@ namespace Tjdtjq5.SupaRun.Editor
                     "빌드에서 서버 API 호출이 실패합니다. 배포를 먼저 진행하세요.");
             }
 
-            // 2. Android 딥링크 (소셜 로그인 활성화 시)
+            // 2. 빌드용 HTTP 프록시 생성 (Service가 #if UNITY_EDITOR로 제외되어도 API 호출 가능)
+            GenerateBuildProxy();
+
+            // 3. Android 딥링크 (소셜 로그인 활성화 시)
             if (report.summary.platform == BuildTarget.Android &&
                 settings.enabledAuthProviders != null &&
                 settings.enabledAuthProviders.Count > 1) // Guest 외에 소셜이 있으면
