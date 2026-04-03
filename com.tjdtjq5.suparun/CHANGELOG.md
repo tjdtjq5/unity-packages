@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.10] - 2026-04-04
+
+### Fixed
+- 어드민 페이지: Bootstrap JS 이중 로딩 제거 (Tabler JS 번들이 Bootstrap 포함 → 충돌로 dropdown 열자마자 닫힘). Tabler JS 제거, Bootstrap JS만 유지
+- 어드민 페이지: 그룹 드롭다운을 Tabler dropdown 패턴으로 복원 + 동적 생성 후 bootstrap.Dropdown 초기화
+
 ## [0.3.9] - 2026-04-04
 
 ### Fixed
