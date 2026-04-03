@@ -545,6 +545,7 @@ function renderSidebar() {
     }
     li.innerHTML = `<a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown" data-bs-auto-close="false"><span class="nav-link-icon"><i class="ti ti-folder"></i></span><span class="nav-link-title">${sg}</span></a><div class="dropdown-menu">${links}</div>`;
     ul.appendChild(li);
+    new bootstrap.Dropdown(li.querySelector('.dropdown-toggle'));
   }
   // 그룹 없는 타입 (flat)
   for (const t of ungrouped) {
