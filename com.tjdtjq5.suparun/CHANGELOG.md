@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.7] - 2026-04-04
+
+### Changed
+- FeatureInstaller: Service.cs에 `#if UNITY_EDITOR` 자동 래핑 제거. BuildProcessor가 앱 빌드 시 자동 처리하므로 불필요
+
 ## [0.3.6] - 2026-04-04
 
 ### Fixed

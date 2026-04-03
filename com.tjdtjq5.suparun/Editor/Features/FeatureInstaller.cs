@@ -146,18 +146,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (fileName.EndsWith(".meta")) continue;
 
                 var destPath = Path.Combine(dest, fileName);
-
-                // Service 파일은 에디터 전용 래핑 → 빌드에서 컴파일 제외
-                if (IsServerOnlyFile(fileName))
-                {
-                    var content = File.ReadAllText(file);
-                    File.WriteAllText(destPath,
-                        "#if UNITY_EDITOR\n" + content + "\n#endif // UNITY_EDITOR\n");
-                }
-                else
-                {
-                    File.Copy(file, destPath, true);
-                }
+                File.Copy(file, destPath, true);
             }
 
             foreach (var dir in Directory.GetDirectories(source))
@@ -167,10 +156,5 @@ namespace Tjdtjq5.SupaRun.Editor
             }
         }
 
-        /// <summary>서버 전용 파일 판별. Service 클래스는 빌드에 포함하지 않음.</summary>
-        static bool IsServerOnlyFile(string fileName)
-        {
-            return fileName.EndsWith("Service.cs");
-        }
     }
 }
