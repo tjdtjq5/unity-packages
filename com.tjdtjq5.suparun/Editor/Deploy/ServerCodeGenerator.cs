@@ -97,6 +97,10 @@ namespace Tjdtjq5.SupaRun.Editor
                     sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.All)] public class {a}Attribute : System.Attribute {{ public {a}Attribute(string s) {{}} }}");
                 else if (a == "Cron")
                     sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.Method)] public class {a}Attribute : System.Attribute {{ public string Expression; public string TimeZone; public string Description; public {a}Attribute(string expression, string timeZone = \"Etc/UTC\", string description = null) {{ Expression = expression; TimeZone = timeZone; Description = description; }} }}");
+                else if (a == "Table" || a == "Config")
+                    sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.Class)] public class {a}Attribute : System.Attribute {{ public string Group {{ get; }} public {a}Attribute() {{}} public {a}Attribute(string group) => Group = group; }}");
+                else if (a == "Json")
+                    sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.Field)] public class {a}Attribute : System.Attribute {{ public System.Type TargetType {{ get; }} public {a}Attribute() {{}} public {a}Attribute(System.Type targetType) => TargetType = targetType; }}");
                 else
                     sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.All)] public class {a}Attribute : System.Attribute {{ }}");
             }

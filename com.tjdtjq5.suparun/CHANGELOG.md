@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.5] - 2026-04-04
+
+### Fixed
+- ServerCodeGenerator: Config/Table/Json Attribute stub에 `(string group)`, `(Type targetType)` 생성자 추가 — `[Config("InGame")]` 서버 빌드 실패 수정
+
 ## [0.3.4] - 2026-04-04
 
 ### Fixed
