@@ -8,7 +8,7 @@ ASP.NET + Supabase + Cloud Run 자동 배포.
 manifest.json에 추가:
 
 ```json
-"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.3.8"
+"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.3.9"
 ```
 
 ### 의존성

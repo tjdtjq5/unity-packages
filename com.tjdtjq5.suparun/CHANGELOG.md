@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.9] - 2026-04-04
+
+### Fixed
+- 어드민 페이지: 그룹 펼치기를 Bootstrap collapse 패턴으로 변경 (dropdown → collapse). Tabler 수직 사이드바에서 정상 동작
+
 ## [0.3.8] - 2026-04-04
 
 ### Fixed

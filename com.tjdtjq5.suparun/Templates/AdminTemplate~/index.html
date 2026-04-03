@@ -533,19 +533,20 @@ function renderSidebar() {
     if (t.group) { (groups[t.group] = groups[t.group] || []).push(t); }
     else { ungrouped.push(t); }
   }
-  // 그룹 렌더링 (접이식)
+  // 그룹 렌더링 (접이식 — Tabler 수직 사이드바 collapse 패턴)
+  let groupIdx = 0;
   for (const [group, items] of Object.entries(groups)) {
     const li = document.createElement('li');
-    li.className = 'nav-item dropdown';
+    li.className = 'nav-item';
     const sg = escHtml(group);
+    const collapseId = `nav-group-${groupIdx++}`;
     let links = '';
     for (const t of items) {
       const stn = escHtml(t.tableName);
-      links += `<a class="dropdown-item sidebar-link" href="#" data-type="${stn}" onclick="selectType('${stn}');return false"><i class="ti ti-table me-1"></i>${escHtml(t.name)}</a>`;
+      links += `<li class="nav-item"><a class="nav-link sidebar-link" href="#" data-type="${stn}" onclick="selectType('${stn}');return false"><i class="ti ti-table me-1"></i>${escHtml(t.name)}</a></li>`;
     }
-    li.innerHTML = `<a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown" data-bs-auto-close="false"><span class="nav-link-icon"><i class="ti ti-folder"></i></span><span class="nav-link-title">${sg}</span></a><div class="dropdown-menu">${links}</div>`;
+    li.innerHTML = `<a class="nav-link dropdown-toggle" href="#${collapseId}" data-bs-toggle="collapse" role="button" aria-expanded="false"><span class="nav-link-icon"><i class="ti ti-folder"></i></span><span class="nav-link-title">${sg}</span></a><div class="collapse" id="${collapseId}"><ul class="nav nav-sm flex-column">${links}</ul></div>`;
     ul.appendChild(li);
-    new bootstrap.Dropdown(li.querySelector('.dropdown-toggle'));
   }
   // 그룹 없는 타입 (flat)
   for (const t of ungrouped) {
