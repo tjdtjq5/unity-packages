@@ -29,6 +29,8 @@ Attributes/
 ├── CreatedAtAttribute.cs     # [CreatedAt] 레코드 생성 시간 자동 기록
 ├── UpdatedAtAttribute.cs     # [UpdatedAt] 레코드 수정 시간 자동 기록
 ├── HiddenAttribute.cs        # [Hidden] 클라이언트 응답에서 필드 제외
+├── VisibleIfAttribute.cs     # [VisibleIf] 어드민에서 조건 일치 시 필드 활성화
+├── HiddenIfAttribute.cs      # [HiddenIf] 어드민에서 조건 일치 시 필드 비활성화
 ├── PublicAttribute.cs        # [Public] 인증 없이 호출 가능한 API
 ├── PrivateAttribute.cs       # [Private] 관리자만 호출 가능한 API
 └── RenamedFromAttribute.cs   # [RenamedFrom("old")] 필드 이름 변경 시 마이그레이션용
@@ -70,6 +72,8 @@ Attributes/
 | `[CreatedAt]` | Field/Property | 레코드 생성 시간 자동 기록. long/double/DateTime/string. |
 | `[UpdatedAt]` | Field/Property | 레코드 수정 시간 자동 기록. 매 Save 시 갱신. |
 | `[Hidden]` | Field/Property | 클라이언트 응답에서 제외. |
+| `[VisibleIf("field", "val1", ...)]` | Field/Property | 어드민에서 조건 필드 값 일치 시 활성화. bool/enum 단일/복수 지원. |
+| `[HiddenIf("field", "val1", ...)]` | Field/Property | 어드민에서 조건 필드 값 일치 시 비활성화. VisibleIf의 역조건. |
 | `[RenamedFrom("oldName")]` | Field/Property | 필드 이름 변경 시 마이그레이션 감지용. |
 
 ## 주의사항

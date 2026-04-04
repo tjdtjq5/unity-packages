@@ -1496,49 +1496,106 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_email ON admin_user (email) WHE
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHERE user_id IS NOT NULL;
 ");}
 
+        // ── 공통 필드 메타데이터 생성 ──
+
+        /// <summary>MemberInfo(Field/Property) 하나의 어드민 메타데이터 JSON을 생성한다.</summary>
+        static string BuildMemberJson(MemberInfo member, Type memberType)
+        {
+            var parts = new List<string>();
+            parts.Add($"\"name\":\"{member.Name}\"");
+            parts.Add($"\"type\":\"{GetJsType(memberType)}\"");
+
+            if (member.GetCustomAttribute<PrimaryKeyAttribute>() != null)
+                parts.Add("\"isPrimaryKey\":true");
+            if (member.GetCustomAttribute<NotNullAttribute>() != null)
+                parts.Add("\"isRequired\":true");
+
+            // JSON 필드 판정 + jsonSchema 생성
+            var jsonAttr = member.GetCustomAttribute<JsonAttribute>();
+            var nameLower = member.Name.ToLower();
+            if (memberType == typeof(string) &&
+                (jsonAttr != null || nameLower == "rewards" || nameLower == "metadata" || nameLower.EndsWith("json")))
+            {
+                parts.Add("\"isJson\":true");
+                if (jsonAttr?.TargetType != null)
+                {
+                    var schema = BuildJsonSchemaJson(jsonAttr.TargetType);
+                    if (schema != null) parts.Add($"\"jsonSchema\":{schema}");
+                }
+            }
+
+            // EnumType → 드롭다운
+            var enumAttr = member.GetCustomAttribute<EnumTypeAttribute>();
+            if (enumAttr != null && enumAttr.EnumType.IsEnum)
+            {
+                var names = Enum.GetNames(enumAttr.EnumType);
+                parts.Add("\"isEnum\":true");
+                parts.Add($"\"enumValues\":[{string.Join(",", names.Select(n => $"\"{n}\""))}]");
+            }
+
+            // ForeignKey
+            var fk = member.GetCustomAttribute<ForeignKeyAttribute>();
+            if (fk != null)
+                parts.Add($"\"foreignKey\":\"{fk.ReferenceType.Name}\"");
+
+            // VisibleIf / HiddenIf
+            var visibleIf = member.GetCustomAttribute<VisibleIfAttribute>();
+            if (visibleIf != null)
+            {
+                var vJson = $"\"field\":\"{visibleIf.ConditionField}\"";
+                if (visibleIf.CompareValues.Length > 0)
+                    vJson += $",\"values\":[{string.Join(",", visibleIf.CompareValues.Select(v => $"\"{v}\""))}]";
+                parts.Add($"\"visibleIf\":{{{vJson}}}");
+            }
+            var hiddenIf = member.GetCustomAttribute<HiddenIfAttribute>();
+            if (hiddenIf != null)
+            {
+                var hJson = $"\"field\":\"{hiddenIf.ConditionField}\"";
+                if (hiddenIf.CompareValues.Length > 0)
+                    hJson += $",\"values\":[{string.Join(",", hiddenIf.CompareValues.Select(v => $"\"{v}\""))}]";
+                parts.Add($"\"hiddenIf\":{{{hJson}}}");
+            }
+
+            return "{" + string.Join(",", parts) + "}";
+        }
+
+        /// <summary>타입의 public instance 필드들의 메타데이터 JSON 배열 내용을 반환한다.</summary>
+        static string BuildFieldsJson(Type type)
+        {
+            var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
+            return string.Join(",", fields.Select(f => BuildMemberJson(f, f.FieldType)));
+        }
+
+        /// <summary>[Json(typeof(T))]의 T 클래스에서 프로퍼티/필드 메타데이터를 생성한다.</summary>
+        static string BuildJsonSchemaJson(Type jsonType)
+        {
+            var elementType = jsonType;
+            if (jsonType.IsGenericType && jsonType.GetGenericTypeDefinition() == typeof(List<>))
+                elementType = jsonType.GetGenericArguments()[0];
+
+            var members = new List<string>();
+            foreach (var p in elementType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                members.Add(BuildMemberJson(p, p.PropertyType));
+            foreach (var f in elementType.GetFields(BindingFlags.Public | BindingFlags.Instance))
+                members.Add(BuildMemberJson(f, f.FieldType));
+
+            return members.Count > 0 ? "[" + string.Join(",", members) + "]" : null;
+        }
+
         /// <summary>[Config] 타입 목록에서 메타데이터 JSON 문자열 생성.</summary>
         static string BuildConfigMetadataJson(Type[] configTypes)
         {
             var items = new List<string>();
             foreach (var type in configTypes)
             {
-                var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
-                var fieldJsons = new List<string>();
-                foreach (var f in fields)
-                {
-                    var parts = new List<string>();
-                    parts.Add($"\"name\":\"{f.Name}\"");
-                    parts.Add($"\"type\":\"{GetJsType(f.FieldType)}\"");
-
-                    if (f.GetCustomAttribute<PrimaryKeyAttribute>() != null)
-                        parts.Add("\"isPrimaryKey\":true");
-                    if (f.GetCustomAttribute<NotNullAttribute>() != null)
-                        parts.Add("\"isRequired\":true");
-
-                    // JSON 필드 판정: [Json] Attribute 또는 이름 기반
-                    var nameLower = f.Name.ToLower();
-                    if (f.FieldType == typeof(string) &&
-                        (f.GetCustomAttribute<JsonAttribute>() != null ||
-                         nameLower == "rewards" || nameLower == "metadata" || nameLower.EndsWith("json")))
-                        parts.Add("\"isJson\":true");
-
-                    // ForeignKey
-                    var fk = f.GetCustomAttribute<ForeignKeyAttribute>();
-                    if (fk != null)
-                        parts.Add($"\"foreignKey\":\"{fk.ReferenceType.Name}\"");
-
-                    fieldJsons.Add("{" + string.Join(",", parts) + "}");
-                }
-
                 var group = type.GetCustomAttribute<ConfigAttribute>()?.Group;
                 var groupPart = group != null ? $"\"group\":\"{group}\"," : "";
-                var item = "{" +
+                items.Add("{" +
                     $"\"name\":\"{type.Name}\"," +
                     $"\"tableName\":\"{ToSnakeCase(type.Name)}\"," +
                     groupPart +
-                    $"\"fields\":[{string.Join(",", fieldJsons)}]" +
-                    "}";
-                items.Add(item);
+                    $"\"fields\":[{BuildFieldsJson(type)}]" +
+                    "}");
             }
             return "[" + string.Join(",", items) + "]";
         }
@@ -1894,28 +1951,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
             foreach (var type in tableTypes)
             {
                 var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
-                var fieldJsons = new List<string>();
-                foreach (var f in fields)
-                {
-                    var parts = new List<string>();
-                    parts.Add($"\"name\":\"{f.Name}\"");
-                    parts.Add($"\"type\":\"{GetJsType(f.FieldType)}\"");
-
-                    if (f.GetCustomAttribute<PrimaryKeyAttribute>() != null)
-                        parts.Add("\"isPrimaryKey\":true");
-                    if (f.GetCustomAttribute<NotNullAttribute>() != null)
-                        parts.Add("\"isRequired\":true");
-
-                    var fk = f.GetCustomAttribute<ForeignKeyAttribute>();
-                    if (fk != null)
-                        parts.Add($"\"foreignKey\":\"{fk.ReferenceType.Name}\"");
-
-                    fieldJsons.Add("{" + string.Join(",", parts) + "}");
-                }
-
                 var group = type.GetCustomAttribute<TableAttribute>()?.Group;
                 var groupPart = group != null ? $"\"group\":\"{group}\"," : "";
-                // user_id 필드 존재 여부
                 var hasUserId = fields.Any(f => f.Name == "userId" || f.Name == "user_id");
                 var userIdPart = hasUserId ? "\"hasUserId\":true," : "";
                 var item = "{" +
@@ -1923,7 +1960,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
                     $"\"tableName\":\"{ToSnakeCase(type.Name)}\"," +
                     groupPart +
                     userIdPart +
-                    $"\"fields\":[{string.Join(",", fieldJsons)}]" +
+                    $"\"fields\":[{BuildFieldsJson(type)}]" +
                     "}";
                 items.Add(item);
             }

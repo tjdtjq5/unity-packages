@@ -23,6 +23,7 @@
   @keyframes pageFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
   .row-delete{animation:rowSlide .3s ease forwards}
   @keyframes rowSlide{to{opacity:0;transform:translateX(30px);max-height:0;padding:0;overflow:hidden}}
+  .cell-na{display:block;text-align:center;color:var(--tblr-secondary);background:var(--tblr-bg-surface-secondary,#f4f6fa);border-radius:4px;padding:2px 0;cursor:not-allowed;user-select:none;opacity:.5;font-weight:500}
   .toast-container{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column-reverse;gap:8px}
   .toast-item{padding:10px 16px;border-radius:8px;color:#fff;font-size:.875rem;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:toastIn .3s ease,toastOut .3s ease 2.5s forwards;display:flex;align-items:center;gap:8px}
   .toast-item.success{background:#2fb344}
@@ -623,7 +624,7 @@ function renderTable(filter = '') {
     const sid = escHtml(String(row.id??''));
     const delay = Math.min(ri * 20, 400);
     html += `<tr data-id="${sid}" style="animation-delay:${delay}ms">`;
-    for (const f of fields) html += '<td>' + renderCell(row, f) + '</td>';
+    for (const f of fields) html += `<td data-field="${f.name}">` + renderCell(row, f) + '</td>';
     html += `<td><div class="btn-list flex-nowrap">
       <button class="btn btn-ghost-primary btn-icon btn-sm" onclick="copyRow('${sid}')" title="복사"><i class="ti ti-copy"></i></button>
       <button class="btn btn-ghost-danger btn-icon btn-sm" onclick="requestDelete('${sid}')" title="삭제"><i class="ti ti-trash"></i></button>
@@ -636,7 +637,22 @@ function renderTable(filter = '') {
   container.innerHTML = html;
 }
 
+function isFieldDisabled(row, field) {
+  if (field.visibleIf) {
+    const v = row[field.visibleIf.field];
+    if (field.visibleIf.values?.length > 0) { if (!field.visibleIf.values.includes(v)) return true; }
+    else { if (!v) return true; }
+  }
+  if (field.hiddenIf) {
+    const v = row[field.hiddenIf.field];
+    if (field.hiddenIf.values?.length > 0) { if (field.hiddenIf.values.includes(v)) return true; }
+    else { if (v) return true; }
+  }
+  return false;
+}
+
 function renderCell(row, field) {
+  if (isFieldDisabled(row, field)) return '<span class="cell-na">—</span>';
   const val = row[field.name];
   const sid = escHtml(String(row.id??''));
   const sfn = escHtml(field.name);
@@ -648,7 +664,12 @@ function renderCell(row, field) {
     const src = fkSources[field.foreignKey];
     let opts = src.map(s => `<option value="${escHtml(s.id)}" ${s.id===val?'selected':''}>${escHtml(s.name||s.id)}</option>`).join('');
     if (!val || !src.find(s => s.id === val)) opts = `<option value="${escHtml(val||'')}" selected>${escHtml(val||'(없음)')}</option>` + opts;
-    return `<select class="form-select form-select-sm" onchange="debounceSave('${sid}','${sfn}',this.value)">${opts}</select>`;
+    return `<select class="form-select form-select-sm" onchange="onFieldChange('${sid}','${sfn}',this.value)">${opts}</select>`;
+  }
+  if (field.isEnum && field.enumValues) {
+    let opts = field.enumValues.map(v => `<option value="${escHtml(v)}" ${v===val?'selected':''}>${escHtml(v)}</option>`).join('');
+    if (!val || !field.enumValues.includes(val)) opts = `<option value="${escHtml(val||'')}" selected>${escHtml(val||'(없음)')}</option>` + opts;
+    return `<select class="form-select form-select-sm" onchange="onFieldChange('${sid}','${sfn}',this.value)">${opts}</select>`;
   }
   if (field.isJson) {
     const isReward = field.name === 'rewards' || field.name.endsWith('_rewards');
@@ -679,6 +700,25 @@ function startEdit(el, rowId, fieldName, fieldType) {
 
 function castValue(v, t) { if (t==='int'||t==='long') return parseInt(v)||0; if (t==='number') return parseFloat(v)||0; return v; }
 
+function onFieldChange(rowId, fieldName, value) {
+  debounceSave(rowId, fieldName, value);
+  const row = currentData.find(r => r.id === rowId);
+  if (row) { row[fieldName] = value; refreshRowConditions(rowId); }
+}
+
+function refreshRowConditions(rowId) {
+  if (!currentType) return;
+  const tr = document.querySelector(`tr[data-id="${CSS.escape(rowId)}"]`);
+  if (!tr) return;
+  const row = currentData.find(r => r.id === rowId);
+  if (!row) return;
+  for (const f of currentType.fields) {
+    if (!f.visibleIf && !f.hiddenIf) continue;
+    const td = tr.querySelector(`td[data-field="${f.name}"]`);
+    if (td) td.innerHTML = renderCell(row, f);
+  }
+}
+
 function debounceSave(rowId, fieldName, value) {
   const row = currentData.find(r => r.id === rowId);
   if (row && row[fieldName] !== value) undoStack.push({ rowId, fieldName, oldValue: row[fieldName], typeName: currentType?.tableName });
@@ -708,6 +748,7 @@ async function toggleBool(rowId, fieldName, value) {
   const row = currentData.find(r => r.id === rowId); if (!row) return;
   undoStack.push({ rowId, fieldName, oldValue: row[fieldName], typeName: currentType?.tableName });
   row[fieldName] = value;
+  refreshRowConditions(rowId);
   try { await api(`/${currentType.tableName}/${rowId}`, 'PUT', row); toast('저장됨', 'success'); }
   catch (e) { toast('저장 실패: ' + e.message, 'error'); }
 }
@@ -721,7 +762,8 @@ async function addRow() {
       const id = prompt('ID를 입력하세요:', 'new_' + Date.now());
       if (id === null || id.trim() === '') return;
       row[f.name] = id.trim();
-    } else if (f.type === 'string') row[f.name] = f.isRequired ? 'new' : '';
+    } else if (f.isEnum && f.enumValues && f.enumValues.length > 0) row[f.name] = f.enumValues[0];
+    else if (f.type === 'string') row[f.name] = f.isRequired ? 'new' : '';
     else if (['int','long','number'].includes(f.type)) row[f.name] = 0;
     else if (f.type === 'bool') row[f.name] = false;
     else row[f.name] = '';
@@ -815,7 +857,7 @@ function formatRewards(json) {
 }
 
 // ── 범용 JSON 배열 에디터 ──
-let jsonEditorRowId = null, jsonEditorFieldName = null, jsonEditorSchema = [];
+let jsonEditorRowId = null, jsonEditorFieldName = null, jsonEditorSchema = [], jsonEditorOrigItems = [];
 
 function formatJsonArray(json) {
   if (!json) return '(비어있음)';
@@ -828,8 +870,18 @@ function openJsonEditor(rowId, fieldName) {
   const row = currentData.find(r => r.id === rowId);
   let items = []; try { items = JSON.parse(row[fieldName] || '[]'); } catch {}
   if (!Array.isArray(items)) items = [];
-  // 스키마 자동 감지 (첫 번째 항목 기반)
-  jsonEditorSchema = items.length > 0 ? detectSchema(items[0]) : [];
+  // 서버 메타데이터 우선, 없으면 자동 감지
+  const fieldMeta = currentType?.fields?.find(f => f.name === fieldName);
+  if (fieldMeta?.jsonSchema) {
+    jsonEditorSchema = fieldMeta.jsonSchema.map(s => ({
+      key: s.name, type: s.type === 'number' ? 'float' : s.type,
+      isEnum: s.isEnum, enumValues: s.enumValues,
+      visibleIf: s.visibleIf, hiddenIf: s.hiddenIf
+    }));
+  } else {
+    jsonEditorSchema = items.length > 0 ? detectSchema(items[0]) : [];
+  }
+  jsonEditorOrigItems = items.map(it => ({...it}));
   document.getElementById('json-editor-title').textContent = fieldName.replace(/_/g, ' ');
   renderJsonEditorRows(items);
   new bootstrap.Modal(document.getElementById('json-editor-modal')).show();
@@ -870,8 +922,17 @@ function renderJsonEditorRows(items) {
     schema.forEach(s => {
       const val = item[s.key] ?? '';
       const eid = `je_${i}_${s.key}`;
-      if (s.type === 'bool') {
-        html += `<td><input type="checkbox" class="form-check-input" id="${eid}" ${val?'checked':''}></td>`;
+      // VisibleIf/HiddenIf 조건 체크
+      if (isJsonFieldDisabled(item, s)) {
+        html += '<td><span class="cell-na">—</span></td>';
+        return;
+      }
+      if (s.isEnum && s.enumValues) {
+        const sv = val || s.enumValues[0] || '';
+        let opts = s.enumValues.map(v => `<option value="${escHtml(v)}" ${v===sv?'selected':''}>${escHtml(v)}</option>`).join('');
+        html += `<td><select class="form-select form-select-sm" id="${eid}" onchange="onJsonFieldChange()">${opts}</select></td>`;
+      } else if (s.type === 'bool') {
+        html += `<td><input type="checkbox" class="form-check-input" id="${eid}" ${val?'checked':''} onchange="onJsonFieldChange()"></td>`;
       } else if (s.type === 'int' || s.type === 'float') {
         html += `<td><input type="number" class="form-control form-control-sm" id="${eid}" value="${val}" ${s.type==='float'?'step="0.01"':''}></td>`;
       } else {
@@ -886,6 +947,26 @@ function renderJsonEditorRows(items) {
   c.innerHTML = html;
 }
 
+function isJsonFieldDisabled(item, s) {
+  if (s.visibleIf) {
+    const v = item[s.visibleIf.field];
+    if (s.visibleIf.values?.length > 0) { if (!s.visibleIf.values.includes(v)) return true; }
+    else { if (!v) return true; }
+  }
+  if (s.hiddenIf) {
+    const v = item[s.hiddenIf.field];
+    if (s.hiddenIf.values?.length > 0) { if (s.hiddenIf.values.includes(v)) return true; }
+    else { if (v) return true; }
+  }
+  return false;
+}
+
+function onJsonFieldChange() {
+  const items = collectJsonEditorRows();
+  jsonEditorOrigItems = items.map(it => ({...it}));
+  renderJsonEditorRows(items);
+}
+
 function jsonEditorAddRow() {
   if (jsonEditorSchema.length === 0) {
     const keys = prompt('필드 이름을 쉼표로 입력하세요:\n예) State,StartRow,FrameCount,FrameTime,Loop');
@@ -897,6 +978,7 @@ function jsonEditorAddRow() {
   jsonEditorSchema.forEach(s => {
     if (s.type === 'bool') newItem[s.key] = false;
     else if (s.type === 'int' || s.type === 'float') newItem[s.key] = 0;
+    else if (s.isEnum && s.enumValues?.length > 0) newItem[s.key] = s.enumValues[0];
     else newItem[s.key] = '';
   });
   items.push(newItem);
@@ -912,12 +994,12 @@ function jsonEditorRemoveRow(i) {
 function collectJsonEditorRows() {
   const items = [];
   const container = document.getElementById('json-editor-rows');
-  const cards = container.querySelectorAll('.card');
-  cards.forEach((card, i) => {
+  const rows = container.querySelectorAll('tbody tr');
+  rows.forEach((row, i) => {
     const item = {};
     jsonEditorSchema.forEach(s => {
       const el = document.getElementById(`je_${i}_${s.key}`);
-      if (!el) return;
+      if (!el) { const orig = jsonEditorOrigItems[i]; item[s.key] = orig?.[s.key] ?? ''; return; }
       if (s.type === 'bool') item[s.key] = el.checked;
       else if (s.type === 'int') item[s.key] = parseInt(el.value) || 0;
       else if (s.type === 'float') item[s.key] = parseFloat(el.value) || 0;

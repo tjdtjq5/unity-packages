@@ -40,9 +40,18 @@
 - **FK 드롭다운**: `foreignKey` 필드는 참조 대상 Config에서 옵션 자동 로드
 - **Ctrl+Z 되돌리기**: undoStack으로 필드 단위 되돌리기
 
+### 조건부 필드 표시
+- **`[VisibleIf]`**: 조건 필드 값 일치 시에만 셀 활성화 (enum 단일/복수, bool 지원)
+- **`[HiddenIf]`**: 조건 필드 값 일치 시 셀 비활성화 (VisibleIf 역조건)
+- **비활성화 UI**: 회색 배경 + "—" 텍스트 + 편집 불가 (`.cell-na` 클래스)
+- **실시간 갱신**: enum/FK/bool 변경 시 해당 row의 조건부 셀 즉시 재평가 (`refreshRowConditions`)
+
 ### JSON 편집
 - **Rewards 모달**: `rewards` / `*_rewards` 필드 전용 — 재화/아이템 타입 + ID 드롭다운 + 수량
 - **범용 JSON 배열 에디터**: 기타 JSON 필드 — 첫 항목 기반 스키마 자동 감지, 행 추가/삭제
+- **JSON 필드 메타데이터**: `[Json(typeof(T))]`의 T 클래스에서 enum/VisibleIf 메타데이터를 서버가 제공
+- **JSON 모달 enum 드롭다운**: 메타데이터가 있는 필드는 텍스트 input 대신 enum 드롭다운 렌더링
+- **JSON 모달 조건부 표시**: JSON 행 내부에서도 VisibleIf/HiddenIf 동작
 
 ### 관리자 관리
 - **관리자 목록**: 이메일, 상태(admin/pending), 등록일 표시

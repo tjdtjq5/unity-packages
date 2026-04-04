@@ -378,9 +378,13 @@ namespace Tjdtjq5.SupaRun.Editor
             content = System.Text.RegularExpressions.Regex.Replace(
                 content, @"\[Json\(typeof\(.+?\)\)\]", "[Json]");
 
-            // 2) [EnumType(typeof(...))] 어트리뷰트 통째로 제거 (서버에서 불필요)
+            // 2) 어드민 전용 어트리뷰트 통째로 제거 (서버에서 불필요)
             content = System.Text.RegularExpressions.Regex.Replace(
                 content, @"\s*\[EnumType\(typeof\(.+?\)\)\]", "");
+            content = System.Text.RegularExpressions.Regex.Replace(
+                content, @"\s*\[VisibleIf\(.+?\)\]", "");
+            content = System.Text.RegularExpressions.Regex.Replace(
+                content, @"\s*\[HiddenIf\(.+?\)\]", "");
 
             // 3) #if UNITY 전처리기 블록 제거
             content = StripUnityPreprocessorBlocks(content);
