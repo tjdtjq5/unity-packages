@@ -204,11 +204,14 @@ namespace Tjdtjq5.AddrX.Editor
             foreach (var s in b) yield return s;
         }
 
-        /// <summary>같은 그룹 내 주소 중복 감지.</summary>
+        /// <summary>같은 그룹 내 주소 중복 감지. 이미 등록된 에셋의 재임포트는 중복으로 세지 않는다.</summary>
         internal static HashSet<string> DetectDuplicates(
             List<string> newPaths, AddrXSetupRules rules, AddressableAssetSettings settings)
         {
             var addressMap = new Dictionary<string, int>();
+
+            // 주소 → GUID 매핑 (재임포트 판별용)
+            var addressToGuids = new Dictionary<string, HashSet<string>>();
 
             foreach (var group in settings.groups)
             {
@@ -217,6 +220,13 @@ namespace Tjdtjq5.AddrX.Editor
                 {
                     addressMap.TryGetValue(entry.address, out int c);
                     addressMap[entry.address] = c + 1;
+
+                    if (!addressToGuids.TryGetValue(entry.address, out var guids))
+                    {
+                        guids = new HashSet<string>();
+                        addressToGuids[entry.address] = guids;
+                    }
+                    guids.Add(entry.guid);
                 }
             }
 
@@ -224,6 +234,12 @@ namespace Tjdtjq5.AddrX.Editor
             {
                 var address = rules.GetAddress(path);
                 if (address == null) continue;
+
+                // 같은 GUID가 이미 같은 주소로 등록되어 있으면 재임포트 → 스킵
+                var guid = AssetDatabase.AssetPathToGUID(path);
+                if (addressToGuids.TryGetValue(address, out var existing) && existing.Contains(guid))
+                    continue;
+
                 addressMap.TryGetValue(address, out int c);
                 addressMap[address] = c + 1;
             }
