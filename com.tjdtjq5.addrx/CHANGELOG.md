@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.6] - 2026-04-05
+
+### Fixed
+- 에셋 복제 시 importedAssets/movedAssets 중복으로 인한 자동 등록 오탐 수정 (FilterAssets 경로 중복 제거)
+- DetectDuplicates에서 newPaths 내 같은 GUID 이중 카운트 방지
+
 ## [0.1.5] - 2026-04-05
 
 ### Fixed

@@ -188,12 +188,13 @@ namespace Tjdtjq5.AddrX.Editor
 
         static List<string> FilterAssets(string[] a, string[] b, string root)
         {
+            var seen = new HashSet<string>();
             var result = new List<string>(a.Length + b.Length);
             foreach (var p in a)
-                if (p.StartsWith(root) && !AssetDatabase.IsValidFolder(p))
+                if (p.StartsWith(root) && !AssetDatabase.IsValidFolder(p) && seen.Add(p))
                     result.Add(p);
             foreach (var p in b)
-                if (p.StartsWith(root) && !AssetDatabase.IsValidFolder(p))
+                if (p.StartsWith(root) && !AssetDatabase.IsValidFolder(p) && seen.Add(p))
                     result.Add(p);
             return result;
         }
@@ -242,6 +243,14 @@ namespace Tjdtjq5.AddrX.Editor
 
                 addressMap.TryGetValue(address, out int c);
                 addressMap[address] = c + 1;
+
+                // newPaths 내 같은 GUID 중복 카운트 방지
+                if (!addressToGuids.TryGetValue(address, out var guids))
+                {
+                    guids = new HashSet<string>();
+                    addressToGuids[address] = guids;
+                }
+                guids.Add(guid);
             }
 
             return new HashSet<string>(
