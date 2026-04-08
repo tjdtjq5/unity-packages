@@ -8,11 +8,17 @@ using UnityEngine.Networking;
 
 namespace Tjdtjq5.SupaRun
 {
-    /// <summary>Supabase Auth. 게스트 자동 로그인 + 토큰 관리.</summary>
-    public class SupabaseAuth
+    /// <summary>Supabase Auth 클라이언트. 게스트 자동 로그인 + 토큰 관리 + OAuth/플랫폼 인증.</summary>
+    public class SupaRunAuth
     {
         readonly string _supabaseUrl;
         readonly string _anonKey;
+        // 게임 서버 호출용 클라이언트. P1-3 리팩터로 정적 SupaRun.Client 의존 제거.
+        // null이면 DeleteAccount/CheckBan/플랫폼 인증 같은 서버 의존 기능은 동작하지 않음.
+        readonly IServerClient _serverClient;
+        // 세션 토큰 저장소. P2-2 리팩터로 정적 SecureStorage 의존 제거.
+        // null이면 기본 SecureSessionStorage 사용 (prefix 없음).
+        readonly ISessionStorage _storage;
 
         const string PREF_ACCESS  = "SupaRun_AccessToken";
         const string PREF_REFRESH = "SupaRun_RefreshToken";
@@ -34,11 +40,15 @@ namespace Tjdtjq5.SupaRun
 
         OAuthHandler _oauthHandler;
 
-        public SupabaseAuth(string supabaseUrl, string anonKey, string cloudRunUrl = null)
+        public SupaRunAuth(string supabaseUrl, string anonKey, string cloudRunUrl = null,
+                           IServerClient serverClient = null,
+                           ISessionStorage storage = null)
         {
             _supabaseUrl = supabaseUrl?.TrimEnd('/');
             _anonKey = anonKey;
             _oauthHandler = new OAuthHandler(supabaseUrl, cloudRunUrl);
+            _serverClient = serverClient;
+            _storage = storage ?? new SecureSessionStorage();
         }
 
         Task _loginTask;
@@ -180,7 +190,7 @@ namespace Tjdtjq5.SupaRun
         async Task<string> Post(string endpoint, string jsonBody)
         {
             var url = _supabaseUrl + endpoint;
-            Debug.Log($"[SupaRun:Auth] POST {url}");
+            SupaRun.LogVerbose($"[SupaRun:Auth] POST {url}");
 
             if (string.IsNullOrEmpty(_supabaseUrl) || string.IsNullOrEmpty(_anonKey))
             {
@@ -201,7 +211,7 @@ namespace Tjdtjq5.SupaRun
                 while (!op.isDone)
                     await Task.Yield();
 
-                Debug.Log($"[SupaRun:Auth] Response {request.responseCode}: {request.downloadHandler.text?.Substring(0, System.Math.Min(200, request.downloadHandler.text?.Length ?? 0))}");
+                SupaRun.LogVerbose($"[SupaRun:Auth] Response {request.responseCode}: {request.downloadHandler.text?.Substring(0, System.Math.Min(200, request.downloadHandler.text?.Length ?? 0))}");
 
                 if (request.result == UnityWebRequest.Result.Success ||
                     request.responseCode < 500)
@@ -217,28 +227,28 @@ namespace Tjdtjq5.SupaRun
             }
         }
 
-        // ── 세션 저장/로드 ──
+        // ── 세션 저장/로드 (P2-2: ISessionStorage 추상화) ──
 
         void SaveSession(AuthSession session)
         {
-            SecureStorage.Set(PREF_ACCESS, session.accessToken);
-            SecureStorage.Set(PREF_REFRESH, session.refreshToken ?? "");
-            SecureStorage.Set(PREF_USER_ID, session.userId ?? "");
-            SecureStorage.SetInt(PREF_IS_GUEST, session.isGuest ? 1 : 0);
-            SecureStorage.Save();
+            _storage.Set(PREF_ACCESS, session.accessToken);
+            _storage.Set(PREF_REFRESH, session.refreshToken ?? "");
+            _storage.Set(PREF_USER_ID, session.userId ?? "");
+            _storage.SetInt(PREF_IS_GUEST, session.isGuest ? 1 : 0);
+            _storage.Save();
         }
 
         AuthSession LoadSession()
         {
-            var token = SecureStorage.Get(PREF_ACCESS, "");
+            var token = _storage.Get(PREF_ACCESS, "");
             if (string.IsNullOrEmpty(token)) return null;
 
             return new AuthSession
             {
                 accessToken = token,
-                refreshToken = SecureStorage.Get(PREF_REFRESH, ""),
-                userId = SecureStorage.Get(PREF_USER_ID, ""),
-                isGuest = SecureStorage.GetInt(PREF_IS_GUEST, 1) == 1,
+                refreshToken = _storage.Get(PREF_REFRESH, ""),
+                userId = _storage.Get(PREF_USER_ID, ""),
+                isGuest = _storage.GetInt(PREF_IS_GUEST, 1) == 1,
                 expiresAt = ParseExpFromJwt(token)
             };
         }
@@ -246,11 +256,11 @@ namespace Tjdtjq5.SupaRun
         public void ClearSession()
         {
             Session = null;
-            SecureStorage.Delete(PREF_ACCESS);
-            SecureStorage.Delete(PREF_REFRESH);
-            SecureStorage.Delete(PREF_USER_ID);
-            SecureStorage.Delete(PREF_IS_GUEST);
-            SecureStorage.Save();
+            _storage.Delete(PREF_ACCESS);
+            _storage.Delete(PREF_REFRESH);
+            _storage.Delete(PREF_USER_ID);
+            _storage.Delete(PREF_IS_GUEST);
+            _storage.Save();
         }
 
         // ── v2: OAuth 로그인 ──
@@ -356,15 +366,18 @@ namespace Tjdtjq5.SupaRun
             }
 
             // 서버에 삭제 요청 (서버가 service_role로 Supabase 유저 삭제)
-            var client = SupaRun.Client;
-            if (client != null)
+            if (_serverClient != null)
             {
-                var result = await client.PostAsync("api/auth/delete-account", null);
+                var result = await _serverClient.PostAsync("api/auth/delete-account", null);
                 if (!result.success)
                 {
                     Debug.LogWarning($"[SupaRun:Auth] 계정 삭제 실패: {result.error}");
                     return false;
                 }
+            }
+            else
+            {
+                Debug.LogWarning("[SupaRun:Auth] DeleteAccount: IServerClient 미주입 — 서버 측 삭제는 스킵하고 로컬 세션만 정리합니다.");
             }
 
             ClearSession();
@@ -379,11 +392,9 @@ namespace Tjdtjq5.SupaRun
         public async Task CheckBan()
         {
             if (!IsLoggedIn) return;
+            if (_serverClient == null) return; // 서버 미연결 — 밴 체크 스킵
 
-            var client = SupaRun.Client;
-            if (client == null) return;
-
-            var result = await client.GetAsync<BanStatus>($"api/auth/ban-check/{UserId}");
+            var result = await _serverClient.GetAsync<BanStatus>($"api/auth/ban-check/{UserId}");
             if (result.success && result.data != null && result.data.banned)
             {
                 OnBanned?.Invoke(result.data.reason);
@@ -413,14 +424,13 @@ namespace Tjdtjq5.SupaRun
             var endpoint = handler.Provider == AuthProvider.GPGS
                 ? "api/auth/gpgs" : "api/auth/gamecenter";
 
-            var client = SupaRun.Client;
-            if (client == null)
+            if (_serverClient == null)
             {
                 Debug.LogWarning("[SupaRun:Auth] 서버 미연결 — cloudRunUrl을 확인하세요.");
                 return;
             }
 
-            var result = await client.PostAsync<AuthTokenResponse>(endpoint, new { token });
+            var result = await _serverClient.PostAsync<AuthTokenResponse>(endpoint, new { token });
 
             if (result.success && result.data != null)
             {

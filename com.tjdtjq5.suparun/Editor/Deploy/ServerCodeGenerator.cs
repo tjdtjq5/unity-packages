@@ -778,6 +778,17 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             sb.AppendLine(string.Join(",\n", lines));
             sb.AppendLine(");");
 
+            // 기존 테이블에 새 컬럼 추가 — DO 블록으로 감싸서 개별 에러 무시
+            sb.AppendLine();
+            sb.AppendLine($"DO $$ BEGIN");
+            foreach (var f in fields)
+            {
+                var col = f.Name.ToLower();
+                var sqlType = GetSqlType(f);
+                sb.AppendLine($"  ALTER TABLE {tableName} ADD COLUMN IF NOT EXISTS {col} {sqlType};");
+            }
+            sb.AppendLine($"END $$;");
+
             // [Config] 타입은 공개 읽기 RLS 정책 추가 (Supabase REST 직접 조회용)
             if (type.GetCustomAttribute<ConfigAttribute>() != null)
             {
@@ -1265,8 +1276,13 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             sb.AppendLine("        {");
             sb.AppendLine("            var entity = _deserialize[typeName](body.GetRawText());");
             sb.AppendLine("            var err = Validate(entity, typeName); if (err != null) return BadRequest(new { error = err });");
-            sb.AppendLine("            await _save[typeName](_db, entity);");
             sb.AppendLine("            var rowId = entity.GetType().GetField(\"id\")?.GetValue(entity)?.ToString();");
+            sb.AppendLine("            if (!string.IsNullOrEmpty(rowId) && _getOne.ContainsKey(typeName))");
+            sb.AppendLine("            {");
+            sb.AppendLine("                var existing = await _getOne[typeName](_db, rowId);");
+            sb.AppendLine("                if (existing != null) return Conflict(new { error = $\"ID '{rowId}' already exists\" });");
+            sb.AppendLine("            }");
+            sb.AppendLine("            await _save[typeName](_db, entity);");
             sb.AppendLine("            await Audit(\"create\", typeName, rowId, null, entity);");
             sb.AppendLine("            return Ok(entity);");
             sb.AppendLine("        }");

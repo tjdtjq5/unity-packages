@@ -85,7 +85,7 @@ var app = builder.Build();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Migration] {Path.GetFileName(sqlFile)} SKIP: {ex.Message}");
+                Console.WriteLine($"[Migration] {Path.GetFileName(sqlFile)} FAIL: {ex.Message}");
             }
         }
     }

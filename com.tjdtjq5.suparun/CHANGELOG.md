@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.3.11] - 2026-04-09
+
+### Major Refactor (P0+P1+P2 통합)
+
+대규모 안정화/책임 분리/구조 리팩터. 자세한 내역은 `REFACTOR.md` 참조.
+**호환성 유지** — 외부 API (`SupaRun.Login()`, `SupaRun.GetAll<T>()` 등) 모두 그대로.
+
+### Added
+- **`SupaRunRuntime`** — 인스턴스 클래스 (P2-3). 모든 자원 보유, 단위 테스트 + DI 가능.
+- **`SupaRunRuntimeOptions`** — 옵션 객체 (의존성 주입용)
+- **`SupaRun.Login()` / `IsLoggedIn`** — 명시적 로그인 진입점 (P0-1)
+- **`SupaRun.Verbose` / `LogVerbose`** — 디버그 로그 게이트 (P1-4)
+- **`IServerClient`** — 서버 클라이언트 추상화 (P1-3)
+- **`IHttpTransport` + `UnityHttpTransport`** — 저수준 HTTP 추상화 (P2-1)
+- **`HttpExecutor`** — Strategy 패턴 송신 오케스트레이터 (P2-1)
+- **Strategy 7개**: `BearerTokenAuth`, `BearerJwtOrAnonAuth`, `ApiKeyOnlyAuth`, `NoAuth`, `NoRetry`, `ExponentialBackoffRetry`, `CallbackAuthRefresher`
+- **`ISessionStorage` + `SecureSessionStorage` + `MemorySessionStorage`** — 세션 저장소 추상화 (P2-2)
+- **MPPM Virtual Player 자동 분리** — 인스턴스마다 별도 게스트 계정 (P2-2)
+- **`ServerResponse.isAuthenticated` / `hint`** — 진단 메타데이터 (P2-4)
+- 도메인 리로드 cleanup 자동 등록 (P2-3e)
+- 단위 테스트용 `SupaRun.SetInstance(...)` internal API (P2-3e)
+
+### Changed
+- **`SupaRun` 정적 클래스** — `SupaRunRuntime`의 lazy singleton facade로 재작성 (342→175줄, -49%) (P2-3c)
+- **`SupabaseAuth` → `SupaRunAuth`** 리네이밍 (P1-2)
+- **`SupaRunClient`** — Strategy 패턴 마이그레이션. UnityWebRequest 직접 사용 0 (P2-1f)
+- **`SupabaseRestClient`** — Strategy 패턴 마이그레이션. JWT or anon Bearer 자동 (P2-1e)
+- **`SupabaseRestClient`** — JWT 사용 (이전엔 항상 anon key) → RLS authenticated 정책 통과
+- **`SecureStorage` (정적) → `SecureSessionStorage` (인스턴스)** + key prefix 옵션
+- **`SupaRunSettings.json` 로드 경로** — MPPM Virtual Player 가상 루트 자동 감지 (P0-5)
+- **`SupaRunAuth`** — 정적 `SupaRun.Client` 의존 끊고 `IServerClient` 생성자 주입 (P1-3)
+
+### Fixed
+- **silent failure 차단** — `SupaRun.GetAll<T>()` 가 anonymous 호출 시 콘솔 경고 + ServerResponse.hint (P0-4, P2-4)
+- **LocalGameDB fallback 진단** — `_client` null 시 1회 명확한 경고 (P0-6)
+- **MPPM Virtual Player에서 PlayerStatConfig 로드 실패** — settings 절대 경로 + VP 가상 루트 감지로 해결 (P0-5)
+- **`Login()` → `SignOut()` → `Login()` 재로그인 깨짐** — `_loginTask` stale 캐시 제거 (P0-1)
+- **JSON 파싱 실패 분류** — 이전 NetworkError → BadRequest로 정확화 (P2-1e)
+
+### Removed
+- **`SupaRun.cs`의 `_client/_restClient/_localDB/_auth/_realtime/_initialized` 정적 필드** — `SupaRunRuntime`로 이동
+- **`SupaRun.AutoInitialize()` 메서드 80줄** — `SupaRunRuntime` 생성자로 이동
+- **데드 코드 4개 클래스** — `Runtime/Supabase/SupabaseClient.cs`, `SupabaseAuth.cs(stub)`, `SupabaseStorage.cs(stub)`, `SecureStorage.cs(static)` (P1-1, P2-2)
+- **`SupabaseRealtime(SupabaseClient)` 사용 안 되는 생성자** (P1-1)
+
+### Deprecated
+- **`SupaRun.Initialize(ServerConfig)`** — `[Obsolete]` 표시 + noop. `SupaRun.Login()` 사용 권장.
+
 ## [0.3.10] - 2026-04-04
 
 ### Fixed

@@ -36,13 +36,16 @@
   .loading-spinner{display:flex;justify-content:center;padding:3rem}
   .stat-badge{font-size:.75rem;padding:2px 8px;border-radius:99px;font-weight:500}
   .sidebar-section-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;color:#ffffff60;padding:0 1rem;margin:1rem 0 .25rem}
-  .table th{text-transform:none;font-size:.75rem}
+  .table thead th{text-transform:none;font-size:.75rem;position:relative}
+  .th-resize{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;user-select:none;z-index:2}
+  .th-resize:hover,.th-resize.active{background:var(--tblr-primary);opacity:.3}
+  .col-resizing{cursor:col-resize!important;user-select:none!important}
   .row-enter{animation:rowEnter .3s ease both}
   @keyframes rowEnter{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
   .page-transition{animation:pageTransition .3s ease}
   @keyframes pageTransition{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
   tbody tr{animation:rowStagger .25s ease both}
-  #json-editor-rows table{table-layout:auto!important}
+  #json-editor-rows table{table-layout:fixed}
   #json-editor-rows th{font-size:.7rem;text-transform:uppercase;letter-spacing:.03em;color:#667382;position:sticky;top:0;background:#fff;z-index:1}
   #json-editor-rows td{padding:4px 6px}
   #json-editor-rows input[type="text"],#json-editor-rows input[type="number"]{min-width:60px}
@@ -124,8 +127,9 @@
     <div class="page-header d-print-none">
       <div class="container-xl">
         <div class="row align-items-center">
-          <div class="col-auto">
-            <h2 id="page-title" class="page-title">Config를 선택하세요</h2>
+          <div class="col-auto d-flex align-items-center gap-2">
+            <h2 id="page-title" class="page-title mb-0">Config를 선택하세요</h2>
+            <a id="btn-supabase-link" href="#" target="_blank" class="btn btn-ghost-secondary btn-icon" title="Supabase Table Editor에서 열기" style="display:none"><i class="ti ti-external-link" style="font-size:1.1rem"></i></a>
             <div id="page-subtitle" class="text-muted small"></div>
           </div>
           <div class="col-auto ms-auto">
@@ -242,6 +246,8 @@ const SUPABASE_URL = '{{SUPABASE_URL}}';
 const SUPABASE_ANON_KEY = '{{SUPABASE_ANON_KEY}}';
 let AUTH_PROVIDERS = [];
 const API_BASE = '/admin/api/config';
+// Supabase Dashboard 링크용 project ref 추출 (https://xxx.supabase.co → xxx)
+const SUPABASE_PROJECT_REF = (() => { try { return new URL(SUPABASE_URL).hostname.split('.')[0]; } catch { return ''; } })();
 
 // ── 초기화 에러 방어 ──
 let sb = null;
@@ -575,6 +581,13 @@ function hideToolbar() {
   ['search-wrapper','btn-add','btn-export','btn-import'].forEach(id => document.getElementById(id).style.display = 'none');
   document.getElementById('page-subtitle').textContent = '';
 }
+function updateSupabaseLink(tableName) {
+  const btn = document.getElementById('btn-supabase-link');
+  if (!SUPABASE_PROJECT_REF || !tableName) { btn.style.display = 'none'; return; }
+  btn.href = `https://supabase.com/dashboard/project/${SUPABASE_PROJECT_REF}/editor/${encodeURIComponent(tableName)}`;
+  btn.style.display = '';
+}
+function hideSupabaseLink() { document.getElementById('btn-supabase-link').style.display = 'none'; }
 
 function showToolbar() {
   ['search-wrapper','btn-add','btn-export','btn-import'].forEach(id => document.getElementById(id).style.display = '');
@@ -587,6 +600,7 @@ async function selectType(tableName) {
   document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
   document.querySelector(`[data-type="${tableName}"]`)?.classList.add('active');
   document.getElementById('page-title').textContent = currentType.name;
+  updateSupabaseLink(currentType.tableName);
   showToolbar();
   document.getElementById('search-input').value = '';
   // 로딩 표시
@@ -635,6 +649,7 @@ function renderTable(filter = '') {
     html = `<div class="empty-state"><i class="ti ti-search"></i><h3>검색 결과 없음</h3><p>"${escHtml(filter)}"에 대한 결과가 없습니다.</p></div>`;
   }
   container.innerHTML = html;
+  enableColResize(container, currentType ? 'config_' + currentType.tableName : null);
 }
 
 function isFieldDisabled(row, field) {
@@ -945,6 +960,7 @@ function renderJsonEditorRows(items) {
 
   html += '</tbody></table>';
   c.innerHTML = html;
+  enableColResize(c, 'json_' + (jsonEditorState?.fieldName || 'editor'));
 }
 
 function isJsonFieldDisabled(item, s) {
@@ -1050,7 +1066,7 @@ async function importData(input) {
 async function showAdmins() {
   currentType = null;
   document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
-  document.getElementById('page-title').textContent = '관리자 목록';
+  document.getElementById('page-title').textContent = '관리자 목록'; hideSupabaseLink();
   hideToolbar();
 
   const admins = await adminApi('');
@@ -1081,6 +1097,7 @@ async function showAdmins() {
     <div class="text-muted small mb-2">직접 회원가입한 유저는 "승인 대기" 상태로 등록됩니다. 위에서 승인하세요.</div>
   </div>`;
   container.innerHTML = html;
+  enableColResize(container, 'admins');
 }
 
 async function addAdmin() {
@@ -1111,7 +1128,7 @@ function showAuditJson(idx, field) {
 async function showAuditLog() {
   currentType = null;
   document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
-  document.getElementById('page-title').textContent = '변경 이력';
+  document.getElementById('page-title').textContent = '변경 이력'; hideSupabaseLink();
   hideToolbar();
 
   auditLogs = await api('/_audit?limit=100');
@@ -1142,6 +1159,7 @@ async function showAuditLog() {
   }
   html += '</tbody></table>';
   container.innerHTML = html;
+  enableColResize(container, 'audit_log');
 }
 
 // ══════════════════════════════════════════════
@@ -1156,6 +1174,7 @@ async function selectTableType(tableName) {
   document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
   document.querySelector(`[data-type="${tableName}"]`)?.classList.add('active');
   document.getElementById('page-title').textContent = currentTableType.name;
+  updateSupabaseLink(currentTableType.tableName);
   hideToolbar();
   document.getElementById('page-subtitle').textContent = '';
   tableFilters = [];
@@ -1250,6 +1269,7 @@ function renderTableView() {
   }
 
   container.innerHTML = html;
+  enableColResize(container, currentTableType ? 'table_' + currentTableType.tableName : null);
   if (numFields.length > 0 && rows.length > 0) loadStats();
 }
 
@@ -1320,7 +1340,7 @@ function showCrossSearch() {
   currentType = null;
   currentTableType = null;
   document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
-  document.getElementById('page-title').textContent = '크로스 테이블 검색';
+  document.getElementById('page-title').textContent = '크로스 테이블 검색'; hideSupabaseLink();
   document.getElementById('page-subtitle').textContent = '';
   hideToolbar();
   crossConditions = [];
@@ -1414,6 +1434,7 @@ async function executeCross() {
       html += '</tbody></table>';
     }
     results.innerHTML = html;
+    enableColResize(results, 'cross_search');
     toast(`크로스 검색 완료: ${res.count}명`, 'success');
   } catch (e) { results.innerHTML = ''; toast('검색 실패: ' + e.message, 'error'); }
 }
@@ -1427,7 +1448,7 @@ function showPlayerSearch() {
   currentType = null;
   currentTableType = null;
   document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
-  document.getElementById('page-title').textContent = '플레이어 관리';
+  document.getElementById('page-title').textContent = '플레이어 관리'; hideSupabaseLink();
   document.getElementById('page-subtitle').textContent = '';
   hideToolbar();
   const container = document.getElementById('table-container');
@@ -1507,6 +1528,7 @@ function renderPlayerCards() {
     html += '</div>';
   }
   results.innerHTML = html;
+  results.querySelectorAll('.table-responsive').forEach((div, i) => enableColResize(div, 'player_' + i));
 }
 
 function startPlayerEdit(el, tableName, rowId, fieldName, fieldType) {
@@ -1542,6 +1564,45 @@ document.addEventListener('keydown', e => {
 
 // ── 유틸 ──
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+// ── 컬럼 리사이즈 ──
+function enableColResize(container, storageKey) {
+  const table = container.querySelector('table');
+  if (!table) return;
+  table.style.tableLayout = 'fixed';
+  const ths = table.querySelectorAll('thead th');
+  if (!ths.length) return;
+  // localStorage에서 저장된 폭 복원
+  const saved = storageKey && localStorage.getItem('col_w_' + storageKey);
+  const widths = saved ? JSON.parse(saved) : null;
+  ths.forEach((th, i) => {
+    if (widths && widths[i]) th.style.width = widths[i] + 'px';
+    else th.style.width = th.offsetWidth + 'px';
+    const handle = document.createElement('div');
+    handle.className = 'th-resize';
+    th.appendChild(handle);
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const startX = e.pageX;
+      const startW = th.offsetWidth;
+      handle.classList.add('active');
+      document.body.classList.add('col-resizing');
+      const onMove = ev => { th.style.width = Math.max(40, startW + ev.pageX - startX) + 'px'; };
+      const onUp = () => {
+        handle.classList.remove('active');
+        document.body.classList.remove('col-resizing');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        if (storageKey) {
+          const ws = [...table.querySelectorAll('thead th')].map(t => t.offsetWidth);
+          localStorage.setItem('col_w_' + storageKey, JSON.stringify(ws));
+        }
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
 </script>
 </body>
 </html>

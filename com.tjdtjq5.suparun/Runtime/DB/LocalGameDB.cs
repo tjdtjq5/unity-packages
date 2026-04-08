@@ -452,7 +452,7 @@ namespace Tjdtjq5.SupaRun
 
         static void Log(string message)
         {
-            Debug.Log($"[SupaRun:LocalDB] {message}");
+            SupaRun.LogVerbose($"[SupaRun:LocalDB] {message}");
         }
     }
 }

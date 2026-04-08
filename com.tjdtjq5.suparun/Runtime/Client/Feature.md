@@ -9,7 +9,7 @@
 |------|------|------|
 | Models | `../Models/` | ServerConfig, ServerResponse, AuthSession, ErrorType 등 |
 | DB | `../DB/` | LocalGameDB (개발 모드 fallback) |
-| Auth | `../Auth/` | SupabaseAuth (인증, 토큰 관리) |
+| Auth | `../Auth/` | `SupaRunAuth` (인증, 토큰 관리). SupaRun이 생성 시 `IServerClient(_client)`를 주입. |
 | Supabase | `../Supabase/` | SupabaseRealtime (실시간 채널) |
 | Attributes | `../Attributes/` | ConfigAttribute (Config/Table 분기 판단) |
 | Config | `../Config/` | SupaRunRuntimeConfig (빌드 시 설정 로드) |
@@ -19,9 +19,18 @@
 ```
 Client/
 ├── SupaRun.cs              # 정적 API 진입점 (partial class, Get/GetAll/Auth/Realtime/Client)
-├── SupaRunClient.cs         # UnityWebRequest HTTP 클라이언트 (자동 재시도 + 토큰 갱신)
-└── SupabaseRestClient.cs    # Supabase PostgREST 직접 조회 ([Config] 타입 전용, internal)
+├── SupaRunClient.cs         # UnityWebRequest HTTP 클라이언트 (자동 재시도 + 토큰 갱신). IServerClient 구현체.
+├── SupabaseRestClient.cs    # Supabase PostgREST 직접 조회 ([Config] 타입 전용, internal)
+└── IServerClient.cs         # 서버 HTTP 추상화 — SupaRunAuth 등 내부 컴포넌트가 정적 SupaRun.Client 의존 회피용
 ```
+
+### IServerClient (interface)
+
+| 메서드 | 설명 |
+|--------|------|
+| `GetAsync<T>(string endpoint)` | GET. T로 역직렬화. |
+| `PostAsync<T>(string endpoint, object payload)` | POST 제네릭. T로 역직렬화. |
+| `PostAsync(string endpoint, object payload)` | POST (반환값 없음). 성공 여부만. |
 
 ## API
 

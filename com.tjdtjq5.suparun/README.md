@@ -8,7 +8,7 @@ ASP.NET + Supabase + Cloud Run 자동 배포.
 manifest.json에 추가:
 
 ```json
-"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.3.10"
+"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.3.11"
 ```
 
 ### 의존성
@@ -16,14 +16,51 @@ manifest.json에 추가:
 - `com.tjdtjq5.editor-toolkit` >= 1.1.0
 - `com.unity.nuget.newtonsoft-json` >= 3.2.1
 
+## 빠른 시작
+
+```csharp
+using Tjdtjq5.SupaRun;
+
+// 1. 앱 진입점에서 명시적 로그인 (한 번)
+await SupaRun.Login();
+
+// 2. 데이터 조회 (서버 또는 LocalGameDB 자동 분기)
+var stats = await SupaRun.GetAll<PlayerStatConfig>();
+if (stats.success && stats.data != null)
+{
+    Debug.Log($"Loaded {stats.data.Count} stats");
+}
+
+// 3. 서비스 호출 (Source Generator로 자동 생성된 ServerAPI)
+var result = await ServerAPI.CurrencyService.GetBalance(playerId);
+```
+
 ## 주요 기능
 
-- **Supabase 연동**: Auth, DB, Realtime, Storage
-- **Cloud Run 배포**: ASP.NET 서버 자동 빌드 + 배포
+- **명시적 로그인**: `SupaRun.Login()` — 게스트 자동 생성 또는 기존 세션 복원
+- **데이터 API**: `SupaRun.Get<T>()`, `SupaRun.GetAll<T>()` — `[Config]` 타입은 PostgREST, `[Table]` 타입은 Cloud Run, 미배포는 LocalGameDB
+- **Source Generator**: `[Service]` 클래스 → `ServerAPI.{Service}.{Method}` 정적 프록시 자동 생성
 - **Auth**: Google/Apple/GameCenter/GPGS 플랫폼 로그인
-- **SecureStorage**: 플랫폼별 보안 저장소 (Android KeyStore, iOS Keychain)
+- **세션 저장소**: 플랫폼별 보안 저장 (Android KeyStore, iOS Keychain, PC PlayerPrefs). MPPM Virtual Player 자동 분리.
+- **실시간 채널**: Phoenix Channel 프로토콜 (Broadcast/Presence/PostgresChanges)
+- **Cloud Run 배포**: ASP.NET 서버 자동 빌드 + 배포
 - **Editor Window**: 통합 설정 + 배포 관리 UI
-- **프로젝트별 설정 격리**: 멀티 프로젝트 환경에서 EditorPrefs 충돌 방지
+
+## 아키텍처 (v0.3.11+)
+
+- **`SupaRun`** (정적 facade) — 호환성 진입점. 내부적으로 `SupaRunRuntime`에 위임.
+- **`SupaRunRuntime`** (인스턴스) — 모든 자원 보유. 단위 테스트/DI에 직접 사용 가능.
+- **`HttpExecutor` + Strategy 패턴** — `IAuthStrategy` + `IRetryStrategy` + `IAuthRefresher` 조합. mock transport로 단위 테스트 가능.
+- **`ISessionStorage`** — `SecureSessionStorage` (플랫폼) / `MemorySessionStorage` (테스트). MPPM 자동 prefix 분리.
+
+자세한 리팩터 내역은 `REFACTOR.md` 참조.
+
+## 디버깅
+
+```csharp
+// Verbose 로그 켜기 (HTTP POST 본문, LocalDB 작업 등)
+SupaRun.Verbose = true;
+```
 
 ## 라이선스
 

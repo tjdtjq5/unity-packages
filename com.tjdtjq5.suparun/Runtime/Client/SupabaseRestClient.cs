@@ -1,22 +1,35 @@
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine;
-using UnityEngine.Networking;
 
 namespace Tjdtjq5.SupaRun
 {
     /// <summary>Supabase PostgREST 직접 조회. [Config] 타입 전용.</summary>
+    /// <remarks>
+    /// P2-1e: HTTP 송신을 HttpExecutor + IHttpTransport로 위임. 인증 헤더는 BearerJwtOrAnonAuth strategy.
+    /// 호출자(SupaRun)가 동일 transport 인스턴스를 주입하면 패키지 전체에서 단일 transport 사용.
+    /// </remarks>
     class SupabaseRestClient
     {
         readonly string _restUrl; // https://xxx.supabase.co/rest/v1
-        readonly string _anonKey;
+        readonly HttpExecutor _executor;
 
-        public SupabaseRestClient(string supabaseUrl, string anonKey)
+        /// <summary>
+        /// 현재 인증 세션. SupaRun.Auth.OnSessionChanged에서 주입된다.
+        /// 세션이 있으면 Authorization Bearer에 유저 JWT를 사용해
+        /// `authenticated` role이 필요한 RLS 정책을 통과한다.
+        /// </summary>
+        public AuthSession Session { get; set; }
+
+        public SupabaseRestClient(string supabaseUrl, string anonKey, IHttpTransport transport = null)
         {
             _restUrl = supabaseUrl?.TrimEnd('/') + "/rest/v1";
-            _anonKey = anonKey;
+
+            // Strategy 조합: apikey + Bearer(JWT or anon), 재시도 없음
+            var t = transport ?? new UnityHttpTransport();
+            var auth = new BearerJwtOrAnonAuth(() => Session, anonKey);
+            _executor = new HttpExecutor(t, auth, new NoRetry());
         }
 
         static string ToSnakeCase(string name)
@@ -59,35 +72,68 @@ namespace Tjdtjq5.SupaRun
 
         async Task<ServerResponse<T>> Fetch<T>(string url)
         {
+            // anonymous 호출 사전 경고: silent failure(success=true, count=0) 진단용
+            // RLS authenticated 정책이 걸린 테이블이면 빈 결과가 반환된다.
+            // (P0-4, P2-4 보존)
+            bool isAnonymous = string.IsNullOrEmpty(Session?.accessToken);
+            string anonHint = null;
+            if (isAnonymous)
+            {
+                anonHint = "anonymous 호출 — RLS authenticated 정책이 걸린 테이블이면 빈 결과가 반환됨. SupaRun.Login() 호출 여부 확인 필요.";
+                Debug.LogWarning($"[SupaRun:REST] {anonHint} ({url})");
+            }
+
+            // 인증 헤더는 BearerJwtOrAnonAuth strategy가 자동 적용
+            var request = new HttpTransportRequest
+            {
+                Url = url,
+                Method = "GET",
+                TimeoutSeconds = 15,
+            };
+            var response = await _executor.ExecuteAsync(request);
+
+            if (!response.Success)
+            {
+                return new ServerResponse<T>
+                {
+                    success = false,
+                    error = response.Error,
+                    statusCode = response.StatusCode,
+                    errorType = response.IsConnectionError
+                        ? ErrorType.NetworkError
+                        : (response.StatusCode >= 500 ? ErrorType.ServerError : ErrorType.BadRequest),
+                    isAuthenticated = !isAnonymous,
+                    hint = anonHint,
+                };
+            }
+
+            T data = default;
             try
             {
-                using var request = new UnityWebRequest(url, "GET");
-                request.downloadHandler = new DownloadHandlerBuffer();
-                request.SetRequestHeader("apikey", _anonKey);
-                request.SetRequestHeader("Authorization", $"Bearer {_anonKey}");
-                request.timeout = 15;
-
-                var op = request.SendWebRequest();
-                while (!op.isDone) await Task.Yield();
-
-                if (request.result != UnityWebRequest.Result.Success)
-                {
-                    return new ServerResponse<T>
-                    {
-                        success = false,
-                        error = request.error,
-                        statusCode = (int)request.responseCode,
-                        errorType = request.responseCode >= 500 ? ErrorType.ServerError : ErrorType.BadRequest
-                    };
-                }
-
-                var data = JsonConvert.DeserializeObject<T>(request.downloadHandler.text);
-                return new ServerResponse<T> { success = true, data = data, statusCode = 200 };
+                if (!string.IsNullOrEmpty(response.ResponseText))
+                    data = JsonConvert.DeserializeObject<T>(response.ResponseText);
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
-                return new ServerResponse<T> { success = false, error = ex.Message, errorType = ErrorType.NetworkError };
+                return new ServerResponse<T>
+                {
+                    success = false,
+                    error = $"JSON 파싱 실패: {ex.Message}",
+                    statusCode = response.StatusCode,
+                    errorType = ErrorType.BadRequest,
+                    isAuthenticated = !isAnonymous,
+                    hint = anonHint,
+                };
             }
+
+            return new ServerResponse<T>
+            {
+                success = true,
+                data = data,
+                statusCode = 200,
+                isAuthenticated = !isAnonymous,
+                hint = anonHint, // 성공해도 anonymous 호출이었음을 호출자에게 전달
+            };
         }
     }
 }

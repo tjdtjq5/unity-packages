@@ -2,16 +2,22 @@ using System;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
-using UnityEngine;
-using UnityEngine.Networking;
 
 namespace Tjdtjq5.SupaRun
 {
-    /// <summary>HTTP 클라이언트. UnityWebRequest 기반, 자동 재시도 + 토큰 갱신.</summary>
-    public class SupaRunClient
+    /// <summary>HTTP 클라이언트 (Cloud Run). UnityWebRequest 직접 사용에서 HttpExecutor + Strategy 패턴으로 리팩터됨.</summary>
+    /// <remarks>
+    /// P2-1f: HTTP 송신/재시도/토큰 갱신을 HttpExecutor에 위임.
+    /// - 인증 헤더: BearerTokenAuth (Session 있고 만료 안 됐을 때만 첨부)
+    /// - 재시도: ExponentialBackoffRetry (3회, 1s/2s/4s 지수 백오프)
+    /// - 401 갱신: CallbackAuthRefresher (OnTokenRefresh 콜백 위임)
+    ///
+    /// public API (GetAsync, PostAsync, PostAsync&lt;T&gt;, Session, OnTokenRefresh) 는 그대로 유지.
+    /// </remarks>
+    public class SupaRunClient : IServerClient
     {
         readonly ServerConfig _config;
-        const int MaxRetries = 3;
+        readonly HttpExecutor _executor;
 
         /// <summary>인증 세션. SupabaseAuth가 설정. 그 전까지 null.</summary>
         public AuthSession Session { get; internal set; }
@@ -19,148 +25,118 @@ namespace Tjdtjq5.SupaRun
         /// <summary>토큰 갱신 콜백. 401 시 호출되어 새 세션을 반환. 실패 시 null.</summary>
         public Func<Task<AuthSession>> OnTokenRefresh { get; set; }
 
-        public SupaRunClient(ServerConfig config)
+        public SupaRunClient(ServerConfig config, IHttpTransport transport = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
+
+            // Strategy 조합:
+            // - BearerTokenAuth: Session lazy read (매 송신 시 평가)
+            // - ExponentialBackoffRetry: 5xx/Timeout 시 1s/2s/4s 백오프, 최대 3회
+            // - CallbackAuthRefresher: OnTokenRefresh 프로퍼티를 lazy read (closure)
+            var t = transport ?? new UnityHttpTransport();
+            var auth = new BearerTokenAuth(() => Session);
+            var retry = new ExponentialBackoffRetry(maxAttempts: 3, baseDelayMs: 1000);
+            var refresher = new CallbackAuthRefresher(async () =>
+                OnTokenRefresh != null ? await OnTokenRefresh() : null);
+            _executor = new HttpExecutor(t, auth, retry, refresher);
         }
 
         string BaseUrl => _config.cloudRunUrl;
 
         public async Task<ServerResponse<T>> GetAsync<T>(string endpoint)
         {
-            return await RequestWithRetry<T>("GET", endpoint, null);
+            var request = BuildRequest("GET", endpoint, null);
+            var response = await _executor.ExecuteAsync(request);
+            return ParseResponse<T>(response);
         }
 
         public async Task<ServerResponse<T>> PostAsync<T>(string endpoint, object payload)
         {
-            return await RequestWithRetry<T>("POST", endpoint, payload);
+            var request = BuildRequest("POST", endpoint, payload);
+            var response = await _executor.ExecuteAsync(request);
+            return ParseResponse<T>(response);
         }
 
         public async Task<ServerResponse> PostAsync(string endpoint, object payload)
         {
-            var result = await RequestWithRetry<object>("POST", endpoint, payload);
+            var result = await PostAsync<object>(endpoint, payload);
             return new ServerResponse
             {
                 success = result.success,
                 error = result.error,
                 errorType = result.errorType,
-                statusCode = result.statusCode
+                statusCode = result.statusCode,
+                isAuthenticated = result.isAuthenticated,
+                hint = result.hint,
             };
         }
 
-        async Task<ServerResponse<T>> RequestWithRetry<T>(string method, string endpoint, object payload)
+        HttpTransportRequest BuildRequest(string method, string endpoint, object payload)
         {
-            ServerResponse<T> lastResponse = null;
-            bool tokenRefreshed = false;
-
-            for (int attempt = 0; attempt <= MaxRetries; attempt++)
+            var request = new HttpTransportRequest
             {
-                lastResponse = await SendRequest<T>(method, endpoint, payload);
-
-                // 성공
-                if (lastResponse.success)
-                    return lastResponse;
-
-                // 토큰 만료 → 자동 갱신 후 1회만 재시도
-                if (lastResponse.errorType == ErrorType.AuthExpired && OnTokenRefresh != null && !tokenRefreshed)
-                {
-                    var newSession = await OnTokenRefresh();
-                    if (newSession != null)
-                    {
-                        tokenRefreshed = true;
-                        continue;
-                    }
-                    return lastResponse;
-                }
-
-                // 재시도 가능한 에러 (5xx, Timeout)
-                if (lastResponse.errorType is ErrorType.ServerError or ErrorType.Timeout && attempt < MaxRetries)
-                {
-                    int delayMs = (int)(Math.Pow(2, attempt) * 1000); // 1s, 2s, 4s
-                    await Task.Delay(delayMs);
-                    continue;
-                }
-
-                // 재시도 불가능한 에러
-                break;
-            }
-
-            return lastResponse;
-        }
-
-        async Task<ServerResponse<T>> SendRequest<T>(string method, string endpoint, object payload)
-        {
-            var url = $"{BaseUrl}/{endpoint}";
-
-            using var request = new UnityWebRequest(url, method);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
+                Url = $"{BaseUrl}/{endpoint}",
+                Method = method,
+                TimeoutSeconds = 30,
+            };
+            request.Headers["Content-Type"] = "application/json";
 
             if (payload != null)
             {
                 var json = JsonConvert.SerializeObject(payload);
-                request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+                request.Body = Encoding.UTF8.GetBytes(json);
             }
 
-            if (Session != null && !Session.IsExpired)
-                request.SetRequestHeader("Authorization", $"Bearer {Session.accessToken}");
-
-            request.timeout = 30;
-
-            var operation = request.SendWebRequest();
-            while (!operation.isDone)
-                await Task.Yield();
-
-            return ParseResponse<T>(request);
+            return request;
         }
 
-        ServerResponse<T> ParseResponse<T>(UnityWebRequest request)
+        ServerResponse<T> ParseResponse<T>(HttpTransportResponse response)
         {
-            var response = new ServerResponse<T>
+            var result = new ServerResponse<T>
             {
-                statusCode = (int)request.responseCode
+                statusCode = response.StatusCode
             };
 
-            if (request.result == UnityWebRequest.Result.Success)
+            if (response.Success)
             {
-                response.success = true;
-                var text = request.downloadHandler.text;
+                result.success = true;
+                var text = response.ResponseText;
                 if (!string.IsNullOrEmpty(text))
                 {
                     try
                     {
-                        response.data = JsonConvert.DeserializeObject<T>(text);
+                        result.data = JsonConvert.DeserializeObject<T>(text);
                     }
                     catch (JsonException)
                     {
                         // plain text 응답 (string, int 등)
                         if (typeof(T) == typeof(string))
-                            response.data = (T)(object)text;
+                            result.data = (T)(object)text;
                         else
-                            response.data = (T)Convert.ChangeType(text.Trim(), typeof(T));
+                            result.data = (T)Convert.ChangeType(text.Trim(), typeof(T));
                     }
                 }
             }
             else
             {
-                response.success = false;
+                result.success = false;
                 // 서버 응답 본문에 상세 에러가 있으면 포함
-                var body = request.downloadHandler?.text;
-                response.error = !string.IsNullOrEmpty(body)
-                    ? $"{request.error}\n{body}"
-                    : request.error;
-                response.errorType = ClassifyError(request);
+                var body = response.ResponseText;
+                result.error = !string.IsNullOrEmpty(body)
+                    ? $"{response.Error}\n{body}"
+                    : response.Error;
+                result.errorType = ClassifyError(response);
             }
 
-            return response;
+            return result;
         }
 
-        static ErrorType ClassifyError(UnityWebRequest request)
+        static ErrorType ClassifyError(HttpTransportResponse response)
         {
-            if (request.result == UnityWebRequest.Result.ConnectionError)
+            if (response.IsConnectionError)
                 return ErrorType.NetworkError;
 
-            return request.responseCode switch
+            return response.StatusCode switch
             {
                 0 => ErrorType.Timeout,
                 401 => ErrorType.AuthExpired,

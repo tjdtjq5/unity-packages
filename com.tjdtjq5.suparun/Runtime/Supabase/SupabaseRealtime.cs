@@ -37,13 +37,6 @@ namespace Tjdtjq5.SupaRun.Supabase
 
         public bool IsConnected => _ws?.State == WebSocketState.Open;
 
-        internal SupabaseRealtime(SupabaseClient client)
-        {
-            _url = client.Url;
-            _anonKey = client.AnonKey;
-        }
-
-        /// <summary>독립 생성 (SupabaseClient 없이).</summary>
         public SupabaseRealtime(string supabaseUrl, string anonKey)
         {
             _url = supabaseUrl;

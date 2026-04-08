@@ -8,25 +8,33 @@
 | 대상 | 경로 | 용도 |
 |------|------|------|
 | Models | `../Models/` | AuthSession, AuthTokenResponse, BanStatus |
-| Client | `../Client/` | SupaRun.Client (서버 API 호출) |
+| Client | `../Client/` | `IServerClient` 인터페이스 (생성자 주입). 정적 `SupaRun.Client`에 의존하지 않음. |
+
+> **P1-3 (2026-04-08)**: `SupaRunAuth → SupaRun.Client` 정적 의존을 `IServerClient` 인터페이스 주입으로 대체. 의존성 사이클 끊김.
+>
+> **P2-2 (2026-04-09)**: `SecureStorage` 정적 클래스를 `ISessionStorage` 인터페이스 + 인스턴스 구현체로 분리. MPPM Virtual Player 자동 키 prefix 분리 (인스턴스마다 별도 게스트 계정).
 
 ## 구조
 
 ```
 Auth/
-├── SupabaseAuth.cs          # 인증 메인 클래스 (게스트/OAuth/플랫폼/토큰 관리)
-├── OAuthHandler.cs           # OAuth 브라우저 플로우 (모바일: 딥링크, PC: localhost HTTP)
-├── SecureStorage.cs          # 플랫폼별 보안 저장소 (iOS: Keychain, Android: KeyStore, PC: PlayerPrefs)
-├── AuthProvider.cs           # 인증 제공자 enum (Guest, Google, Apple, GPGS 등 13종)
+├── SupaRunAuth.cs               # 인증 메인 클래스 (게스트/OAuth/플랫폼/토큰 관리). 이전 이름: SupabaseAuth (P1-2)
+├── ISessionStorage.cs            # P2-2: 세션 저장소 추상화 (KV API, 6 메서드)
+├── SecureSessionStorage.cs       # P2-2: 플랫폼 보안 저장소 구현체 (iOS Keychain / Android KeyStore / PC PlayerPrefs) + key prefix
+├── MemorySessionStorage.cs       # P2-2: 메모리 Dictionary 구현체 (테스트/임시용)
+├── OAuthHandler.cs               # OAuth 브라우저 플로우 (모바일: 딥링크, PC: localhost HTTP)
+├── AuthProvider.cs               # 인증 제공자 enum (Guest, Google, Apple, GPGS 등 13종)
 └── Platform/
-    ├── IPlatformAuth.cs      # 플랫폼 네이티브 인증 인터페이스
-    ├── GPGSAuthHandler.cs    # Google Play Games 인증 (Reflection으로 SDK 감지)
+    ├── IPlatformAuth.cs          # 플랫폼 네이티브 인증 인터페이스
+    ├── GPGSAuthHandler.cs        # Google Play Games 인증 (Reflection으로 SDK 감지)
     └── GameCenterAuthHandler.cs  # Apple Game Center 인증
 ```
 
+> **이전 구조에서 제거됨 (P2-2)**: `SecureStorage.cs` 정적 클래스 — `SecureSessionStorage` 인스턴스로 대체. 플랫폼 분기 로직(iOS Keychain / Android KeyStore / PC PlayerPrefs)은 보존됨.
+
 ## API
 
-### SupabaseAuth
+### SupaRunAuth
 
 | 메서드/프로퍼티 | 설명 |
 |----------------|------|
@@ -58,16 +66,27 @@ Auth/
 | `GetRequiredRedirectUrls(...)` | Supabase에 등록해야 할 URL 목록 (static). |
 | `Dispose()` | 딥링크 구독 해제 + HTTP 서버 정리. |
 
-### SecureStorage (static)
+### ISessionStorage (interface) — P2-2
 
 | 메서드 | 설명 |
 |--------|------|
-| `Set(key, value)` | 보안 저장. iOS: Keychain, Android: AES/GCM 암호화, PC: PlayerPrefs. |
-| `Get(key, defaultValue)` | 보안 읽기. |
+| `Set(key, value)` | 문자열 저장. value가 빈 문자열이면 Delete와 동일. |
+| `Get(key, defaultValue)` | 문자열 읽기. 없으면 defaultValue. |
 | `SetInt(key, value)` | 정수 저장. |
 | `GetInt(key, defaultValue)` | 정수 읽기. |
-| `Delete(key)` | 삭제. |
-| `Save()` | 저장 플러시 (PlayerPrefs.Save). |
+| `Delete(key)` | 키 삭제. |
+| `Save()` | 동기 플러시 (PlayerPrefs.Save). 메모리 구현체는 no-op. |
+
+#### 구현체
+
+| 구현체 | 용도 |
+|--------|------|
+| `SecureSessionStorage(string keyPrefix = "")` | 플랫폼 보안 저장소. iOS Keychain / Android KeyStore / PC PlayerPrefs. **prefix 옵션**: MPPM Virtual Player가 자체 키 사용 시. |
+| `MemorySessionStorage()` | Dictionary 기반. 테스트/임시 세션. 프로세스 종료 시 사라짐. |
+
+#### MPPM 자동 분리
+
+`SupaRun.AutoInitialize()` 가 `GetMppmInstanceId()` 를 호출하여 현재 Editor가 MPPM Virtual Player인지 감지. VP면 인스턴스 ID(예: `mppm40870be5`)를 prefix로 사용 → Main과 별도 게스트 계정. 빌드/Main Editor는 prefix 없음(기존 호환).
 
 ### AuthProvider (enum)
 

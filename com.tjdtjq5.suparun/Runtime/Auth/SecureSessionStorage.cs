@@ -5,14 +5,40 @@ using UnityEngine;
 namespace Tjdtjq5.SupaRun
 {
     /// <summary>
-    /// 플랫폼별 보안 저장소.
-    /// Android: KeyStore AES 암호화 → PlayerPrefs에 암호문 저장
-    /// iOS: Keychain (네이티브 플러그인)
-    /// PC/Editor: PlayerPrefs fallback
+    /// 플랫폼별 보안 세션 저장소.
+    /// - iOS: Keychain (네이티브 플러그인 __Internal)
+    /// - Android: KeyStore AES/GCM 암호화 → PlayerPrefs에 Base64 암호문
+    /// - PC/Editor: PlayerPrefs (평문 fallback, 개발용)
+    ///
+    /// 키 prefix를 지원하여 MPPM Virtual Player 같은 멀티 인스턴스 환경에서
+    /// 인스턴스마다 별도 세션을 보관할 수 있다.
     /// </summary>
-    public static class SecureStorage
+    public class SecureSessionStorage : ISessionStorage
     {
-        public static void Set(string key, string value)
+        readonly string _keyPrefix;
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        AndroidJavaObject _keyStore;
+        bool _androidInitialized;
+        const string ALIAS = "SupaRunSecureKey";
+        const string ANDROID_PREFS = "SupaRun_Secure";
+#endif
+
+        /// <summary>
+        /// 새 보안 저장소 생성.
+        /// </summary>
+        /// <param name="keyPrefix">
+        /// 키 앞에 붙일 prefix. 빈 문자열이면 prefix 없음 (기본).
+        /// MPPM Virtual Player 자동 분리 시 인스턴스 ID(예: "mppm40870be5")가 전달된다.
+        /// </param>
+        public SecureSessionStorage(string keyPrefix = "")
+        {
+            _keyPrefix = string.IsNullOrEmpty(keyPrefix) ? "" : keyPrefix + "_";
+        }
+
+        string K(string key) => _keyPrefix + key;
+
+        public void Set(string key, string value)
         {
             if (string.IsNullOrEmpty(value))
             {
@@ -21,49 +47,49 @@ namespace Tjdtjq5.SupaRun
             }
 
 #if UNITY_IOS && !UNITY_EDITOR
-            _KeychainSet(key, value);
+            _KeychainSet(K(key), value);
 #elif UNITY_ANDROID && !UNITY_EDITOR
-            AndroidSet(key, value);
+            AndroidSet(K(key), value);
 #else
-            PlayerPrefs.SetString(key, value);
+            PlayerPrefs.SetString(K(key), value);
 #endif
         }
 
-        public static string Get(string key, string defaultValue = "")
+        public string Get(string key, string defaultValue = "")
         {
 #if UNITY_IOS && !UNITY_EDITOR
-            var result = _KeychainGet(key);
+            var result = _KeychainGet(K(key));
             return result ?? defaultValue;
 #elif UNITY_ANDROID && !UNITY_EDITOR
-            return AndroidGet(key, defaultValue);
+            return AndroidGet(K(key), defaultValue);
 #else
-            return PlayerPrefs.GetString(key, defaultValue);
+            return PlayerPrefs.GetString(K(key), defaultValue);
 #endif
         }
 
-        public static int GetInt(string key, int defaultValue = 0)
+        public int GetInt(string key, int defaultValue = 0)
         {
             var str = Get(key, null);
             return str != null && int.TryParse(str, out var val) ? val : defaultValue;
         }
 
-        public static void SetInt(string key, int value)
+        public void SetInt(string key, int value)
         {
             Set(key, value.ToString());
         }
 
-        public static void Delete(string key)
+        public void Delete(string key)
         {
 #if UNITY_IOS && !UNITY_EDITOR
-            _KeychainDelete(key);
+            _KeychainDelete(K(key));
 #elif UNITY_ANDROID && !UNITY_EDITOR
-            AndroidDelete(key);
+            AndroidDelete(K(key));
 #else
-            PlayerPrefs.DeleteKey(key);
+            PlayerPrefs.DeleteKey(K(key));
 #endif
         }
 
-        public static void Save()
+        public void Save()
         {
 #if !UNITY_IOS || UNITY_EDITOR
 #if !UNITY_ANDROID || UNITY_EDITOR
@@ -88,12 +114,7 @@ namespace Tjdtjq5.SupaRun
         // ── Android KeyStore ──
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-        static AndroidJavaObject _keyStore;
-        static readonly string ALIAS = "SupaRunSecureKey";
-        static readonly string ANDROID_PREFS = "SupaRun_Secure";
-        static bool _androidInitialized;
-
-        static void AndroidInit()
+        void AndroidInit()
         {
             if (_androidInitialized) return;
             try
@@ -124,12 +145,12 @@ namespace Tjdtjq5.SupaRun
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[SupaRun:SecureStorage] Android KeyStore 초기화 실패, PlayerPrefs fallback: {ex.Message}");
+                Debug.LogWarning($"[SupaRun:SessionStorage] Android KeyStore 초기화 실패, PlayerPrefs fallback: {ex.Message}");
                 _androidInitialized = false;
             }
         }
 
-        static void AndroidSet(string key, string value)
+        void AndroidSet(string key, string value)
         {
             AndroidInit();
             if (!_androidInitialized)
@@ -161,12 +182,12 @@ namespace Tjdtjq5.SupaRun
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[SupaRun:SecureStorage] 암호화 실패, 평문 저장: {ex.Message}");
+                Debug.LogWarning($"[SupaRun:SessionStorage] 암호화 실패, 평문 저장: {ex.Message}");
                 PlayerPrefs.SetString(key, value);
             }
         }
 
-        static string AndroidGet(string key, string defaultValue)
+        string AndroidGet(string key, string defaultValue)
         {
             AndroidInit();
             var secureKey = ANDROID_PREFS + "_" + key;
@@ -201,12 +222,12 @@ namespace Tjdtjq5.SupaRun
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[SupaRun:SecureStorage] 복호화 실패: {ex.Message}");
+                Debug.LogWarning($"[SupaRun:SessionStorage] 복호화 실패: {ex.Message}");
                 return defaultValue;
             }
         }
 
-        static void AndroidDelete(string key)
+        void AndroidDelete(string key)
         {
             PlayerPrefs.DeleteKey(ANDROID_PREFS + "_" + key);
             PlayerPrefs.DeleteKey(key); // 평문 fallback도 삭제

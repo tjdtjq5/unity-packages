@@ -1,7 +1,7 @@
 # Supabase Feature
 
-- **상태**: stable (Auth/Storage는 stub)
-- **용도**: Supabase 저수준 클라이언트. Realtime WebSocket(Broadcast/Presence/PostgresChanges), Auth, Storage 접근점.
+- **상태**: stable (Realtime만 — Auth/Storage stub은 P1-1에서 삭제됨)
+- **용도**: Supabase Realtime WebSocket 저수준 클라이언트 (Broadcast/Presence/PostgresChanges).
 
 ## 의존성
 
@@ -13,32 +13,20 @@
 
 ```
 Supabase/
-├── SupabaseClient.cs      # Supabase 통합 클라이언트 (Auth/Realtime/Storage 프로퍼티)
-├── SupabaseAuth.cs         # Supabase Auth stub (TODO: Phase 1/3 구현 예정)
 ├── SupabaseRealtime.cs     # Realtime WebSocket (Phoenix Channel 프로토콜 vsn=1.0.0)
 ├── RealtimeChannel.cs      # 채널 단위 Broadcast/Presence/PostgresChanges 처리
-├── RealtimeTypes.cs        # Realtime 관련 타입 (PhoenixMessage, PresenceUser, PgChangeData 등)
-└── SupabaseStorage.cs      # Storage stub (TODO: Phase 3 구현 예정)
+└── RealtimeTypes.cs        # Realtime 관련 타입 (PhoenixMessage, PresenceUser, PgChangeData 등)
 ```
 
+> **이전 구조에서 제거됨 (REFACTOR P1-1, 2026-04-08)**: `SupabaseClient`, `SupabaseAuth(stub)`, `SupabaseStorage(stub)` 3개 클래스 — 인스턴스화 안 되는 데드 코드. 실제 인증은 `Runtime/Auth/SupabaseAuth.cs` 가 담당. Storage는 미구현 상태로 추후 별도 구현 시 다시 추가.
+
 ## API
-
-### SupabaseClient
-
-| 멤버 | 설명 |
-|------|------|
-| `SupabaseClient(url, anonKey)` | 생성자. Auth/Realtime/Storage 자동 생성. |
-| `Url` | Supabase 프로젝트 URL. |
-| `AnonKey` | Supabase Anon Key. |
-| `Auth` | SupabaseAuth 인스턴스. |
-| `Realtime` | SupabaseRealtime 인스턴스. |
-| `Storage` | SupabaseStorage 인스턴스. |
 
 ### SupabaseRealtime
 
 | 메서드/프로퍼티 | 설명 |
 |----------------|------|
-| `SupabaseRealtime(supabaseUrl, anonKey)` | 독립 생성 (SupabaseClient 없이). |
+| `SupabaseRealtime(supabaseUrl, anonKey)` | 생성자 (URL + Anon Key). |
 | `Channel(string name)` | 채널 생성/가져오기. Subscribe() 전까지 연결 안 함. |
 | `SetAccessToken(string token)` | RLS 인증용 액세스 토큰 설정. 기존 채널에도 토큰 갱신. |
 | `Disconnect()` | 전체 WebSocket 연결 종료. |
@@ -92,8 +80,7 @@ Supabase/
 
 ## 주의사항
 
-- `SupabaseAuth`(이 폴더)와 `Auth/SupabaseAuth`(상위 Auth 폴더)는 별개 클래스이다. 이 폴더의 것은 `Tjdtjq5.SupaRun.Supabase` 네임스페이스의 stub이고, Auth 폴더의 것이 실제 인증 구현이다.
-- `SupabaseStorage`도 stub 상태이며 Phase 3에서 Upload/Download/Delete를 구현할 예정이다.
+- 인증은 `Runtime/Auth/SupabaseAuth.cs` 가 담당. 이 폴더의 Realtime은 토큰 주입(`SetAccessToken`)만 받는다.
 - WebSocket 수신은 백그라운드 스레드에서 동작하며, 콜백은 `RealtimeDispatcher`(MonoBehaviour)가 메인 스레드로 디스패치한다.
 - `RealtimeDispatcher`는 `[RuntimeInitializeOnLoadMethod]`로 자동 생성되며 DontDestroyOnLoad이다.
 - 하트비트 간격은 25초이며, 응답이 없으면 자동 재연결한다.
