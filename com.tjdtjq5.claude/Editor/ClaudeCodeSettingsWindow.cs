@@ -14,22 +14,19 @@ namespace Tjdtjq5.Claude
     {
         static readonly Color COL_PRIMARY = new(0.42f, 0.36f, 0.91f);
 
+        // ── 기본 설정 (settings.json) ──
+        static readonly string[] ModelOptions = { "기본값 (미지정)", "sonnet", "opus", "haiku" };
+        static readonly string[] ModelValues  = { "",               "sonnet", "opus", "haiku" };
+        static readonly string[] EffortOptions = { "low", "medium", "high", "max" };
+
         // ── 드롭다운 인자 목록 ──
         static readonly string[] ArgOptions =
         {
             "인자 추가...",
-            // 모델
-            "--model sonnet",
-            "--model opus",
-            "--model haiku",
             // 모드
             "--permission-mode default",
             "--permission-mode plan",
             "--permission-mode acceptEdits",
-            // 노력도
-            "--effort low",
-            "--effort medium",
-            "--effort high",
             // 기타
             "--verbose",
             "--continue",
@@ -41,6 +38,8 @@ namespace Tjdtjq5.Claude
         // ── Discord ──
 
         // ── 상태 ──
+        int _modelIdx;
+        int _effortIdx;
         List<string> _selectedArgs = new();
         Color _mainColor;
         Color _wtColor;
@@ -87,6 +86,12 @@ namespace Tjdtjq5.Claude
 
         void OnEnable()
         {
+            // 기본 설정 로드
+            var model = ClaudeCodeSettings.DefaultModel;
+            _modelIdx = Math.Max(0, Array.IndexOf(ModelValues, model));
+            var effort = ClaudeCodeSettings.DefaultEffortLevel;
+            _effortIdx = Math.Max(0, Array.IndexOf(EffortOptions, effort));
+
             ParseArgs(ClaudeCodeSettings.AdditionalArgs);
             _mainColor = ClaudeCodeSettings.MainTabColor;
             _wtColor = ClaudeCodeSettings.WorktreeTabColor;
@@ -140,6 +145,29 @@ namespace Tjdtjq5.Claude
 
             GUILayout.Space(6);
             _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
+
+            // ── 기본 설정 ──
+            EditorTabBase.DrawSectionHeader("기본 설정", COL_PRIMARY);
+            EditorGUILayout.BeginVertical(EditorTabBase.GetBgStyle(EditorTabBase.BG_SECTION));
+            GUILayout.Space(4);
+
+            EditorGUILayout.LabelField("~/.claude/settings.json 에 저장됩니다.", _hintStyle);
+            GUILayout.Space(2);
+
+            EditorGUI.BeginChangeCheck();
+            _modelIdx = EditorGUILayout.Popup("모델", _modelIdx, ModelOptions);
+            if (EditorGUI.EndChangeCheck())
+                ClaudeCodeSettings.DefaultModel = ModelValues[_modelIdx];
+
+            EditorGUI.BeginChangeCheck();
+            _effortIdx = EditorGUILayout.Popup("Effort", _effortIdx, EffortOptions);
+            if (EditorGUI.EndChangeCheck())
+                ClaudeCodeSettings.DefaultEffortLevel = EffortOptions[_effortIdx];
+
+            GUILayout.Space(4);
+            EditorGUILayout.EndVertical();
+
+            GUILayout.Space(4);
 
             // ── Claude 명령어 ──
             EditorTabBase.DrawSectionHeader("Claude 명령어", COL_PRIMARY);

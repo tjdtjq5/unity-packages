@@ -1,5 +1,7 @@
 using System;
+using System.IO;
 using System.Text;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -98,6 +100,65 @@ namespace Tjdtjq5.Claude
         {
             get => EditorPrefs.GetBool(Prefix + "RC_Setup", false);
             set => EditorPrefs.SetBool(Prefix + "RC_Setup", value);
+        }
+
+        // ── Claude Code 글로벌 설정 (~/.claude/settings.json) ──
+
+        static string SettingsJsonPath =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".claude", "settings.json");
+
+        /// <summary>기본 모델. 빈 문자열이면 미지정(Claude 기본값 사용).</summary>
+        public static string DefaultModel
+        {
+            get => ReadSettingsKey("model", "");
+            set => WriteSettingsKey("model", string.IsNullOrEmpty(value) ? null : value);
+        }
+
+        /// <summary>기본 Effort 레벨.</summary>
+        public static string DefaultEffortLevel
+        {
+            get => ReadSettingsKey("effortLevel", "high");
+            set => WriteSettingsKey("effortLevel", value);
+        }
+
+        static string ReadSettingsKey(string key, string fallback)
+        {
+            try
+            {
+                if (!File.Exists(SettingsJsonPath)) return fallback;
+                var json = JObject.Parse(File.ReadAllText(SettingsJsonPath));
+                var token = json[key];
+                return token?.Type == JTokenType.String ? token.Value<string>() : fallback;
+            }
+            catch { return fallback; }
+        }
+
+        static void WriteSettingsKey(string key, string value)
+        {
+            try
+            {
+                var path = SettingsJsonPath;
+                var dir = Path.GetDirectoryName(path)!;
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                JObject json;
+                if (File.Exists(path))
+                    json = JObject.Parse(File.ReadAllText(path));
+                else
+                    json = new JObject();
+
+                if (value == null)
+                    json.Remove(key);
+                else
+                    json[key] = value;
+
+                File.WriteAllText(path, json.ToString(Newtonsoft.Json.Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Claude Code] settings.json 쓰기 실패: {ex.Message}");
+            }
         }
 
         // ── 유틸 ──
