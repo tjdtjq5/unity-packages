@@ -151,18 +151,19 @@ namespace Tjdtjq5.Claude
             EditorGUILayout.BeginVertical(EditorTabBase.GetBgStyle(EditorTabBase.BG_SECTION));
             GUILayout.Space(4);
 
-            EditorGUILayout.LabelField("~/.claude/settings.json 에 저장됩니다.", _hintStyle);
-            GUILayout.Space(2);
-
             EditorGUI.BeginChangeCheck();
             _modelIdx = EditorGUILayout.Popup("모델", _modelIdx, ModelOptions);
             if (EditorGUI.EndChangeCheck())
                 ClaudeCodeSettings.DefaultModel = ModelValues[_modelIdx];
+            EditorGUILayout.LabelField("~/.claude/settings.json 에 저장", _hintStyle);
+
+            GUILayout.Space(2);
 
             EditorGUI.BeginChangeCheck();
             _effortIdx = EditorGUILayout.Popup("Effort", _effortIdx, EffortOptions);
             if (EditorGUI.EndChangeCheck())
                 ClaudeCodeSettings.DefaultEffortLevel = EffortOptions[_effortIdx];
+            EditorGUILayout.LabelField("CLI 인자(--effort)로 전달", _hintStyle);
 
             GUILayout.Space(4);
             EditorGUILayout.EndVertical();

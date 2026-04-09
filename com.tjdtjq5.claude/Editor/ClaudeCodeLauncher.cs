@@ -340,6 +340,12 @@ namespace Tjdtjq5.Claude
         internal static string BuildClaudeCommand(string sessionLabel = null)
         {
             var sb = new StringBuilder("claude");
+
+            // Effort 레벨 (별도 인자로 전달)
+            var effort = ClaudeCodeSettings.DefaultEffortLevel;
+            if (!string.IsNullOrEmpty(effort))
+                sb.Append($" --effort {effort}");
+
             var extra = ClaudeCodeSettings.AdditionalArgs.Trim();
             if (!string.IsNullOrEmpty(extra))
                 sb.Append(' ').Append(extra);

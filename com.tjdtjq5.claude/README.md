@@ -15,7 +15,7 @@ Unity 에디터에서 Claude Code CLI 실행 + git worktree 관리.
 - 활성 워크트리 수가 벳지로 표시됨
 
 ### Settings (`Tools > Claude Code > Settings`)
-- **기본 설정**: 모델(sonnet/opus/haiku) + Effort(low/medium/high/max) — `~/.claude/settings.json` 직접 반영
+- **기본 설정**: 모델(sonnet/opus/haiku, settings.json 저장) + Effort(low/medium/high/max, `--effort` CLI 인자로 전달)
 - 추가 인자 (claude CLI 옵션)
 - 탭 색상 (메인/워크트리)
 - Windows Terminal 윈도우 이름
@@ -26,7 +26,7 @@ Unity 에디터에서 Claude Code CLI 실행 + git worktree 관리.
 ## 설치
 
 ```json
-"com.tjdtjq5.claude": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.claude#claude/v1.1.1"
+"com.tjdtjq5.claude": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.claude#claude/v1.1.2"
 ```
 
 ## 요구사항
@@ -35,4 +35,4 @@ Unity 에디터에서 Claude Code CLI 실행 + git worktree 관리.
 - `com.tjdtjq5.editor-toolkit` 패키지
 
 ## 상태
-v1.1.1
+v1.1.2

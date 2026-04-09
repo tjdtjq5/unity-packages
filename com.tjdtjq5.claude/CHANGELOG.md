@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.2] - 2026-04-09
+
+### Changed
+- Effort 레벨을 `--effort` CLI 인자로 직접 전달 (settings.json → EditorPrefs로 저장 변경)
+- Settings UI 힌트 텍스트 개선 (모델: settings.json, Effort: CLI 인자 구분 표시)
+
 ## [1.1.1] - 2026-04-09
 
 ### Added

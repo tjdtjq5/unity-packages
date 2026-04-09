@@ -115,11 +115,11 @@ namespace Tjdtjq5.Claude
             set => WriteSettingsKey("model", string.IsNullOrEmpty(value) ? null : value);
         }
 
-        /// <summary>기본 Effort 레벨.</summary>
+        /// <summary>기본 Effort 레벨. CLI 인자(--effort)로 전달되므로 EditorPrefs에 저장.</summary>
         public static string DefaultEffortLevel
         {
-            get => ReadSettingsKey("effortLevel", "high");
-            set => WriteSettingsKey("effortLevel", value);
+            get => EditorPrefs.GetString(Prefix + "Effort", "high");
+            set => EditorPrefs.SetString(Prefix + "Effort", value);
         }
 
         static string ReadSettingsKey(string key, string fallback)
