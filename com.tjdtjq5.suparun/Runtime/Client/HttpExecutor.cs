@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Threading.Tasks;
 
@@ -18,10 +19,10 @@ namespace Tjdtjq5.SupaRun
         readonly IHttpTransport _transport;
         readonly IAuthStrategy _auth;
         readonly IRetryStrategy _retry;
-        readonly IAuthRefresher _refresher; // optional — null이면 401 시 그대로 응답 반환
+        readonly IAuthRefresher? _refresher; // optional — null이면 401 시 그대로 응답 반환
 
         public HttpExecutor(IHttpTransport transport, IAuthStrategy auth,
-                            IRetryStrategy retry = null, IAuthRefresher refresher = null)
+                            IRetryStrategy? retry = null, IAuthRefresher? refresher = null)
         {
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
             _auth = auth ?? throw new ArgumentNullException(nameof(auth));

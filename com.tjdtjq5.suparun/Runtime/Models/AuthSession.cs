@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 
 namespace Tjdtjq5.SupaRun
@@ -5,9 +6,9 @@ namespace Tjdtjq5.SupaRun
     [Serializable]
     public class AuthSession
     {
-        public string accessToken;
-        public string refreshToken;
-        public string userId;
+        public string? accessToken;
+        public string? refreshToken;
+        public string? userId;
         public long expiresAt;
         public bool isGuest;
 

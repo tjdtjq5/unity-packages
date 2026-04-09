@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 
 namespace Tjdtjq5.SupaRun
@@ -6,8 +7,8 @@ namespace Tjdtjq5.SupaRun
     public class ServerResponse<T>
     {
         public bool success;
-        public T data;
-        public string error;
+        public T? data;
+        public string? error;
         public ErrorType errorType;
         public int statusCode;
 
@@ -22,14 +23,14 @@ namespace Tjdtjq5.SupaRun
         /// 예: "anonymous 호출 — RLS authenticated 정책에 막힐 수 있음", "LocalDB fallback — 서버 미연결".
         /// 정상 응답에서는 null.
         /// </summary>
-        public string hint;
+        public string? hint;
     }
 
     [Serializable]
     public class ServerResponse
     {
         public bool success;
-        public string error;
+        public string? error;
         public ErrorType errorType;
         public int statusCode;
 
@@ -37,6 +38,6 @@ namespace Tjdtjq5.SupaRun
         public bool isAuthenticated;
 
         /// <inheritdoc cref="ServerResponse{T}.hint"/>
-        public string hint;
+        public string? hint;
     }
 }

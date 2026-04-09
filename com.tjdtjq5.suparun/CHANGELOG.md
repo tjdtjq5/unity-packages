@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4.0] - 2026-04-09
+
+### Added
+- **`IRealtimeClient`** — Realtime 추상화 인터페이스 (P3-3). Mock 주입으로 단위 테스트 가능.
+- **`IAuthApi` + `SupabaseAuthApi`** — Auth HTTP 계층 분리 (P2-1d 완료). 패키지 전체 UnityWebRequest 직접 사용 0건.
+- **`ApiKeyAuth`** — apikey 헤더 전용 IAuthStrategy (Supabase Auth 엔드포인트용)
+- **EditMode 단위 테스트 67개** — Strategy, HttpExecutor, SessionStorage, RestClient, SupaRunClient, Auth, TokenPropagation (P3-2, P3-3)
+- **`SupaRunRuntimeOptions.AuthApi` / `.Realtime`** — mock 주입 지원
+- **`AssemblyInfo.cs`** — `[InternalsVisibleTo]` 테스트 어셈블리 접근
+
+### Changed
+- **`SupabaseRealtime`** — `IRealtimeClient` 구현 (인터페이스 추출)
+- **`SupaRunAuth.Post()`** — inline UnityWebRequest → `IAuthApi` 위임
+- **`SupaRunRuntime._realtime`** — 구체 타입 → `IRealtimeClient` 인터페이스
+- **`SupaRun.Realtime`** — `SupabaseRealtime?` → `IRealtimeClient?`
+- **`SupaRunRuntime.OnAuthSessionChanged`** — `void` → `internal void` (테스트 접근)
+- nullable annotation 전체 적용 (`#nullable enable` 17개 파일) (P3-4)
+- SourceGen BuildProcessor 통합 (BuildProxy 제거, ~130줄 삭제) (P3-1)
+
+### Removed
+- **`REFACTOR.md`** — P0~P3 전체 완료, 이력은 git log 참조
+
 ## [0.3.11] - 2026-04-09
 
 ### Major Refactor (P0+P1+P2 통합)

@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 
 namespace Tjdtjq5.SupaRun
@@ -13,7 +14,7 @@ namespace Tjdtjq5.SupaRun
     {
         readonly Dictionary<string, string> _store = new();
 
-        public void Set(string key, string value)
+        public void Set(string key, string? value)
         {
             if (string.IsNullOrEmpty(value))
                 _store.Remove(key);
@@ -21,7 +22,7 @@ namespace Tjdtjq5.SupaRun
                 _store[key] = value;
         }
 
-        public string Get(string key, string defaultValue = "")
+        public string? Get(string key, string? defaultValue = "")
             => _store.TryGetValue(key, out var v) ? v : defaultValue;
 
         public void SetInt(string key, int value)

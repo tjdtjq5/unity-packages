@@ -14,7 +14,7 @@ namespace Tjdtjq5.SupaRun.Supabase
     /// Supabase Realtime WebSocket 클라이언트.
     /// Phoenix Channel 프로토콜 (vsn=1.0.0) 구현.
     /// </summary>
-    public class SupabaseRealtime
+    public class SupabaseRealtime : IRealtimeClient
     {
         readonly string _url;
         readonly string _anonKey;

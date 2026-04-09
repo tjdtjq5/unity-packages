@@ -1,3 +1,4 @@
+#nullable enable
 namespace Tjdtjq5.SupaRun
 {
     /// <summary>
@@ -18,10 +19,10 @@ namespace Tjdtjq5.SupaRun
         public int StatusCode;
 
         /// <summary>응답 body 텍스트. UTF-8 디코딩됨. 빈 응답이면 null 또는 빈 문자열.</summary>
-        public string ResponseText;
+        public string? ResponseText;
 
         /// <summary>UnityWebRequest.error 메시지. Success=false 일 때 의미 있음.</summary>
-        public string Error;
+        public string? Error;
 
         /// <summary>
         /// 네트워크 연결 실패 여부. true면 서버 응답을 못 받은 상태(DNS, timeout, refused 등).

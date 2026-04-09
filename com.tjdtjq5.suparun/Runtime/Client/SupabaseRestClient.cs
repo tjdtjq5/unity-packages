@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -20,9 +21,9 @@ namespace Tjdtjq5.SupaRun
         /// 세션이 있으면 Authorization Bearer에 유저 JWT를 사용해
         /// `authenticated` role이 필요한 RLS 정책을 통과한다.
         /// </summary>
-        public AuthSession Session { get; set; }
+        public AuthSession? Session { get; set; }
 
-        public SupabaseRestClient(string supabaseUrl, string anonKey, IHttpTransport transport = null)
+        public SupabaseRestClient(string supabaseUrl, string anonKey, IHttpTransport? transport = null)
         {
             _restUrl = supabaseUrl?.TrimEnd('/') + "/rest/v1";
 
@@ -76,7 +77,7 @@ namespace Tjdtjq5.SupaRun
             // RLS authenticated 정책이 걸린 테이블이면 빈 결과가 반환된다.
             // (P0-4, P2-4 보존)
             bool isAnonymous = string.IsNullOrEmpty(Session?.accessToken);
-            string anonHint = null;
+            string? anonHint = null;
             if (isAnonymous)
             {
                 anonHint = "anonymous 호출 — RLS authenticated 정책이 걸린 테이블이면 빈 결과가 반환됨. SupaRun.Login() 호출 여부 확인 필요.";

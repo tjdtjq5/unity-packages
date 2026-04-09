@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Text;
 using System.Threading.Tasks;
@@ -20,12 +21,12 @@ namespace Tjdtjq5.SupaRun
         readonly HttpExecutor _executor;
 
         /// <summary>인증 세션. SupabaseAuth가 설정. 그 전까지 null.</summary>
-        public AuthSession Session { get; internal set; }
+        public AuthSession? Session { get; internal set; }
 
         /// <summary>토큰 갱신 콜백. 401 시 호출되어 새 세션을 반환. 실패 시 null.</summary>
-        public Func<Task<AuthSession>> OnTokenRefresh { get; set; }
+        public Func<Task<AuthSession?>>? OnTokenRefresh { get; set; }
 
-        public SupaRunClient(ServerConfig config, IHttpTransport transport = null)
+        public SupaRunClient(ServerConfig config, IHttpTransport? transport = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
 

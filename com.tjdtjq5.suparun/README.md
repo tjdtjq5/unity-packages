@@ -8,7 +8,7 @@ ASP.NET + Supabase + Cloud Run 자동 배포.
 manifest.json에 추가:
 
 ```json
-"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.3.11"
+"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.4.0"
 ```
 
 ### 의존성
@@ -46,14 +46,15 @@ var result = await ServerAPI.CurrencyService.GetBalance(playerId);
 - **Cloud Run 배포**: ASP.NET 서버 자동 빌드 + 배포
 - **Editor Window**: 통합 설정 + 배포 관리 UI
 
-## 아키텍처 (v0.3.11+)
+## 아키텍처 (v0.4.0+)
 
 - **`SupaRun`** (정적 facade) — 호환성 진입점. 내부적으로 `SupaRunRuntime`에 위임.
 - **`SupaRunRuntime`** (인스턴스) — 모든 자원 보유. 단위 테스트/DI에 직접 사용 가능.
 - **`HttpExecutor` + Strategy 패턴** — `IAuthStrategy` + `IRetryStrategy` + `IAuthRefresher` 조합. mock transport로 단위 테스트 가능.
 - **`ISessionStorage`** — `SecureSessionStorage` (플랫폼) / `MemorySessionStorage` (테스트). MPPM 자동 prefix 분리.
-
-자세한 리팩터 내역은 `REFACTOR.md` 참조.
+- **`IRealtimeClient`** — Realtime 추상화. `SupabaseRealtime` 또는 mock 주입.
+- **`IAuthApi`** — Auth HTTP 추상화. `SupabaseAuthApi` 또는 mock 주입.
+- **EditMode 단위 테스트 67개** — 전체 HTTP/Auth/Realtime 계층 mock 검증.
 
 ## 디버깅
 

@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Runtime.InteropServices;
 using UnityEngine;
@@ -38,7 +39,7 @@ namespace Tjdtjq5.SupaRun
 
         string K(string key) => _keyPrefix + key;
 
-        public void Set(string key, string value)
+        public void Set(string key, string? value)
         {
             if (string.IsNullOrEmpty(value))
             {
@@ -55,7 +56,7 @@ namespace Tjdtjq5.SupaRun
 #endif
         }
 
-        public string Get(string key, string defaultValue = "")
+        public string? Get(string key, string? defaultValue = "")
         {
 #if UNITY_IOS && !UNITY_EDITOR
             var result = _KeychainGet(K(key));

@@ -1,3 +1,4 @@
+#nullable enable
 namespace Tjdtjq5.SupaRun
 {
     /// <summary>
@@ -23,24 +24,36 @@ namespace Tjdtjq5.SupaRun
     public class SupaRunRuntimeOptions
     {
         /// <summary>Supabase 프로젝트 URL (예: "https://xxx.supabase.co"). 비어있으면 Auth/REST 클라이언트 미생성.</summary>
-        public string SupabaseUrl;
+        public string? SupabaseUrl;
 
         /// <summary>Supabase Anon Key. 비어있으면 Auth/REST 클라이언트 미생성.</summary>
-        public string AnonKey;
+        public string? AnonKey;
 
         /// <summary>Cloud Run base URL. null/빈값이면 Cloud Run 호출(SupaRunClient) 비활성.</summary>
-        public string CloudRunUrl;
+        public string? CloudRunUrl;
 
         /// <summary>
         /// HTTP transport 구현체. null이면 <see cref="UnityHttpTransport"/> 기본 사용.
         /// 단위 테스트 시 mock transport 주입에 사용.
         /// </summary>
-        public IHttpTransport Transport;
+        public IHttpTransport? Transport;
 
         /// <summary>
         /// 세션 저장소 구현체. null이면 <see cref="SecureSessionStorage"/> + MPPM 자동 prefix 기본 사용.
         /// 단위 테스트 시 <see cref="MemorySessionStorage"/> 주입에 사용.
         /// </summary>
-        public ISessionStorage SessionStorage;
+        public ISessionStorage? SessionStorage;
+
+        /// <summary>
+        /// Supabase Auth HTTP API 구현체. null이면 <see cref="SupabaseAuthApi"/> 기본 사용.
+        /// 단위 테스트 시 mock 주입으로 로그인 흐름 검증에 사용.
+        /// </summary>
+        public IAuthApi? AuthApi;
+
+        /// <summary>
+        /// Realtime 클라이언트 구현체. null이면 <see cref="Supabase.SupabaseRealtime"/> 기본 사용.
+        /// 단위 테스트 시 mock 주입으로 토큰 전파 검증에 사용.
+        /// </summary>
+        public Supabase.IRealtimeClient? Realtime;
     }
 }

@@ -1,10 +1,10 @@
+#nullable enable
 using System;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
-using UnityEngine.Networking;
 
 namespace Tjdtjq5.SupaRun
 {
@@ -15,43 +15,47 @@ namespace Tjdtjq5.SupaRun
         readonly string _anonKey;
         // 게임 서버 호출용 클라이언트. P1-3 리팩터로 정적 SupaRun.Client 의존 제거.
         // null이면 DeleteAccount/CheckBan/플랫폼 인증 같은 서버 의존 기능은 동작하지 않음.
-        readonly IServerClient _serverClient;
+        readonly IServerClient? _serverClient;
         // 세션 토큰 저장소. P2-2 리팩터로 정적 SecureStorage 의존 제거.
         // null이면 기본 SecureSessionStorage 사용 (prefix 없음).
         readonly ISessionStorage _storage;
+        // Supabase Auth HTTP API. P3 리팩터로 inline UnityWebRequest 제거.
+        readonly IAuthApi _authApi;
 
         const string PREF_ACCESS  = "SupaRun_AccessToken";
         const string PREF_REFRESH = "SupaRun_RefreshToken";
         const string PREF_USER_ID = "SupaRun_UserId";
         const string PREF_IS_GUEST = "SupaRun_IsGuest";
 
-        public AuthSession Session { get; private set; }
+        public AuthSession? Session { get; private set; }
         public bool IsLoggedIn => Session != null && !string.IsNullOrEmpty(Session.accessToken);
-        public string UserId => Session?.userId;
+        public string? UserId => Session?.userId;
         public bool IsGuest => Session?.isGuest ?? true;
 
-        public event Action<AuthSession> OnSessionChanged;
-        public event Action OnSessionExpired;
+        public event Action<AuthSession>? OnSessionChanged;
+        public event Action? OnSessionExpired;
         /// <summary>다른 기기에서 로그인 시 호출. 서버 세션 관리 구현 후 동작.</summary>
         #pragma warning disable CS0067
-        public event Action OnKicked;
+        public event Action? OnKicked;
         #pragma warning restore CS0067
-        public event Action<string> OnBanned;
+        public event Action<string>? OnBanned;
 
         OAuthHandler _oauthHandler;
 
-        public SupaRunAuth(string supabaseUrl, string anonKey, string cloudRunUrl = null,
-                           IServerClient serverClient = null,
-                           ISessionStorage storage = null)
+        public SupaRunAuth(string supabaseUrl, string anonKey, string? cloudRunUrl = null,
+                           IServerClient? serverClient = null,
+                           ISessionStorage? storage = null,
+                           IAuthApi? authApi = null)
         {
             _supabaseUrl = supabaseUrl?.TrimEnd('/');
             _anonKey = anonKey;
             _oauthHandler = new OAuthHandler(supabaseUrl, cloudRunUrl);
             _serverClient = serverClient;
             _storage = storage ?? new SecureSessionStorage();
+            _authApi = authApi ?? new SupabaseAuthApi(supabaseUrl, anonKey);
         }
 
-        Task _loginTask;
+        Task? _loginTask;
 
         /// <summary>자동 로그인. 중복 호출 방지.</summary>
         public Task EnsureLoggedIn()
@@ -119,14 +123,14 @@ namespace Tjdtjq5.SupaRun
         // ── Supabase API ──
 
         /// <summary>Supabase Anonymous Sign-in. 이메일/비밀번호 불필요.</summary>
-        async Task<AuthSession> SignInAnonymously()
+        async Task<AuthSession?> SignInAnonymously()
         {
             var result = await Post("/auth/v1/signup", "{}");
             return result != null ? ParseAuthResponse(result) : null;
         }
 
         /// <summary>현재 세션의 토큰을 갱신. 성공 시 새 세션 반환 + OnSessionChanged 발행.</summary>
-        public async Task<AuthSession> TryRefreshToken()
+        public async Task<AuthSession?> TryRefreshToken()
         {
             if (Session == null || string.IsNullOrEmpty(Session.refreshToken))
                 return null;
@@ -142,14 +146,14 @@ namespace Tjdtjq5.SupaRun
             return refreshed;
         }
 
-        async Task<AuthSession> RefreshSession(string refreshToken)
+        async Task<AuthSession?> RefreshSession(string refreshToken)
         {
             var body = JsonConvert.SerializeObject(new { refresh_token = refreshToken });
             var result = await Post("/auth/v1/token?grant_type=refresh_token", body);
             return result != null ? ParseAuthResponse(result) : null;
         }
 
-        AuthSession ParseAuthResponse(string json)
+        AuthSession? ParseAuthResponse(string json)
         {
             try
             {
@@ -185,46 +189,17 @@ namespace Tjdtjq5.SupaRun
             }
         }
 
-        // ── HTTP ──
+        // ── HTTP (IAuthApi 위임) ──
 
-        async Task<string> Post(string endpoint, string jsonBody)
+        async Task<string?> Post(string endpoint, string jsonBody)
         {
-            var url = _supabaseUrl + endpoint;
-            SupaRun.LogVerbose($"[SupaRun:Auth] POST {url}");
-
             if (string.IsNullOrEmpty(_supabaseUrl) || string.IsNullOrEmpty(_anonKey))
             {
                 Debug.LogWarning($"[SupaRun:Auth] Supabase URL 또는 Anon Key가 비어있습니다. url={_supabaseUrl}, key={(_anonKey?.Length > 0 ? "설정됨" : "비어있음")}");
                 return null;
             }
 
-            try
-            {
-                using var request = new UnityWebRequest(url, "POST");
-                request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
-                request.downloadHandler = new DownloadHandlerBuffer();
-                request.SetRequestHeader("Content-Type", "application/json");
-                request.SetRequestHeader("apikey", _anonKey);
-                request.timeout = 15;
-
-                var op = request.SendWebRequest();
-                while (!op.isDone)
-                    await Task.Yield();
-
-                SupaRun.LogVerbose($"[SupaRun:Auth] Response {request.responseCode}: {request.downloadHandler.text?.Substring(0, System.Math.Min(200, request.downloadHandler.text?.Length ?? 0))}");
-
-                if (request.result == UnityWebRequest.Result.Success ||
-                    request.responseCode < 500)
-                    return request.downloadHandler.text;
-
-                Debug.LogWarning($"[SupaRun:Auth] HTTP {request.responseCode}: {request.error}");
-                return null;
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[SupaRun:Auth] 요청 실패: {ex.Message}");
-                return null;
-            }
+            return await _authApi.PostAsync(endpoint, jsonBody);
         }
 
         // ── 세션 저장/로드 (P2-2: ISessionStorage 추상화) ──
@@ -238,7 +213,7 @@ namespace Tjdtjq5.SupaRun
             _storage.Save();
         }
 
-        AuthSession LoadSession()
+        AuthSession? LoadSession()
         {
             var token = _storage.Get(PREF_ACCESS, "");
             if (string.IsNullOrEmpty(token)) return null;
@@ -454,7 +429,7 @@ namespace Tjdtjq5.SupaRun
 
         // ── 유틸 ──
 
-        static string ParseUserIdFromJwt(string jwt)
+        static string? ParseUserIdFromJwt(string jwt)
         {
             try
             {

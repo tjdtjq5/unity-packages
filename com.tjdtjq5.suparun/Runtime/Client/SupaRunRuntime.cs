@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -31,7 +32,7 @@ namespace Tjdtjq5.SupaRun
         internal readonly SupaRunClient _client;
         internal readonly SupabaseRestClient _restClient;
         internal readonly SupaRunAuth _auth;
-        internal readonly Supabase.SupabaseRealtime _realtime;
+        internal readonly Supabase.IRealtimeClient _realtime;
         internal readonly LocalGameDB _localDB;
         internal readonly ISessionStorage _sessionStorage;
 
@@ -39,13 +40,13 @@ namespace Tjdtjq5.SupaRun
 
         // ── public 프로퍼티 ──
         /// <summary>HTTP 클라이언트(Cloud Run). null 가능.</summary>
-        public IServerClient ServerClient => _client;
+        public IServerClient? ServerClient => _client;
 
         /// <summary>인증 매니저. null 가능 (Supabase 설정 없을 때).</summary>
-        public SupaRunAuth Auth => _auth;
+        public SupaRunAuth? Auth => _auth;
 
         /// <summary>실시간 채널 클라이언트. null 가능.</summary>
-        public Supabase.SupabaseRealtime Realtime => _realtime;
+        public Supabase.IRealtimeClient? Realtime => _realtime;
 
         /// <summary>로컬 DB (개발 모드 fallback). 항상 non-null.</summary>
         public LocalGameDB LocalDB => _localDB ?? LocalGameDB.Instance;
@@ -57,10 +58,10 @@ namespace Tjdtjq5.SupaRun
         public bool IsLoggedIn => _auth?.IsLoggedIn ?? false;
 
         /// <summary>현재 인증 세션. null 가능.</summary>
-        public AuthSession CurrentSession => _auth?.Session ?? _client?.Session;
+        public AuthSession? CurrentSession => _auth?.Session ?? _client?.Session;
 
         /// <summary>현재 로그인된 플레이어 ID. null 가능.</summary>
-        public string PlayerId => CurrentSession?.userId;
+        public string? PlayerId => CurrentSession?.userId;
 
         // ── 생성 ──
 
@@ -99,15 +100,17 @@ namespace Tjdtjq5.SupaRun
             {
                 // P1-3: SupaRunAuth가 정적 SupaRun.Client에 의존하지 않도록 IServerClient(_client)를 주입.
                 // P2-2: ISessionStorage 주입.
-                _auth = new SupaRunAuth(supabaseUrl, anonKey, cloudRunUrl, _client, _sessionStorage);
+                // P3: IAuthApi 주입 (Auth HTTP 추상화 — UnityWebRequest 직접 사용 제거).
+                var authApi = options.AuthApi ?? new SupabaseAuthApi(supabaseUrl, anonKey, _transport);
+                _auth = new SupaRunAuth(supabaseUrl, anonKey, cloudRunUrl, _client, _sessionStorage, authApi);
                 _auth.OnSessionChanged += OnAuthSessionChanged;
 
                 // 토큰 갱신 콜백 연결 (401 시 SupaRunClient → SupaRunAuth.TryRefreshToken)
                 if (_client != null)
                     _client.OnTokenRefresh = async () => await _auth.TryRefreshToken();
 
-                // Realtime 초기화 (WebSocket 연결은 첫 채널 Subscribe 시)
-                _realtime = new Supabase.SupabaseRealtime(supabaseUrl, anonKey);
+                // Realtime 초기화: 옵션 우선, 없으면 기본 (WebSocket 연결은 첫 채널 Subscribe 시)
+                _realtime = options.Realtime ?? new Supabase.SupabaseRealtime(supabaseUrl, anonKey);
             }
 
             _localDB = LocalGameDB.Instance;
@@ -272,7 +275,7 @@ namespace Tjdtjq5.SupaRun
         // ── 내부 ──
 
         /// <summary>SupaRunAuth.OnSessionChanged 핸들러 — client/restClient/realtime에 토큰 전파.</summary>
-        void OnAuthSessionChanged(AuthSession session)
+        internal void OnAuthSessionChanged(AuthSession session)
         {
             if (_client != null) _client.Session = session;
             // [Config] REST 클라이언트도 유저 JWT 사용 → RLS authenticated 정책 통과

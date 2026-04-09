@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -17,7 +18,7 @@ namespace Tjdtjq5.SupaRun
     public static partial class SupaRun
     {
         // ── Singleton instance (lazy + double-check locking) ──
-        static SupaRunRuntime _instance;
+        static SupaRunRuntime? _instance;
         static readonly object _initLock = new object();
 
         /// <summary>
@@ -61,7 +62,7 @@ namespace Tjdtjq5.SupaRun
         /// instance가 null이면 현재 인스턴스 정리만 수행 (다음 Instance 호출 시 새로 생성).
         /// 정상 흐름에서는 사용하지 말 것 — Instance lazy 프로퍼티가 자동 생성.
         /// </summary>
-        internal static void SetInstance(SupaRunRuntime instance)
+        internal static void SetInstance(SupaRunRuntime? instance)
         {
             lock (_initLock)
             {
@@ -109,12 +110,12 @@ namespace Tjdtjq5.SupaRun
         /// 진짜 프로젝트 루트 절대 경로 (Application.dataPath의 부모, MPPM VP 가상 루트는 거슬러 올라감).
         /// UserSettings/ 같은 공유 디렉토리 접근 시 사용.
         /// </summary>
-        internal static string GetProjectRoot()
+        internal static string? GetProjectRoot()
         {
             var projectRoot = System.IO.Path.GetDirectoryName(UnityEngine.Application.dataPath)?.Replace('\\', '/');
             var vpIdx = projectRoot?.IndexOf("/Library/VP/", System.StringComparison.OrdinalIgnoreCase) ?? -1;
             if (vpIdx > 0)
-                projectRoot = projectRoot.Substring(0, vpIdx);
+                projectRoot = projectRoot!.Substring(0, vpIdx);
             return projectRoot;
         }
 
@@ -167,13 +168,13 @@ namespace Tjdtjq5.SupaRun
         // ── Auth 진입점 (Instance 위임) ──
 
         /// <summary>Auth. 토큰 관리. 자동 초기화.</summary>
-        public static SupaRunAuth Auth => Instance.Auth;
+        public static SupaRunAuth? Auth => Instance.Auth;
 
         /// <summary>현재 인증 세션.</summary>
-        public static AuthSession CurrentSession => Instance.CurrentSession;
+        public static AuthSession? CurrentSession => Instance.CurrentSession;
 
         /// <summary>현재 로그인된 플레이어 ID. Feature API에 전달용.</summary>
-        public static string PlayerId => Instance.PlayerId;
+        public static string? PlayerId => Instance.PlayerId;
 
         /// <summary>초기화 여부. P2-3 후에는 "Instance가 한 번이라도 생성되었는가" 의미.</summary>
         public static bool IsInitialized => _instance != null;
@@ -189,10 +190,10 @@ namespace Tjdtjq5.SupaRun
         public static Task Login() => Instance.Login();
 
         /// <summary>Realtime. 채널 기반 실시간 통신 (Broadcast/Presence/PostgresChanges).</summary>
-        public static Supabase.SupabaseRealtime Realtime => Instance.Realtime;
+        public static Supabase.IRealtimeClient? Realtime => Instance.Realtime;
 
         /// <summary>HTTP 클라이언트 (Source Generator 프록시에서 사용). 자동 초기화.</summary>
-        public static SupaRunClient Client => Instance._client;
+        public static SupaRunClient? Client => Instance._client;
 
         /// <summary>LocalGameDB (Source Generator 프록시에서 사용).</summary>
         public static LocalGameDB LocalDB => Instance.LocalDB;

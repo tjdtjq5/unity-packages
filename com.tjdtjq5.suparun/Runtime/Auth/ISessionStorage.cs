@@ -1,3 +1,4 @@
+#nullable enable
 namespace Tjdtjq5.SupaRun
 {
     /// <summary>
@@ -14,10 +15,10 @@ namespace Tjdtjq5.SupaRun
     public interface ISessionStorage
     {
         /// <summary>문자열 저장. value가 빈 문자열/null이면 키 삭제와 동일 의미.</summary>
-        void Set(string key, string value);
+        void Set(string key, string? value);
 
         /// <summary>문자열 읽기. 키가 없으면 defaultValue 반환.</summary>
-        string Get(string key, string defaultValue = "");
+        string? Get(string key, string? defaultValue = "");
 
         /// <summary>정수 저장.</summary>
         void SetInt(string key, int value);

@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 
 namespace Tjdtjq5.SupaRun
@@ -9,16 +10,16 @@ namespace Tjdtjq5.SupaRun
     public class HttpTransportRequest
     {
         /// <summary>절대 URL.</summary>
-        public string Url;
+        public string Url = "";
 
         /// <summary>HTTP 메서드 ("GET", "POST", "PUT", "DELETE" 등).</summary>
-        public string Method;
+        public string Method = "GET";
 
         /// <summary>요청 헤더. 빈 dict로 초기화. IAuthStrategy가 호출 직전에 인증 헤더를 추가.</summary>
         public Dictionary<string, string> Headers = new Dictionary<string, string>();
 
         /// <summary>요청 body (POST/PUT 시). null이면 body 없음.</summary>
-        public byte[] Body;
+        public byte[]? Body;
 
         /// <summary>타임아웃 (초). 기본 15초.</summary>
         public int TimeoutSeconds = 15;
