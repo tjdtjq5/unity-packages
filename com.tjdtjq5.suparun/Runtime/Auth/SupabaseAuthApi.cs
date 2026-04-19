@@ -49,5 +49,31 @@ namespace Tjdtjq5.SupaRun
             Debug.LogWarning($"[SupaRun:Auth] HTTP {response.StatusCode}: {response.Error}");
             return null;
         }
+
+        public async Task<string?> GetAuthenticatedAsync(string endpoint, string accessToken)
+        {
+            var url = _supabaseUrl + endpoint;
+            SupaRun.LogVerbose($"[SupaRun:Auth] GET {url} (Bearer)");
+
+            var request = new HttpTransportRequest
+            {
+                Url = url,
+                Method = "GET",
+                TimeoutSeconds = 10,
+            };
+            // ApiKeyAuth 전략이 apikey 헤더를 세팅하고, 여기서 Authorization을 Bearer로 덮어쓴다.
+            // ApiKeyAuth는 Authorization을 건드리지 않으므로 충돌 없음.
+            request.Headers["Authorization"] = $"Bearer {accessToken}";
+
+            var response = await _executor.ExecuteAsync(request);
+
+            SupaRun.LogVerbose($"[SupaRun:Auth] Response {response.StatusCode}");
+
+            // 2xx 성공만 유효 세션으로 간주. 401/403/5xx 등은 null → 호출자가 invalid 판정.
+            if (response.Success)
+                return response.ResponseText;
+
+            return null;
+        }
     }
 }

@@ -87,14 +87,10 @@ namespace Tjdtjq5.SupaRun
                 _client = new SupaRunClient(config, _transport);
             }
 
-            // [Config] PostgREST 클라이언트 (Supabase 설정 있을 때만)
-            if (!string.IsNullOrEmpty(supabaseUrl) && !string.IsNullOrEmpty(anonKey))
-                _restClient = new SupabaseRestClient(supabaseUrl, anonKey, _transport);
-
             // Session storage: 옵션 우선, 없으면 SecureSessionStorage + MPPM 자동 prefix (P2-2)
             _sessionStorage = options.SessionStorage ?? new SecureSessionStorage(SupaRun.GetMppmInstanceId());
 
-            // Auth + Realtime 초기화 (Supabase 설정 있을 때만)
+            // Auth + REST + Realtime 초기화 (Supabase 설정 있을 때만)
             // 로그인 자체는 Login()을 명시적으로 호출해야 시작됨.
             if (!string.IsNullOrEmpty(supabaseUrl) && !string.IsNullOrEmpty(anonKey))
             {
@@ -108,6 +104,10 @@ namespace Tjdtjq5.SupaRun
                 // 토큰 갱신 콜백 연결 (401 시 SupaRunClient → SupaRunAuth.TryRefreshToken)
                 if (_client != null)
                     _client.OnTokenRefresh = async () => await _auth.TryRefreshToken();
+
+                // [Config] PostgREST 클라이언트 — 동일한 refresher를 주입해 401 시 자동 갱신+재시도.
+                var restRefresher = new CallbackAuthRefresher(async () => await _auth.TryRefreshToken());
+                _restClient = new SupabaseRestClient(supabaseUrl, anonKey, _transport, restRefresher);
 
                 // Realtime 초기화: 옵션 우선, 없으면 기본 (WebSocket 연결은 첫 채널 Subscribe 시)
                 _realtime = options.Realtime ?? new Supabase.SupabaseRealtime(supabaseUrl, anonKey);

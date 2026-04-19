@@ -23,14 +23,15 @@ namespace Tjdtjq5.SupaRun
         /// </summary>
         public AuthSession? Session { get; set; }
 
-        public SupabaseRestClient(string supabaseUrl, string anonKey, IHttpTransport? transport = null)
+        public SupabaseRestClient(string supabaseUrl, string anonKey, IHttpTransport? transport = null,
+                                  IAuthRefresher? authRefresher = null)
         {
             _restUrl = supabaseUrl?.TrimEnd('/') + "/rest/v1";
 
-            // Strategy 조합: apikey + Bearer(JWT or anon), 재시도 없음
+            // Strategy 조합: apikey + Bearer(JWT or anon), 재시도 없음, 401 시 authRefresher로 1회 갱신 재시도
             var t = transport ?? new UnityHttpTransport();
             var auth = new BearerJwtOrAnonAuth(() => Session, anonKey);
-            _executor = new HttpExecutor(t, auth, new NoRetry());
+            _executor = new HttpExecutor(t, auth, new NoRetry(), authRefresher);
         }
 
         static string ToSnakeCase(string name)

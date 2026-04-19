@@ -11,9 +11,9 @@ namespace Tjdtjq5.SupaRun
     /// </summary>
     public class CallbackAuthRefresher : IAuthRefresher
     {
-        readonly Func<Task<AuthSession>> _refresh;
+        readonly Func<Task<AuthSession?>> _refresh;
 
-        public CallbackAuthRefresher(Func<Task<AuthSession>> refresh)
+        public CallbackAuthRefresher(Func<Task<AuthSession?>> refresh)
         {
             _refresh = refresh ?? throw new ArgumentNullException(nameof(refresh));
         }

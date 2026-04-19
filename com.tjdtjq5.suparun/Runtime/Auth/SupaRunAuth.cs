@@ -69,21 +69,48 @@ namespace Tjdtjq5.SupaRun
         {
             try
             {
-                // 1. 저장된 세션 복원
+                // 1. 저장된 세션 복원 + 서버 검증
                 var saved = LoadSession();
                 if (saved != null)
                 {
                     if (!saved.IsExpired)
                     {
+                        // JWT exp 클레임만으론 부족 — Supabase가 refresh token rotation으로 서버 측에서
+                        // 세션을 invalidate한 경우 토큰은 유효 기간 내여도 API 호출 시 401이 반환된다.
+                        // (MPPM에서 두 인스턴스가 같은 계정 refresh token을 번갈아 쓰면 재현)
+                        // → /auth/v1/user로 서버 측 검증 후에만 복원 성공으로 간주.
                         Session = saved;
-                        OnSessionChanged?.Invoke(Session);
-                        Debug.Log($"[SupaRun:Auth] 세션 복원: {Session.userId}");
-                        return;
-                    }
+                        if (await VerifySession())
+                        {
+                            OnSessionChanged?.Invoke(Session);
+                            Debug.Log($"[SupaRun:Auth] 세션 복원: {Session.userId}");
+                            return;
+                        }
 
-                    // 2. 만료 → 갱신 시도
-                    if (!string.IsNullOrEmpty(saved.refreshToken))
+                        // 검증 실패 → 저장된 세션 폐기하고 Refresh / Anonymous fallback으로 진행
+                        Debug.LogWarning("[SupaRun:Auth] 저장된 세션이 서버에서 거부됨 — 재로그인을 시도합니다.");
+                        var savedRefresh = saved.refreshToken; // 제거 전에 보존
+                        ClearSession();
+
+                        if (!string.IsNullOrEmpty(savedRefresh))
+                        {
+                            var refreshed = await RefreshSession(savedRefresh);
+                            if (refreshed != null)
+                            {
+                                refreshed.isGuest = saved.isGuest;
+                                Session = refreshed;
+                                SaveSession(Session);
+                                OnSessionChanged?.Invoke(Session);
+                                Debug.Log($"[SupaRun:Auth] 토큰 갱신 (서버 거부 후): {Session.userId}");
+                                return;
+                            }
+                            OnSessionExpired?.Invoke();
+                        }
+                        // Anonymous fallback으로 진행
+                    }
+                    else if (!string.IsNullOrEmpty(saved.refreshToken))
                     {
+                        // 2. 만료 → 갱신 시도
                         var refreshed = await RefreshSession(saved.refreshToken);
                         if (refreshed != null)
                         {
@@ -127,6 +154,20 @@ namespace Tjdtjq5.SupaRun
         {
             var result = await Post("/auth/v1/signup", "{}");
             return result != null ? ParseAuthResponse(result) : null;
+        }
+
+        /// <summary>
+        /// 현재 Session의 access_token이 서버에서 유효한지 검증.
+        /// /auth/v1/user 호출로 200 OK 확인. 실패 시 false.
+        /// JWT exp 클레임이 미래여도 서버가 세션을 invalidate(예: refresh token rotation)한 경우를 잡아낸다.
+        /// </summary>
+        async Task<bool> VerifySession()
+        {
+            if (Session == null || string.IsNullOrEmpty(Session.accessToken))
+                return false;
+
+            var result = await _authApi.GetAuthenticatedAsync("/auth/v1/user", Session.accessToken);
+            return result != null;
         }
 
         /// <summary>현재 세션의 토큰을 갱신. 성공 시 새 세션 반환 + OnSessionChanged 발행.</summary>

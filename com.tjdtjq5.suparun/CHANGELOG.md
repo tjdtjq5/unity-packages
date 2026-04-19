@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.1] - 2026-04-19
+
+### Added
+- **`IAuthApi.GetAuthenticatedAsync`** — Bearer 토큰으로 Auth 엔드포인트에 GET 요청. 저장된 세션의 서버 측 유효성 검증용 (예: `/auth/v1/user`). 성공(2xx) 시 응답 텍스트, 실패(401/403/5xx) 시 null.
+- **`SupabaseAuthApi.GetAuthenticatedAsync`** — 구현 추가
+- **`MockAuthApi.GetAuthenticatedAsync`** — 테스트 mock 추가
+
+### Changed
+- **`SupaRunAuth`** — 세션 유효성 서버 검증 로직 확장, 관련 연쇄 갱신 (`SupaRunRuntime`, `CallbackAuthRefresher`, `SupabaseRestClient`)
+
+### Removed
+- `REFACTOR.md.meta` 잔재 정리 (REFACTOR.md는 v0.4.0에서 삭제됨)
+
 ## [0.4.0] - 2026-04-09
 
 ### Added
