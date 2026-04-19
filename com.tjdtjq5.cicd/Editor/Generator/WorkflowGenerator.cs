@@ -95,6 +95,14 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("  build:");
             sb.AppendLine("    name: Build (${{ matrix.targetPlatform }})");
 
+            // 캐시 삭제 권한
+            if (settings.enabledCaches.Count > 0)
+            {
+                sb.AppendLine("    permissions:");
+                sb.AppendLine("      actions: write");
+                sb.AppendLine("      contents: read");
+            }
+
             // iOS는 macOS 러너 필요
             if (settings.enableIOS && platforms.Count > 1)
                 sb.AppendLine("    runs-on: ${{ matrix.targetPlatform == 'iOS' && 'macos-latest' || 'ubuntu-latest' }}");
@@ -150,8 +158,25 @@ namespace Tjdtjq5.CICD.Editor
             sb.AppendLine("          fi");
             sb.AppendLine();
 
-            // ── 캐시 (활성화된 캐시만 step 생성) ──
+            // ── 오래된 캐시 정리 (최신 1개만 유지) ──
             var caches = settings.enabledCaches;
+            if (caches.Count > 0)
+            {
+                sb.AppendLine("      - name: Cleanup old caches");
+                sb.AppendLine("        run: |");
+                sb.AppendLine("          gh extension install actions/gh-actions-cache 2>/dev/null || true");
+                sb.AppendLine("          for prefix in Library-${{ matrix.targetPlatform }}- gradle- il2cpp-${{ matrix.targetPlatform }}- unity-docker-${{ matrix.targetPlatform }}-; do");
+                sb.AppendLine("            gh actions-cache list --key \"$prefix\" --sort created-at --order desc --json id,key 2>/dev/null | \\");
+                sb.AppendLine("              jq -r '.[1:][].id' | while read id; do");
+                sb.AppendLine("                gh actions-cache delete \"$id\" --confirm 2>/dev/null || true");
+                sb.AppendLine("              done");
+                sb.AppendLine("          done");
+                sb.AppendLine("        env:");
+                sb.AppendLine("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}");
+                sb.AppendLine();
+            }
+
+            // ── 캐시 (활성화된 캐시만 step 생성) ──
 
             if (caches.Contains(CacheTypes.Library))
             {

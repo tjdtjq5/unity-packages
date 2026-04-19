@@ -37,7 +37,7 @@ Unity 6000.1+ 커스텀 패키지 모노리포.
 
 ---
 
-### CI/CD `v0.5.4`
+### CI/CD `v0.5.5`
 
 GameCI 기반 Unity CI/CD 파이프라인 자동 생성
 
@@ -51,7 +51,7 @@ GameCI 기반 Unity CI/CD 파이프라인 자동 생성
 | 알림 | Discord / Slack / Custom 웹훅 |
 
 ```json
-"com.tjdtjq5.cicd": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.cicd#cicd/v0.5.4"
+"com.tjdtjq5.cicd": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.cicd#cicd/v0.5.5"
 ```
 
 > 의존: `editor-toolkit >= 1.3.0`
