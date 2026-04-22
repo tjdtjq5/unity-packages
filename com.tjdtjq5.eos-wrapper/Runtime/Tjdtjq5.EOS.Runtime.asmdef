@@ -1,0 +1,24 @@
+{
+    "name": "Tjdtjq5.EOS.Runtime",
+    "rootNamespace": "Tjdtjq5.EOS",
+    "references": [
+        "com.Epic.OnlineServices",
+        "com.playeveryware.eos.core",
+        "Unity.Networking.Transport",
+        "Unity.Collections",
+        "Unity.Jobs",
+        "Unity.Burst",
+        "Unity.Entities",
+        "Unity.NetCode",
+        "N4EGuard.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

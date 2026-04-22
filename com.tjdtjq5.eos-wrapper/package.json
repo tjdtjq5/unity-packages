@@ -1,0 +1,22 @@
+{
+  "name": "com.tjdtjq5.eos-wrapper",
+  "version": "0.1.0",
+  "displayName": "EOS Wrapper",
+  "description": "Epic Online Services 통합 래퍼. NetCode for Entities Transport, Lobby, Connect Login, Android Gradle 패치 포함.",
+  "unity": "6000.1",
+  "author": {
+    "name": "tjdtjq5"
+  },
+  "dependencies": {
+    "com.playeveryware.eos": "6.0.2",
+    "com.tjdtjq5.n4e-guard": "0.1.0"
+  },
+  "keywords": [
+    "eos",
+    "epic",
+    "netcode",
+    "transport",
+    "lobby",
+    "multiplayer"
+  ]
+}

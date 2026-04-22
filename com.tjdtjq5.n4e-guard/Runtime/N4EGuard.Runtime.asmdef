@@ -1,0 +1,22 @@
+{
+    "name": "N4EGuard.Runtime",
+    "rootNamespace": "N4EGuard",
+    "references": [
+        "Unity.Entities",
+        "Unity.NetCode",
+        "Unity.Collections",
+        "Unity.Burst",
+        "Unity.Networking.Transport",
+        "Unity.Multiplayer.PlayMode",
+        "Unity.Scenes"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -187,6 +187,48 @@ Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. 
 
 ---
 
+### N4E Guard `v0.1.0`
+
+NetCode for Entities 안전장치 + 유틸리티
+
+| 기능 | 내용 |
+|------|------|
+| GhostLocalCheck | Ghost 엔티티 로컬 소유 판정 (Enableable Component 이슈 회피) |
+| RpcGuard | RPC 송수신 시 World 상태 + NetworkId 검증 |
+| NetworkIdMapper | Client/Server Ghost Entity 매핑 |
+| WorldRegistrar / NetcodeWorldHelper | Client/Server World 지연 등록 + 조회 |
+| NetcodeSubSceneLoader | SubScene 로딩 대기 유틸 |
+| MppmRoleDetector | MPPM Virtual Player 역할 감지 |
+| N4EGuardValidator (Editor) | 금지 패턴 정적 검증 |
+
+```json
+"com.tjdtjq5.n4e-guard": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.n4e-guard#n4e-guard/v0.1.0"
+```
+
+> 의존: `com.unity.entities >= 1.4.2`, `com.unity.netcode >= 1.10.0`
+
+---
+
+### EOS Wrapper `v0.1.0`
+
+Epic Online Services 통합 래퍼 — NetCode for Entities Transport + Lobby + Auth
+
+| 영역 | 내용 |
+|------|------|
+| Auth | EOSConnectLogin (EOS Connect 로그인 흐름) |
+| Lobby | EOSLobbyService (생성/검색/참가), LobbyInfo, LobbyCreateRequest, LobbySearchCriteria |
+| Transport | EOSP2PNetworkInterface, EOSTransportPoller, EOSAndIpcDriverConstructor — N4E Transport 커스텀 드라이버 (P2P/IPC 겸용) |
+| Utility | EOSContext, EOSTransportUtility, EOSNetworkDiagnostics |
+| Build (Editor) | EOSAndroidGradlePatcher — Android 빌드 gradle 자동 패치 |
+
+```json
+"com.tjdtjq5.eos-wrapper": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.eos-wrapper#eos-wrapper/v0.1.0"
+```
+
+> 의존: `com.playeveryware.eos >= 6.0.2`, `com.tjdtjq5.n4e-guard >= 0.1.0`
+
+---
+
 ## 의존성 관계
 
 ```
@@ -197,6 +239,9 @@ editor-toolkit (독립)
   ├── addrx (+ Addressables)
   ├── suparun
   └── claude
+
+n4e-guard (독립, + Entities, NetCode)
+  └── eos-wrapper (+ com.playeveryware.eos)
 ```
 
 ## 요구사항

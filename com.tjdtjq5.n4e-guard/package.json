@@ -1,0 +1,22 @@
+{
+  "name": "com.tjdtjq5.n4e-guard",
+  "version": "0.1.0",
+  "displayName": "N4E Guard",
+  "description": "NetCode for Entities 안전장치 유틸리티. Ghost 로컬 체크, RPC 가드, World 관리, MPPM 역할 감지, SubScene 로더 포함.",
+  "unity": "6000.1",
+  "author": {
+    "name": "tjdtjq5"
+  },
+  "dependencies": {
+    "com.unity.entities": "1.4.2",
+    "com.unity.netcode": "1.10.0"
+  },
+  "keywords": [
+    "netcode",
+    "entities",
+    "n4e",
+    "guard",
+    "multiplayer",
+    "mppm"
+  ]
+}
