@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7] - 2026-04-25
+
+### Fixed
+- `AddrXAutoRegister.OnPostprocessAllAssets` — Addressables 변경 알림을 `EntryModified` → `BatchModification`으로 교체
+  - `EntryModified`는 Entry 데이터를 요구하는 이벤트인데 일괄 작업 완료 마커로 null을 넘기면 외부 구독자(예: Quantum의 `QuantumAssetObjectPostprocessor`)가 null 캐스트에서 NRE로 터짐
+  - `BatchModification`은 일괄 작업 완료를 알리는 의도에 맞고 Entry data를 요구하지 않아 null 안전
+
 ## [0.1.6] - 2026-04-05
 
 ### Fixed

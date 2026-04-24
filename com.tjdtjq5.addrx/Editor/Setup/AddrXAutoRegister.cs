@@ -40,7 +40,9 @@ namespace Tjdtjq5.AddrX.Editor
             foreach (var path in toRegister)
                 RegisterAsset(settings, rules, path, duplicates);
 
-            settings.SetDirty(AddressableAssetSettings.ModificationEvent.EntryModified, null, true);
+            // BatchModification: 일괄 작업 완료 마커용. EntryModified는 Entry data를 요구하는 이벤트라
+            // null을 넘기면 구독자(예: Quantum.QuantumAssetObjectPostprocessor)가 null 캐스팅에서 터진다.
+            settings.SetDirty(AddressableAssetSettings.ModificationEvent.BatchModification, null, true);
         }
 
         /// <summary>1뎁스 폴더 생성/삭제를 감지하여 Addressables 그룹을 동기화.</summary>
