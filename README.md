@@ -139,22 +139,22 @@ Unity Addressables 안전 래퍼 — SafeHandle 기반 자동 해제, 누수 감
 
 ---
 
-### Claude `v1.1.2`
+### Claude `v1.1.3`
 
 Unity 에디터에서 Claude Code CLI 실행 + Channel Bridge(MCP) + Discord 연동 + Remote Control + git worktree 관리
 
 | 기능 | 내용 |
 |------|------|
 | 툴바 버튼 | ✦ Claude [N] ● — 좌클릭: Manager, 우클릭: Settings, ● 연결 상태 |
-| 터미널 런처 | Windows Terminal 탭 / PowerShell fallback |
-| Channel Bridge | Unity 콘솔/컴파일 에러 → Named Pipe → MCP Channel → Claude 자동 전달 |
+| 터미널 런처 | Windows: WT 탭 / PowerShell fallback · macOS: iTerm2 탭 / Terminal.app fallback |
+| Channel Bridge | Unity 콘솔/컴파일 에러 → Named Pipe(UDS) → MCP Channel → Claude 자동 전달 |
 | Discord 연동 | 3단계 모드 (없음/알림/적극적 사용), 양방향 통신, !mode/!mute/!status |
 | Remote Control | `--rc` 플래그로 claude.ai/code, 모바일 앱에서 세션 접속 |
 | Worktree 관리 | git worktree 자동 생성/삭제 + 새 탭 |
 | 설정 UI | 모니터/Discord/RC/탭 색상/CLI 인자 통합 설정 |
 
 ```json
-"com.tjdtjq5.claude": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.claude#claude/v1.1.2"
+"com.tjdtjq5.claude": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.claude#claude/v1.1.3"
 ```
 
 > 의존: `editor-toolkit >= 1.0.0`

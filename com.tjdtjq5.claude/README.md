@@ -17,8 +17,8 @@ Unity 에디터에서 Claude Code CLI 실행 + git worktree 관리.
 ### Settings (`Tools > Claude Code > Settings`)
 - **기본 설정**: 모델(sonnet/opus/haiku, settings.json 저장) + Effort(low/medium/high/max, `--effort` CLI 인자로 전달)
 - 추가 인자 (claude CLI 옵션)
-- 탭 색상 (메인/워크트리)
-- Windows Terminal 윈도우 이름
+- 탭 색상 (메인/워크트리, iTerm2/Windows Terminal에서 적용)
+- 터미널 창/프로필 이름 (Windows: WT 윈도우, macOS: 미사용)
 - AutoLaunch (워크트리 생성 후 자동 실행)
 - Discord 연동 (3단계 위자드)
 - Remote Control
@@ -26,13 +26,13 @@ Unity 에디터에서 Claude Code CLI 실행 + git worktree 관리.
 ## 설치
 
 ```json
-"com.tjdtjq5.claude": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.claude#claude/v1.1.2"
+"com.tjdtjq5.claude": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.claude#claude/v1.1.3"
 ```
 
 ## 요구사항
 - Unity 6000.1+
-- Windows (Windows Terminal 권장, PowerShell fallback)
+- Windows (Windows Terminal 권장, PowerShell fallback) / macOS (iTerm2 권장, Terminal.app fallback)
 - `com.tjdtjq5.editor-toolkit` 패키지
 
 ## 상태
-v1.1.2
+v1.1.3

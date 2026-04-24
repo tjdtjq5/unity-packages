@@ -34,7 +34,9 @@ namespace Tjdtjq5.Claude
             set => SaveColor("WtColor", value);
         }
 
-        // ── Windows Terminal 윈도우 이름 ──
+        // ── 터미널 창/프로필 이름 ──
+        // Windows: Windows Terminal `-w` 윈도우 식별자 (탭 그룹화)
+        // macOS:   현재 미사용 (iTerm2는 기본 프로필 사용)
         public static string WindowName
         {
             get => EditorPrefs.GetString(Prefix + "WinName", "Claude");

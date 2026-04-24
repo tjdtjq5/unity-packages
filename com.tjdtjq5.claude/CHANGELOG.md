@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.3] - 2026-04-25
+
+### Added
+- macOS 지원: iTerm2 우선 → Terminal.app 폴백 (AppleScript 기반)
+- `PlatformTerminalLauncher` 헬퍼 — 터미널 실행 플랫폼 분기 추상화 (Main/Worktree TabRole)
+
+### Changed
+- 터미널 런처 로직을 `ClaudeCodeLauncher` → `PlatformTerminalLauncher`로 분리 이동
+- Channel Bridge Named Pipe 경로를 .NET `CoreFxPipe_` 컨벤션에 맞춰 macOS Unix Domain Socket과 호환 (`/tmp/CoreFxPipe_claude-unity-{hash}`)
+
 ## [1.1.2] - 2026-04-09
 
 ### Changed

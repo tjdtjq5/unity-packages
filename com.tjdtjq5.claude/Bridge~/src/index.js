@@ -7,9 +7,14 @@ import { EventRouter } from './event-router.js';
 
 // ── 설정 ──
 const PIPE_HASH = process.env.CLAUDE_UNITY_PIPE_HASH || 'default';
+// .NET의 NamedPipeClientStream은 macOS/Linux에서 자동으로
+// /tmp/CoreFxPipe_{name} Unix Domain Socket으로 매핑된다.
+// 양쪽 경로가 정확히 일치해야 Unity ↔ Bridge 연결이 성립한다.
+// TODO: CoreFxPipe_ 프리픽스는 .NET 런타임 내부 구현 세부사항.
+//       향후 변경 시 이 한 줄과 함께 명시적 UDS 프로토콜로 이전 고려.
 const PIPE_NAME = process.platform === 'win32'
   ? `\\\\.\\pipe\\claude-unity-${PIPE_HASH}`
-  : `/tmp/claude-unity-${PIPE_HASH}.sock`;
+  : `/tmp/CoreFxPipe_claude-unity-${PIPE_HASH}`;
 
 console.error(`[bridge] 시작 — pipe: ${PIPE_NAME}`);
 

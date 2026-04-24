@@ -27,34 +27,6 @@ namespace Tjdtjq5.Claude
         static string ProjectPath =>
             Path.GetDirectoryName(Application.dataPath)!.Replace('\\', '/');
 
-        // wt 존재 여부 캐시 (에디터 세션당 1회만 확인)
-        static bool? _hasWt;
-
-        static bool HasWindowsTerminal
-        {
-            get
-            {
-                if (_hasWt.HasValue) return _hasWt.Value;
-                try
-                {
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = "where",
-                        Arguments = "wt",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        CreateNoWindow = true
-                    };
-                    using var p = Process.Start(psi);
-                    p!.StandardOutput.ReadToEnd();
-                    p.WaitForExit(3000);
-                    _hasWt = p.ExitCode == 0;
-                }
-                catch { _hasWt = false; }
-                return _hasWt.Value;
-            }
-        }
-
         // ── 메뉴 아이템 ──
 
         [MenuItem("Tools/Claude Code/Settings")]
@@ -68,21 +40,12 @@ namespace Tjdtjq5.Claude
         public static void LaunchMain()
         {
             var cmd = BuildClaudeCommand();
-            var colorHex = ClaudeCodeSettings.ColorToHex(ClaudeCodeSettings.MainTabColor);
-
-            if (HasWindowsTerminal)
-            {
-                var wtArgs = $"-w {ClaudeCodeSettings.WindowName} " +
-                             $"-d \"{ProjectPath}\" " +
-                             $"--tabColor \"{colorHex}\" " +
-                             $"--title \"Claude Main\" " +
-                             $"powershell -NoExit -Command \"{cmd}\"";
-                StartProcess("wt", wtArgs);
-            }
-            else
-            {
-                StartProcess("powershell", $"-NoExit -Command \"{cmd}\"", ProjectPath);
-            }
+            PlatformTerminalLauncher.Launch(
+                PlatformTerminalLauncher.TabRole.Main,
+                ProjectPath,
+                "Claude Main",
+                ClaudeCodeSettings.MainTabColor,
+                cmd);
 
             // Discord 모드 활성이면 Pipe 연결 + Discord 설정 전송
             if (ClaudeCodeSettings.DiscordEnabled)
@@ -99,21 +62,12 @@ namespace Tjdtjq5.Claude
         public static void LaunchClaudeAt(string path, string title)
         {
             var cmd = BuildClaudeCommand(title);
-            var colorHex = ClaudeCodeSettings.ColorToHex(ClaudeCodeSettings.WorktreeTabColor);
-
-            if (HasWindowsTerminal)
-            {
-                var wtArgs = $"-w {ClaudeCodeSettings.WindowName} new-tab " +
-                             $"-d \"{path}\" " +
-                             $"--tabColor \"{colorHex}\" " +
-                             $"--title \"{title}\" " +
-                             $"powershell -NoExit -Command \"{cmd}\"";
-                StartProcess("wt", wtArgs);
-            }
-            else
-            {
-                StartProcess("powershell", $"-NoExit -Command \"{cmd}\"", path);
-            }
+            PlatformTerminalLauncher.Launch(
+                PlatformTerminalLauncher.TabRole.Worktree,
+                path,
+                title,
+                ClaudeCodeSettings.WorktreeTabColor,
+                cmd);
 
             Debug.Log($"[Claude Code] 실행 — {path}");
         }
@@ -455,27 +409,6 @@ namespace Tjdtjq5.Claude
                 ChannelBridge.OnStateChanged -= OnBridgeConnectedSendConfig;
                 ChannelBridge.SendConfig();
                 Debug.Log("[Claude Code] Discord 설정 자동 전송됨");
-            }
-        }
-
-        internal static void StartProcess(string fileName, string arguments, string workDir = null)
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = fileName,
-                Arguments = arguments,
-                UseShellExecute = true
-            };
-            if (!string.IsNullOrEmpty(workDir))
-                psi.WorkingDirectory = workDir;
-
-            try
-            {
-                Process.Start(psi);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[Claude Code] 프로세스 시작 실패: {ex.Message}");
             }
         }
 
