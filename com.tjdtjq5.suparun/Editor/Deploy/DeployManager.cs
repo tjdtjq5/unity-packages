@@ -235,20 +235,11 @@ namespace Tjdtjq5.SupaRun.Editor
             if (!ok) Debug.LogWarning($"[SupaRun:Deploy] pg_cron SQL 실패: {error}");
         }
 
+        // [Table]/[Config]/[Service] 부착된 모든 user 타입을 수집한다.
+        // TypeCache는 모든 어셈블리(asmdef 분리 포함)를 미리 인덱싱하므로
+        // Assembly-CSharp 단일 가정 없이 안전하게 스캔한다.
         static Type[] ScanTypes<T>() where T : Attribute
-        {
-            var result = new List<Type>();
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                if (!assembly.GetName().Name.Contains("Assembly-CSharp")) continue;
-                foreach (var type in assembly.GetTypes())
-                {
-                    if (type.GetCustomAttribute<T>() != null)
-                        result.Add(type);
-                }
-            }
-            return result.ToArray();
-        }
+            => TypeCache.GetTypesWithAttribute<T>().ToArray();
 
         static List<GeneratedFile> GetTemplateFiles(SupaRunSettings settings)
         {

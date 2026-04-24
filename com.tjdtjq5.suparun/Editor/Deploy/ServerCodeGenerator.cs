@@ -779,15 +779,36 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             sb.AppendLine(");");
 
             // 기존 테이블에 새 컬럼 추가 — DO 블록으로 감싸서 개별 에러 무시
+            // DEFAULT 절 포함 → 새 컬럼 추가 시 기존 row가 자동으로 default 값 채움 (PG 11+)
             sb.AppendLine();
             sb.AppendLine($"DO $$ BEGIN");
             foreach (var f in fields)
             {
                 var col = f.Name.ToLower();
                 var sqlType = GetSqlType(f);
-                sb.AppendLine($"  ALTER TABLE {tableName} ADD COLUMN IF NOT EXISTS {col} {sqlType};");
+                var defClause = GetDefaultClause(f);
+                sb.AppendLine($"  ALTER TABLE {tableName} ADD COLUMN IF NOT EXISTS {col} {sqlType}{defClause};");
             }
             sb.AppendLine($"END $$;");
+
+            // 기존 NULL row를 default 값으로 채움 (멱등 — NULL 없으면 0건 영향).
+            // PG 11+의 ADD COLUMN DEFAULT는 자동으로 기존 row를 채우지만,
+            // 그 이전에 default 없이 추가된 컬럼이 NULL로 남아있는 경우를 위한 안전망.
+            var nullFixLines = new List<string>();
+            foreach (var f in fields)
+            {
+                var col = f.Name.ToLower();
+                var literal = GetDefaultLiteral(f);
+                if (literal == null) continue;
+                nullFixLines.Add($"  UPDATE {tableName} SET {col} = {literal} WHERE {col} IS NULL;");
+            }
+            if (nullFixLines.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"DO $$ BEGIN");
+                foreach (var line in nullFixLines) sb.AppendLine(line);
+                sb.AppendLine($"END $$;");
+            }
 
             // [Config] 타입은 공개 읽기 RLS 정책 추가 (Supabase REST 직접 조회용)
             if (type.GetCustomAttribute<ConfigAttribute>() != null)
@@ -835,9 +856,49 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             if (f.GetCustomAttribute<PrimaryKeyAttribute>() != null) parts.Add(" PRIMARY KEY");
             if (f.GetCustomAttribute<NotNullAttribute>() != null) parts.Add(" NOT NULL");
             if (f.GetCustomAttribute<UniqueAttribute>() != null) parts.Add(" UNIQUE");
-            var def = f.GetCustomAttribute<DefaultAttribute>();
-            if (def != null) parts.Add($" DEFAULT {def.Value}");
+            var defClause = GetDefaultClause(f);
+            if (!string.IsNullOrEmpty(defClause)) parts.Add(defClause);
             return string.Join("", parts);
+        }
+
+        /// <summary>
+        /// 컬럼 DEFAULT 절 생성. [Default] attribute 우선, 없으면 C# field initializer 사용.
+        /// 예: public float lateral_extend = 1f; → " DEFAULT 1"
+        /// string은 NULL 허용 (skip). 알 수 없는 타입도 skip.
+        /// </summary>
+        static string GetDefaultClause(FieldInfo f)
+        {
+            var literal = GetDefaultLiteral(f);
+            return literal != null ? $" DEFAULT {literal}" : string.Empty;
+        }
+
+        /// <summary>SQL DEFAULT 리터럴만 반환 (절 prefix 없이). 없으면 null.</summary>
+        static string GetDefaultLiteral(FieldInfo f)
+        {
+            var def = f.GetCustomAttribute<DefaultAttribute>();
+            if (def != null) return def.Value?.ToString();
+            return GetSqlDefaultFromInitializer(f);
+        }
+
+        static string GetSqlDefaultFromInitializer(FieldInfo f)
+        {
+            var t = f.FieldType;
+            if (t == typeof(string)) return null; // nullable string은 default 안 적용
+
+            object instance;
+            try { instance = Activator.CreateInstance(f.DeclaringType); }
+            catch { return null; } // parameterless ctor 없음 → skip
+
+            var v = f.GetValue(instance);
+            if (v == null) return null;
+
+            if (t == typeof(bool)) return (bool)v ? "TRUE" : "FALSE";
+            if (t == typeof(int) || t == typeof(long) || t == typeof(short))
+                return v.ToString();
+            if (t == typeof(float) || t == typeof(double))
+                return Convert.ToDouble(v).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (t.IsEnum) return $"'{v}'";
+            return null; // 알 수 없는 타입 (List/object 등) skip
         }
 
         // ── Cron ──

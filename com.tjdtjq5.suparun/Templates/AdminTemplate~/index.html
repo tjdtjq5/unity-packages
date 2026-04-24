@@ -960,7 +960,7 @@ function renderJsonEditorRows(items) {
 
   html += '</tbody></table>';
   c.innerHTML = html;
-  enableColResize(c, 'json_' + (jsonEditorState?.fieldName || 'editor'));
+  enableColResize(c, 'json_' + (jsonEditorFieldName || 'editor'));
 }
 
 function isJsonFieldDisabled(item, s) {

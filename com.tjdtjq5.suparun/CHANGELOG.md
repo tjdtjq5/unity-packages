@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.2] - 2026-04-19
+
+### Fixed
+- **`DeployManager.ScanTypes` — asmdef 분리 환경 지원** (Critical)
+  - 기존: `Assembly-CSharp` 이름 포함 어셈블리만 스캔 → 별도 asmdef로 분리된 user 코드 (예: `SurvivorsDuo.dll`)는 누락
+  - 수정: `UnityEditor.TypeCache.GetTypesWithAttribute<T>()` 사용 → 모든 user 어셈블리 안전 스캔 + 미리 인덱싱 성능 이점
+  - 영향: ECS/Burst/유닛 테스트 등으로 asmdef를 분리한 프로젝트의 [Table]/[Config]/[Service] 타입이 silent하게 누락되던 버그 해결
+
+### Added
+- **C# field initializer 기반 자동 SQL DEFAULT** (`ServerCodeGenerator.GetDefaultClause/GetSqlDefaultFromInitializer`)
+  - 기존: `[Default(value)]` attribute로만 SQL DEFAULT 지정 가능
+  - 신규: attribute 없이도 `public float lateral_extend = 1f;` 같은 C# field initializer 값을 reflection(`Activator.CreateInstance` + `GetValue`)으로 추출하여 `DEFAULT 1` 자동 적용
+  - 우선순위: `[Default]` attribute → field initializer → 없으면 DEFAULT 절 생략
+  - 지원 타입: `int/long/short/float/double/bool/enum`. `string`은 nullable이라 skip.
+  - **NULL row 자동 정정**: `UPDATE {table} SET {col} = {default} WHERE {col} IS NULL` SQL 자동 생성 (멱등). 이전에 default 없이 추가된 컬럼이 NULL로 남은 row를 안전하게 채움.
+  - 효과: 새 컬럼 추가 시 클라이언트의 `null → non-nullable type` deserialize 실패 차단
+
 ## [0.4.1] - 2026-04-19
 
 ### Added
