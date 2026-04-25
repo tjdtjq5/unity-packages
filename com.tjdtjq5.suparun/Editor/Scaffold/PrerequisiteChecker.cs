@@ -27,11 +27,17 @@ namespace Tjdtjq5.SupaRun.Editor
         // 찾은 CLI 전체 경로 캐시
         static string _gcloudPath;
         static string _ghPath;
+        static string _dotnetPath;
+
+        // 플랫폼 — Mac/Linux GUI 에디터는 셸 PATH를 상속하지 않을 수 있으므로
+        // 명령은 가능한 한 절대 경로로 실행한다.
+        static bool IsWindows => System.Environment.OSVersion.Platform == System.PlatformID.Win32NT;
 
         public static void InvalidateCache()
         {
             _gcloud = _gh = null;
             _dotnetMajor = null;
+            _gcloudPath = _ghPath = _dotnetPath = null;
         }
 
         /// <summary>백그라운드에서 CLI 체크 후 메인 스레드에서 캐시 저장.</summary>
@@ -71,7 +77,8 @@ namespace Tjdtjq5.SupaRun.Editor
         public static int GetDotnetMajorVersion()
         {
             if (_dotnetMajor.HasValue) return _dotnetMajor.Value;
-            var (code, output) = Run("dotnet", "--version");
+            var dotnet = FindDotnet() ?? "dotnet";
+            var (code, output) = Run(dotnet, "--version");
             if (code == 0 && !string.IsNullOrEmpty(output))
             {
                 var parts = output.Trim().Split('.');
@@ -87,6 +94,62 @@ namespace Tjdtjq5.SupaRun.Editor
 
         public static bool IsDotnetInstalled() => GetDotnetMajorVersion() > 0;
 
+        /// <summary>dotnet SDK 실행 파일 전체 경로. PATH → 알려진 설치 경로 순으로 탐색.</summary>
+        public static string FindDotnet()
+        {
+            if (_dotnetPath != null) return _dotnetPath;
+
+            // 1. PATH에서 찾기
+            var (code, output) = IsWindows
+                ? RunDirect("cmd.exe", "/c where dotnet")
+                : RunDirect("/bin/sh", "-lc \"command -v dotnet\"");
+            if (code == 0 && !string.IsNullOrWhiteSpace(output))
+            {
+                var first = output.Split('\n', '\r')[0].Trim();
+                if (!string.IsNullOrEmpty(first) && File.Exists(first))
+                {
+                    _dotnetPath = first;
+                    return _dotnetPath;
+                }
+            }
+
+            // 2. 알려진 설치 경로 fallback
+            string[] knownPaths;
+            if (IsWindows)
+            {
+                var pf = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFiles);
+                knownPaths = new[]
+                {
+                    Path.Combine(pf, "dotnet", "dotnet.exe"),
+                    @"C:\Program Files\dotnet\dotnet.exe",
+                    @"C:\Program Files (x86)\dotnet\dotnet.exe",
+                };
+            }
+            else
+            {
+                var home = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+                knownPaths = new[]
+                {
+                    "/usr/local/share/dotnet/dotnet",       // macOS PKG installer (x64)
+                    "/usr/local/share/dotnet/x64/dotnet",   // macOS Apple Silicon + x64 SDK
+                    "/opt/homebrew/bin/dotnet",             // Homebrew (Apple Silicon)
+                    "/usr/local/bin/dotnet",                // Homebrew (Intel) / Linux
+                    Path.Combine(home, ".dotnet", "dotnet"),// 사용자 수동 설치
+                };
+            }
+
+            foreach (var p in knownPaths)
+            {
+                if (File.Exists(p))
+                {
+                    _dotnetPath = p;
+                    return _dotnetPath;
+                }
+            }
+
+            return null;
+        }
+
         // ── CLI 경로 찾기 ──
 
         static string FindGcloud()
@@ -94,21 +157,42 @@ namespace Tjdtjq5.SupaRun.Editor
             if (_gcloudPath != null) return _gcloudPath;
 
             // 1. PATH에서 찾기
-            var (code, _) = RunDirect("cmd.exe", "/c where gcloud");
-            if (code == 0)
+            var (code, output) = IsWindows
+                ? RunDirect("cmd.exe", "/c where gcloud")
+                : RunDirect("/bin/sh", "-lc \"command -v gcloud\"");
+            if (code == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                _gcloudPath = "gcloud";
-                return _gcloudPath;
+                var first = output.Split('\n', '\r')[0].Trim();
+                if (!string.IsNullOrEmpty(first) && File.Exists(first))
+                {
+                    _gcloudPath = first;
+                    return _gcloudPath;
+                }
             }
 
             // 2. 알려진 설치 경로에서 찾기
-            var user = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
-            string[] knownPaths =
+            string[] knownPaths;
+            if (IsWindows)
             {
-                Path.Combine(user, "Google", "Cloud SDK", "google-cloud-sdk", "bin", "gcloud.cmd"),
-                @"C:\Program Files (x86)\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd",
-                @"C:\Program Files\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd",
-            };
+                var user = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
+                knownPaths = new[]
+                {
+                    Path.Combine(user, "Google", "Cloud SDK", "google-cloud-sdk", "bin", "gcloud.cmd"),
+                    @"C:\Program Files (x86)\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd",
+                    @"C:\Program Files\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd",
+                };
+            }
+            else
+            {
+                var home = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+                knownPaths = new[]
+                {
+                    "/opt/homebrew/bin/gcloud",                  // Homebrew (Apple Silicon)
+                    "/usr/local/bin/gcloud",                     // Homebrew (Intel) / Linux
+                    Path.Combine(home, "google-cloud-sdk", "bin", "gcloud"),
+                    "/usr/local/google-cloud-sdk/bin/gcloud",
+                };
+            }
 
             foreach (var p in knownPaths)
             {
@@ -127,21 +211,39 @@ namespace Tjdtjq5.SupaRun.Editor
             if (_ghPath != null) return _ghPath;
 
             // 1. PATH에서 찾기
-            var (code, _) = RunDirect("cmd.exe", "/c where gh");
-            if (code == 0)
+            var (code, output) = IsWindows
+                ? RunDirect("cmd.exe", "/c where gh")
+                : RunDirect("/bin/sh", "-lc \"command -v gh\"");
+            if (code == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                _ghPath = "gh";
-                return _ghPath;
+                var first = output.Split('\n', '\r')[0].Trim();
+                if (!string.IsNullOrEmpty(first) && File.Exists(first))
+                {
+                    _ghPath = first;
+                    return _ghPath;
+                }
             }
 
             // 2. 알려진 설치 경로
-            var programFiles = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFiles);
-            string[] knownPaths =
+            string[] knownPaths;
+            if (IsWindows)
             {
-                Path.Combine(programFiles, "GitHub CLI", "gh.exe"),
-                @"C:\Program Files\GitHub CLI\gh.exe",
-                @"C:\Program Files (x86)\GitHub CLI\gh.exe",
-            };
+                var programFiles = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFiles);
+                knownPaths = new[]
+                {
+                    Path.Combine(programFiles, "GitHub CLI", "gh.exe"),
+                    @"C:\Program Files\GitHub CLI\gh.exe",
+                    @"C:\Program Files (x86)\GitHub CLI\gh.exe",
+                };
+            }
+            else
+            {
+                knownPaths = new[]
+                {
+                    "/opt/homebrew/bin/gh",   // Homebrew (Apple Silicon)
+                    "/usr/local/bin/gh",      // Homebrew (Intel) / Linux
+                };
+            }
 
             foreach (var p in knownPaths)
             {
@@ -523,7 +625,7 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 ProcessStartInfo psi;
 
-                // 전체 경로(공백 포함 가능)면 직접 실행, 아니면 cmd.exe /c
+                // 전체 경로(공백 포함 가능)면 직접 실행, 아니면 셸로 PATH 검색
                 if (cmd.Contains(Path.DirectorySeparatorChar.ToString()) || cmd.Contains("/"))
                 {
                     // 전체 경로 → 직접 실행 (공백 문제 없음)
@@ -537,13 +639,27 @@ namespace Tjdtjq5.SupaRun.Editor
                         CreateNoWindow = true,
                     };
                 }
-                else
+                else if (IsWindows)
                 {
-                    // 명령 이름만 → cmd.exe /c로 PATH에서 찾기
+                    // Windows: cmd.exe /c로 PATH에서 찾기
                     psi = new ProcessStartInfo
                     {
                         FileName = "cmd.exe",
                         Arguments = $"/c {cmd} {args}",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                    };
+                }
+                else
+                {
+                    // macOS/Linux: /bin/sh -lc로 로그인 셸 PATH 사용
+                    var combined = $"{cmd} {args}".Replace("\\", "\\\\").Replace("\"", "\\\"");
+                    psi = new ProcessStartInfo
+                    {
+                        FileName = "/bin/sh",
+                        Arguments = $"-lc \"{combined}\"",
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,

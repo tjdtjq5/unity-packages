@@ -126,9 +126,12 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             try
             {
+                // macOS GUI Unity Editor는 셸 PATH를 상속하지 않을 수 있으므로
+                // PrerequisiteChecker가 찾은 절대 경로를 사용한다.
+                var dotnet = PrerequisiteChecker.FindDotnet() ?? "dotnet";
                 var psi = new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "dotnet",
+                    FileName = dotnet,
                     Arguments = $"build \"{tempDir}\" --nologo -v q",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.3] - 2026-04-26
+
+### Fixed
+- **macOS .NET SDK 인식 실패** (Critical, macOS only)
+  - 기존: `PrerequisiteChecker.Run()`이 모든 플랫폼에서 `cmd.exe /c`를 호출 → macOS에 `cmd.exe`가 없어 `dotnet --version` 검사가 항상 exit -1로 실패. SDK 설치 후에도 SetupWizard가 미설치로 표시되고 `RunDotnetBuild`가 빌드 불가.
+  - 수정: `Run()`에 플랫폼 분기 추가 — Windows는 `cmd.exe /c`, macOS/Linux는 `/bin/sh -lc`로 셸 실행.
+  - **`FindDotnet()` 신규** (`PrerequisiteChecker`) — `where`/`command -v`로 PATH 검색 후 알려진 macOS 설치 경로(`/usr/local/share/dotnet/dotnet`, `/usr/local/share/dotnet/x64/dotnet`, `/opt/homebrew/bin/dotnet`, `/usr/local/bin/dotnet`, `~/.dotnet/dotnet`)를 fallback으로 시도. Unity GUI 프로세스가 셸 PATH를 상속하지 못하는 macOS 환경에서도 안정 동작.
+  - `FindGcloud`, `FindGh` 동일 패턴으로 cross-platform화 (Homebrew Apple Silicon/Intel 경로 추가).
+  - `DeployManager.RunDotnetBuild` — `FileName = "dotnet"` 직접 호출을 `PrerequisiteChecker.FindDotnet()` 절대 경로로 교체.
+
 ## [0.4.2] - 2026-04-19
 
 ### Fixed
