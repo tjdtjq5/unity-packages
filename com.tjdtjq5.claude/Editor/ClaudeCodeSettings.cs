@@ -113,8 +113,8 @@ namespace Tjdtjq5.Claude
         /// <summary>기본 모델. 빈 문자열이면 미지정(Claude 기본값 사용).</summary>
         public static string DefaultModel
         {
-            get => ReadSettingsKey("model", "");
-            set => WriteSettingsKey("model", string.IsNullOrEmpty(value) ? null : value);
+            get => ReadSettingsKey(SettingsJsonPath, "model", "");
+            set => WriteSettingsKey(SettingsJsonPath, "model", string.IsNullOrEmpty(value) ? null : value);
         }
 
         /// <summary>기본 Effort 레벨. CLI 인자(--effort)로 전달되므로 EditorPrefs에 저장.</summary>
@@ -124,31 +124,50 @@ namespace Tjdtjq5.Claude
             set => EditorPrefs.SetString(Prefix + "Effort", value);
         }
 
-        static string ReadSettingsKey(string key, string fallback)
+        // ── Claude Code 프로젝트 로컬 설정 (<project>/.claude/settings.local.json) ──
+
+        static string LocalSettingsJsonPath =>
+            Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".claude", "settings.local.json"));
+
+        /// <summary>모든 권한 프롬프트 우회 (defaultMode = "bypassPermissions").</summary>
+        public static bool BypassPermissions
+        {
+            get => string.Equals(ReadSettingsKey(LocalSettingsJsonPath, "defaultMode", ""),
+                "bypassPermissions", StringComparison.Ordinal);
+            set => WriteSettingsKey(LocalSettingsJsonPath, "defaultMode", value ? "bypassPermissions" : null);
+        }
+
+        static string ReadSettingsKey(string path, string key, string fallback)
         {
             try
             {
-                if (!File.Exists(SettingsJsonPath)) return fallback;
-                var json = JObject.Parse(File.ReadAllText(SettingsJsonPath));
+                if (!File.Exists(path)) return fallback;
+                var raw = File.ReadAllText(path);
+                if (string.IsNullOrWhiteSpace(raw)) return fallback;
+                var json = JObject.Parse(raw);
                 var token = json[key];
                 return token?.Type == JTokenType.String ? token.Value<string>() : fallback;
             }
             catch { return fallback; }
         }
 
-        static void WriteSettingsKey(string key, string value)
+        static void WriteSettingsKey(string path, string key, string value)
         {
             try
             {
-                var path = SettingsJsonPath;
                 var dir = Path.GetDirectoryName(path)!;
                 if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
                 JObject json;
                 if (File.Exists(path))
-                    json = JObject.Parse(File.ReadAllText(path));
+                {
+                    var raw = File.ReadAllText(path);
+                    json = string.IsNullOrWhiteSpace(raw) ? new JObject() : JObject.Parse(raw);
+                }
                 else
+                {
                     json = new JObject();
+                }
 
                 if (value == null)
                     json.Remove(key);
@@ -159,7 +178,7 @@ namespace Tjdtjq5.Claude
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Claude Code] settings.json 쓰기 실패: {ex.Message}");
+                Debug.LogError($"[Claude Code] {Path.GetFileName(path)} 쓰기 실패: {ex.Message}");
             }
         }
 

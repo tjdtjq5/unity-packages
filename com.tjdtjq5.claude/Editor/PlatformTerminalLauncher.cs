@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -9,7 +10,7 @@ namespace Tjdtjq5.Claude
     /// <summary>
     /// 터미널 실행의 플랫폼별 분기 헬퍼.
     /// Windows: Windows Terminal (wt) → PowerShell 폴백
-    /// macOS:   iTerm2 → Terminal.app 폴백
+    /// macOS:   cmux → iTerm2 → Terminal.app 폴백
     /// </summary>
     public static class PlatformTerminalLauncher
     {
@@ -20,6 +21,8 @@ namespace Tjdtjq5.Claude
         // 터미널 존재 감지 — 에디터 세션당 1회 캐시
         static bool? _hasWt;
         static bool? _hasITerm;
+        static bool? _hasCmux;
+        static string _cmuxBinPath;
 
         static bool HasWindowsTerminal
         {
@@ -41,6 +44,27 @@ namespace Tjdtjq5.Claude
             }
         }
 
+        // cmux: 앱(.app)과 CLI 둘 다 있을 때만 사용. CLI는 Unix 소켓으로 데몬 제어.
+        static bool HasCmux
+        {
+            get
+            {
+                if (_hasCmux.HasValue) return _hasCmux.Value;
+                if (!Directory.Exists("/Applications/cmux.app")) { _hasCmux = false; return false; }
+                _cmuxBinPath = ResolveCmuxBinary();
+                _hasCmux = !string.IsNullOrEmpty(_cmuxBinPath);
+                return _hasCmux.Value;
+            }
+        }
+
+        static string ResolveCmuxBinary()
+        {
+            // Unity Editor 프로세스의 PATH에는 Homebrew bin이 없을 수 있어 절대경로 우선.
+            if (File.Exists("/opt/homebrew/bin/cmux")) return "/opt/homebrew/bin/cmux";
+            if (File.Exists("/usr/local/bin/cmux")) return "/usr/local/bin/cmux";
+            return RunAndCheckExit("which", "cmux") ? "cmux" : null;
+        }
+
         /// <summary>
         /// 런처 진입점. workDir에서 command를 실행하는 새 터미널(창/탭)을 연다.
         /// role=Main: 새 창, role=Worktree: 기존 창의 새 탭.
@@ -49,6 +73,9 @@ namespace Tjdtjq5.Claude
         {
             if (IsMac)
             {
+                // cmux가 설치돼 있으면 cmux만 사용 — 실패해도 다른 터미널을 추가로 띄우지 않는다.
+                // 사용자가 명시적으로 cmux를 설치한 만큼 의도와 다른 터미널이 같이 뜨는 일을 막기 위함.
+                if (HasCmux) { LaunchMacCmux(role, workDir, title, tabColor, command); return; }
                 if (HasITerm2) LaunchMacITerm2(role, workDir, title, tabColor, command);
                 else LaunchMacTerminal(role, workDir, title, tabColor, command);
             }
@@ -75,6 +102,230 @@ namespace Tjdtjq5.Claude
             else
             {
                 StartShellProcess("powershell", $"-NoExit -Command \"{command}\"", workDir);
+            }
+        }
+
+        // ── macOS: cmux ──
+        // cmux는 workspace 단위로 탭/창을 관리한다. CLI(`cmux new-workspace`)는
+        // Unix 소켓으로 데몬과 통신하므로, 앱이 떠 있어야 한다. 데몬이 없으면
+        // `open -a cmux`로 부팅 후 ping 폴링으로 준비를 기다린다.
+        // 실패 시 false를 반환하여 호출자가 iTerm2/Terminal로 폴백할 수 있게 한다.
+        // 색상은 CLI에 직접 노출된 옵션이 없어 제목 prefix로 역할을 표시한다.
+        // 세션당 1회만 자동 설정/재시작을 시도한다.
+        static bool _autoSetupAttempted;
+
+        static void LaunchMacCmux(TabRole role, string workDir, string title, Color tabColor, string command)
+        {
+            var icon = role == TabRole.Main ? "🟣" : "🟠";
+            var prefixedTitle = $"{icon} {title}";
+            var bin = _cmuxBinPath ?? "cmux";
+            var wrappedCommand = WrapForInteractiveShell(command);
+
+            // 1차: 데몬 활성화 + 워크스페이스 시도.
+            if (TryWakeAndCreateWorkspace(bin, workDir, prefixedTitle, wrappedCommand, out var stderr))
+                return;
+
+            // 실패 원인이 socketControlMode = cmuxOnly(기본값)면 외부 CLI가 막혀 있다.
+            // settings.json을 수정하고 cmux를 재시작해서 자동화 모드로 전환한다.
+            if (!_autoSetupAttempted &&
+                (stderr?.Contains("Broken pipe") == true || stderr?.Contains("Socket not found") == true))
+            {
+                _autoSetupAttempted = true;
+
+                if (TryAutoEnableCmuxAutomation(out var setupMessage))
+                {
+                    var proceed = EditorUtility.DisplayDialog(
+                        "cmux 자동 설정",
+                        "cmux 외부 CLI 접근이 비활성화돼 있어 자동화 모드로 전환합니다.\n" +
+                        "변경 적용을 위해 cmux를 재시작해야 합니다 (열려있는 작업은 닫힙니다).\n\n" +
+                        $"세부: {setupMessage}",
+                        "재시작 후 진행", "취소");
+                    if (proceed)
+                    {
+                        RestartCmuxApp();
+                        if (TryWakeAndCreateWorkspace(bin, workDir, prefixedTitle, wrappedCommand, out stderr))
+                            return;
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[Claude Code] cmux 자동 설정 실패: {setupMessage}");
+                }
+            }
+
+            Debug.LogError($"[Claude Code] cmux new-workspace 실패: {stderr}");
+        }
+
+        static bool TryWakeAndCreateWorkspace(string bin, string workDir, string title, string command, out string lastStderr)
+        {
+            lastStderr = null;
+
+            StartShellProcess("open", "-a cmux", null);
+
+            bool pingOk = false;
+            for (int i = 0; i < 60; i++)
+            {
+                System.Threading.Thread.Sleep(200);
+                if (RunAndCheckExit(bin, "ping")) { pingOk = true; break; }
+            }
+            if (pingOk) System.Threading.Thread.Sleep(700);
+
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                if (TryCmuxNewWorkspace(bin, workDir, title, command, out lastStderr))
+                    return true;
+                System.Threading.Thread.Sleep(400);
+            }
+            if (string.IsNullOrEmpty(lastStderr) && !pingOk)
+                lastStderr = "데몬 응답 없음 (ping timeout)";
+            return false;
+        }
+
+        // ~/.config/cmux/settings.json의 주석 처리된 automation 블록을 활성 블록으로 치환한다.
+        // 이미 활성 블록이 있으면 손대지 않는다. 백업 파일(.bak)을 함께 만든다.
+        static bool TryAutoEnableCmuxAutomation(out string message)
+        {
+            try
+            {
+                var home = Environment.GetEnvironmentVariable("HOME");
+                if (string.IsNullOrEmpty(home))
+                {
+                    message = "HOME 환경변수가 비어있음.";
+                    return false;
+                }
+                var path = Path.Combine(home, ".config/cmux/settings.json");
+                if (!File.Exists(path))
+                {
+                    message = $"settings.json 없음: {path}";
+                    return false;
+                }
+                var content = File.ReadAllText(path);
+
+                // 이미 활성화된 automation 블록이 있는지 — 주석이 아닌 라인에서 "automation" 키 검색.
+                foreach (var rawLine in content.Split('\n'))
+                {
+                    var trimmed = rawLine.TrimStart();
+                    if (!trimmed.StartsWith("//") && trimmed.StartsWith("\"automation\""))
+                    {
+                        message = "automation 블록이 이미 활성화돼 있음 — 다른 원인일 가능성.";
+                        return false;
+                    }
+                }
+
+                // 주석 템플릿 블록 찾기.
+                const string templateStart = "//   \"automation\" : {";
+                var startIdx = content.IndexOf(templateStart);
+                if (startIdx < 0)
+                {
+                    message = "automation 템플릿 블록을 찾지 못함.";
+                    return false;
+                }
+                const string templateEnd = "//   },";
+                var endIdx = content.IndexOf(templateEnd, startIdx);
+                if (endIdx < 0)
+                {
+                    message = "automation 템플릿의 닫는 괄호를 찾지 못함.";
+                    return false;
+                }
+                endIdx += templateEnd.Length;
+
+                const string activeBlock =
+                    "\"automation\" : {\n" +
+                    "    \"socketControlMode\" : \"automation\"\n" +
+                    "  },";
+
+                var newContent = content.Substring(0, startIdx) + activeBlock + content.Substring(endIdx);
+
+                File.Copy(path, path + ".bak", true);
+                File.WriteAllText(path, newContent);
+
+                message = $"automation 모드 활성화 ({path}). 백업: {path}.bak";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                message = ex.Message;
+                return false;
+            }
+        }
+
+        static void RestartCmuxApp()
+        {
+            try
+            {
+                using (var p = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "pkill",
+                    Arguments = "-i cmux",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                }))
+                {
+                    p?.WaitForExit(3000);
+                }
+                System.Threading.Thread.Sleep(800);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Claude Code] pkill 실패(무시): {ex.Message}");
+            }
+        }
+
+        // cmux의 --command는 비대화형 셸에서 실행되어 .zshrc/.bash_profile이 로드되지 않는다.
+        // 사용자가 rc 파일에서 PATH를 추가하는 경우(claude를 ~/.local/bin 등에 둔 케이스) 명령을 못 찾는다.
+        // 대화형 로그인 셸로 감싸고, 명령 종료 후에도 셸 프롬프트가 남도록 exec로 셸을 다시 띄운다.
+        static string WrapForInteractiveShell(string command)
+        {
+            if (string.IsNullOrEmpty(command)) return command;
+            var shell = Environment.GetEnvironmentVariable("SHELL");
+            if (string.IsNullOrEmpty(shell) || !File.Exists(shell)) shell = "/bin/zsh";
+            // POSIX 싱글쿼트 안전 이스케이프: ' → '\''
+            var safe = command.Replace("'", "'\\''");
+            return $"{shell} -ilc '{safe}; exec {shell} -il'";
+        }
+
+        static bool TryCmuxNewWorkspace(string bin, string workDir, string title, string command, out string stderr)
+        {
+            stderr = string.Empty;
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = bin,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                };
+                psi.ArgumentList.Add("new-workspace");
+                if (!string.IsNullOrEmpty(title))
+                {
+                    psi.ArgumentList.Add("--name");
+                    psi.ArgumentList.Add(title);
+                }
+                if (!string.IsNullOrEmpty(workDir))
+                {
+                    psi.ArgumentList.Add("--cwd");
+                    psi.ArgumentList.Add(workDir);
+                }
+                if (!string.IsNullOrEmpty(command))
+                {
+                    psi.ArgumentList.Add("--command");
+                    psi.ArgumentList.Add(command);
+                }
+
+                using var p = Process.Start(psi);
+                p!.StandardOutput.ReadToEnd();
+                stderr = p.StandardError.ReadToEnd();
+                p.WaitForExit(5000);
+                return p.ExitCode == 0;
+            }
+            catch (Exception ex)
+            {
+                stderr = ex.Message;
+                return false;
             }
         }
 

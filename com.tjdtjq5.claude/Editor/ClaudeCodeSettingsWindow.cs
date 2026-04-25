@@ -40,6 +40,7 @@ namespace Tjdtjq5.Claude
         // ── 상태 ──
         int _modelIdx;
         int _effortIdx;
+        bool _bypassPermissions;
         List<string> _selectedArgs = new();
         Color _mainColor;
         Color _wtColor;
@@ -91,6 +92,7 @@ namespace Tjdtjq5.Claude
             _modelIdx = Math.Max(0, Array.IndexOf(ModelValues, model));
             var effort = ClaudeCodeSettings.DefaultEffortLevel;
             _effortIdx = Math.Max(0, Array.IndexOf(EffortOptions, effort));
+            _bypassPermissions = ClaudeCodeSettings.BypassPermissions;
 
             ParseArgs(ClaudeCodeSettings.AdditionalArgs);
             _mainColor = ClaudeCodeSettings.MainTabColor;
@@ -164,6 +166,17 @@ namespace Tjdtjq5.Claude
             if (EditorGUI.EndChangeCheck())
                 ClaudeCodeSettings.DefaultEffortLevel = EffortOptions[_effortIdx];
             EditorGUILayout.LabelField("CLI 인자(--effort)로 전달", _hintStyle);
+
+            GUILayout.Space(6);
+
+            EditorGUI.BeginChangeCheck();
+            _bypassPermissions = EditorGUILayout.Toggle("권한 프롬프트 우회", _bypassPermissions);
+            if (EditorGUI.EndChangeCheck())
+                ClaudeCodeSettings.BypassPermissions = _bypassPermissions;
+            EditorGUILayout.LabelField(
+                "<project>/.claude/settings.local.json 의 defaultMode = \"bypassPermissions\"\n" +
+                "체크 시 모든 도구 권한 프롬프트를 우회합니다. 변경 후 Claude 재실행 필요.",
+                _hintStyle);
 
             GUILayout.Space(4);
             EditorGUILayout.EndVertical();

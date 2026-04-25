@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.4] - 2026-04-26
+
+### Added
+- macOS cmux 터미널 지원 — cmux.app + CLI 감지 시 자동 사용 (iTerm2/Terminal.app 폴백 우선순위 추가)
+- Settings 창 "기본 설정" 에 **권한 프롬프트 우회** 체크박스 — `<project>/.claude/settings.local.json` 의 `defaultMode = "bypassPermissions"` 토글
+
+### Changed
+- `ClaudeCodeSettings.ReadSettingsKey/WriteSettingsKey` 를 path 인자 받는 형태로 일반화 (글로벌 + 프로젝트 로컬 settings.json 모두 지원)
+
 ## [1.1.3] - 2026-04-25
 
 ### Added

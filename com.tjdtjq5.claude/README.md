@@ -15,7 +15,7 @@ Unity 에디터에서 Claude Code CLI 실행 + git worktree 관리.
 - 활성 워크트리 수가 벳지로 표시됨
 
 ### Settings (`Tools > Claude Code > Settings`)
-- **기본 설정**: 모델(sonnet/opus/haiku, settings.json 저장) + Effort(low/medium/high/max, `--effort` CLI 인자로 전달)
+- **기본 설정**: 모델(sonnet/opus/haiku, settings.json 저장) + Effort(low/medium/high/max, `--effort` CLI 인자로 전달) + 권한 프롬프트 우회(`<project>/.claude/settings.local.json` 의 `defaultMode = "bypassPermissions"`)
 - 추가 인자 (claude CLI 옵션)
 - 탭 색상 (메인/워크트리, iTerm2/Windows Terminal에서 적용)
 - 터미널 창/프로필 이름 (Windows: WT 윈도우, macOS: 미사용)
@@ -26,13 +26,13 @@ Unity 에디터에서 Claude Code CLI 실행 + git worktree 관리.
 ## 설치
 
 ```json
-"com.tjdtjq5.claude": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.claude#claude/v1.1.3"
+"com.tjdtjq5.claude": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.claude#claude/v1.1.4"
 ```
 
 ## 요구사항
 - Unity 6000.1+
-- Windows (Windows Terminal 권장, PowerShell fallback) / macOS (iTerm2 권장, Terminal.app fallback)
+- Windows (Windows Terminal 권장, PowerShell fallback) / macOS (cmux > iTerm2 > Terminal.app 자동 폴백)
 - `com.tjdtjq5.editor-toolkit` 패키지
 
 ## 상태
-v1.1.3
+v1.1.4
