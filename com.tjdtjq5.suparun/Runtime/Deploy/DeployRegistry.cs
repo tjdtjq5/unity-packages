@@ -1,19 +1,25 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 
 namespace Tjdtjq5.SupaRun
 {
     /// <summary>
     /// 배포된 엔드포인트 목록 관리.
-    /// 배포 시 목록에 추가, 호출 시 IsDeployed로 확인.
+    /// v0.5.4부터: ProjectSettings/SupaRunDeployedEndpoints.json (git 공유 — 모든 PC가 자동 동기화).
+    /// 이전: PlayerPrefs (PC별, 멀티 개발 환경에서 새 PC가 LocalDB로 폴백되는 문제).
+    /// 첫 로드 시 PlayerPrefs 레거시 데이터를 ProjectSettings로 자동 마이그레이션 후 PlayerPrefs 키를 삭제.
     /// </summary>
     public static class DeployRegistry
     {
         static HashSet<string> _deployed;
 
-        // PlayerPrefs에 JSON으로 저장 (Editor + Build 공통)
-        const string PrefsKey = "SupaRun_DeployedEndpoints";
+        // v0.5.3 이전: PlayerPrefs (PC별)
+        const string LegacyPrefsKey = "SupaRun_DeployedEndpoints";
+
+        // v0.5.4+: ProjectSettings 파일 (git 공유)
+        const string ProjectSettingsPath = "ProjectSettings/SupaRunDeployedEndpoints.json";
 
         /// <summary>해당 엔드포인트가 배포되었는지 확인.</summary>
         public static bool IsDeployed(string endpoint)
@@ -51,29 +57,77 @@ namespace Tjdtjq5.SupaRun
         {
             if (_deployed != null) return;
 
-            var json = PlayerPrefs.GetString(PrefsKey, "");
-            if (!string.IsNullOrEmpty(json))
+            // 1. ProjectSettings 파일에서 로드 시도 (v0.5.4+ 정상 경로)
+            if (TryLoadFromFile())
+            {
+                MigratePascalToSnake();
+                return;
+            }
+
+            // 2. ProjectSettings 파일 없으면 PlayerPrefs 레거시 데이터 마이그레이션 (v0.5.3 이하 → v0.5.4)
+            var legacyJson = PlayerPrefs.GetString(LegacyPrefsKey, "");
+            if (!string.IsNullOrEmpty(legacyJson))
             {
                 try
                 {
-                    var data = JsonUtility.FromJson<DeployData>(json);
+                    var data = JsonUtility.FromJson<DeployData>(legacyJson);
                     _deployed = new HashSet<string>(data.endpoints ?? Array.Empty<string>());
                     MigratePascalToSnake();
+                    Save(); // ProjectSettings에 저장
+                    PlayerPrefs.DeleteKey(LegacyPrefsKey);
+                    PlayerPrefs.Save();
+                    Debug.Log($"[SupaRun] DeployRegistry: PlayerPrefs → ProjectSettings 마이그레이션 완료 ({_deployed.Count}개)");
+                    return;
                 }
-                catch (System.Exception ex)
+                catch (Exception ex)
                 {
-                    Debug.LogWarning($"[SupaRun] DeployRegistry 로드 실패: {ex.Message}");
-                    _deployed = new HashSet<string>();
+                    Debug.LogWarning($"[SupaRun] DeployRegistry 레거시 로드 실패: {ex.Message}");
                 }
             }
-            else
+
+            _deployed = new HashSet<string>();
+        }
+
+        static bool TryLoadFromFile()
+        {
+            try
             {
-                _deployed = new HashSet<string>();
+                if (!File.Exists(ProjectSettingsPath)) return false;
+                var json = File.ReadAllText(ProjectSettingsPath);
+                if (string.IsNullOrEmpty(json)) return false;
+                var data = JsonUtility.FromJson<DeployData>(json);
+                _deployed = new HashSet<string>(data.endpoints ?? Array.Empty<string>());
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[SupaRun] DeployRegistry 파일 로드 실패: {ex.Message}");
+                return false;
             }
         }
 
-        // v0.5.3 마이그레이션: 이전 버전 endpoint 키 ServiceName/Method → service_name/Method
-        // ServiceGenerator/DeployManager가 PascalCase로 저장하던 시기의 PlayerPrefs를 자동 변환
+        static void Save()
+        {
+            try
+            {
+                var data = new DeployData();
+                data.endpoints = new string[_deployed.Count];
+                _deployed.CopyTo(data.endpoints);
+                Array.Sort(data.endpoints, StringComparer.Ordinal); // diff 안정성
+
+                var dir = Path.GetDirectoryName(ProjectSettingsPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                File.WriteAllText(ProjectSettingsPath, JsonUtility.ToJson(data, prettyPrint: true));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[SupaRun] DeployRegistry 저장 실패: {ex.Message}");
+            }
+        }
+
+        // v0.5.2 hotfix: PascalCase 키 → snake_case 자동 변환 (ServiceGenerator/DeployManager가 PascalCase로 저장하던 시기 호환)
         static void MigratePascalToSnake()
         {
             if (_deployed == null || _deployed.Count == 0) return;
@@ -106,10 +160,10 @@ namespace Tjdtjq5.SupaRun
         static bool NeedsSnakeMigration(string head)
         {
             if (string.IsNullOrEmpty(head)) return false;
-            if (head.Contains('_')) return false; // 이미 snake_case
-            if (!char.IsUpper(head[0])) return false; // PascalCase 시작 아님
+            if (head.Contains('_')) return false;
+            if (!char.IsUpper(head[0])) return false;
             for (int i = 1; i < head.Length; i++)
-                if (char.IsUpper(head[i])) return true; // 두 번째 이후 대문자 = PascalCase
+                if (char.IsUpper(head[i])) return true;
             return false;
         }
 
@@ -122,15 +176,6 @@ namespace Tjdtjq5.SupaRun
                 sb.Append(char.ToLower(name[i]));
             }
             return sb.ToString();
-        }
-
-        static void Save()
-        {
-            var data = new DeployData();
-            data.endpoints = new string[_deployed.Count];
-            _deployed.CopyTo(data.endpoints);
-            PlayerPrefs.SetString(PrefsKey, JsonUtility.ToJson(data));
-            PlayerPrefs.Save();
         }
 
         [Serializable]

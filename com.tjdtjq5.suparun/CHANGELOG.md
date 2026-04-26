@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.4] - 2026-04-26
+
+### Changed (Behavior)
+- **`DeployRegistry` 저장소를 `PlayerPrefs` → `ProjectSettings/SupaRunDeployedEndpoints.json`으로 이동** (멀티 개발 환경 대응)
+  - 기존 `PlayerPrefs`는 PC별 저장소라 한 PC에서 Deploy 실행해도 다른 PC는 인식하지 못해 LocalDB로 폴백되는 문제. 결과: 두 클라가 서로 다른 메모리 인스턴스의 데이터를 보고 매칭/JoinByCode 실패.
+  - v0.5.4부터: `ProjectSettings/SupaRunDeployedEndpoints.json` 파일(JSON 배열)에 저장. git commit으로 공유되어 모든 PC가 자동 동기화.
+  - **자동 마이그레이션** — 첫 로드 시 `PlayerPrefs.SupaRun_DeployedEndpoints`에서 데이터를 읽어 새 파일에 저장하고 PlayerPrefs 키를 삭제. 사용자 액션 불필요.
+  - `Save()`는 endpoint 배열을 ordinal 정렬한 prettyPrint JSON으로 기록 — git diff 안정성.
+  - 빌드 환경에서는 ServiceGenerator의 `#if UNITY_EDITOR` 분기로 `IsDeployed` 호출 자체가 제거되므로 영향 없음 (빌드는 항상 서버 호출).
+
+### Migration Note
+- 새 PC 합류 시 별도 작업 불필요 — `git pull` 후 Unity 실행하면 `ProjectSettings/SupaRunDeployedEndpoints.json`을 그대로 인식.
+- 처음 v0.5.4 적용한 PC가 main PC에서 Deploy 실행 후, 생성된 `ProjectSettings/SupaRunDeployedEndpoints.json`을 commit/push해야 다른 PC에 전파.
+
 ## [0.5.3] - 2026-04-26
 
 ### Fixed
