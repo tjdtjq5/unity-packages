@@ -162,9 +162,11 @@ Unity 에디터에서 Claude Code CLI 실행 + Channel Bridge(MCP) + Discord 연
 
 ---
 
-### SupaRun `v0.4.3`
+### SupaRun `v0.5.1`
 
 Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. Supabase + Cloud Run 자동 배포.
+
+> ⚠ v0.5.1+ 시크릿은 `ProjectSettings/`에 평문 저장되어 git 커밋됩니다. **private repo 전용 사용을 가정**합니다.
 
 | 기능 | 내용 |
 |------|------|
@@ -180,7 +182,7 @@ Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. 
 | MPPM | Multiplayer Play Mode Virtual Player 자동 분리 (인스턴스별 게스트 계정) |
 
 ```json
-"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.4.3"
+"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.5.1"
 ```
 
 > 의존: `editor-toolkit >= 1.1.0`

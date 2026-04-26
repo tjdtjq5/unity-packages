@@ -1,6 +1,6 @@
 {
   "name": "com.tjdtjq5.suparun",
-  "version": "0.4.3",
+  "version": "0.5.1",
   "displayName": "SupaRun",
   "description": "Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. ASP.NET + Supabase + Cloud Run 자동 배포.",
   "unity": "6000.1",

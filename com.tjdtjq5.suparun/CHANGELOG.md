@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.1] - 2026-04-26
+
+### Changed (Behavior)
+- **설정 파일 분리** — `UserSettings/SupaRunSettings.json` 단일 파일에서 2개 파일로 분리
+  - `ProjectSettings/SupaRunProjectSettings.json` — 공유 데이터(URL, AnonKey, DB Password, Access Token, GitHub Token, Cron Secret, GCP/Auth 정책 등 22개 필드). git 커밋 대상.
+  - `UserSettings/SupaRunUserSettings.json` — 개인 환경(`serverLogToConsole`, `setupCompleted`). git 미커밋.
+  - **⚠ 시크릿이 git에 평문 커밋되므로 private repo 전용 사용을 가정합니다.** 외부 공개 저장소에서는 사용 금지.
+  - 자동 마이그레이션: 첫 실행 시 기존 `UserSettings/SupaRunSettings.json`을 2개로 분배 + 원본은 `.bak`으로 백업. 멱등 — 분리된 파일이 이미 있으면 스킵.
+  - `SupaRunSettings.Instance.X` facade API는 100% 유지 — 호출자 코드 수정 불필요
+
+### Changed
+- `SupaRunRuntime.LoadOptionsFromSettings` (Editor 분기) — 새 경로(`ProjectSettings/SupaRunProjectSettings.json`) 우선, 마이그레이션 직전 상태에서는 레거시 `UserSettings/SupaRunSettings.json` fallback
+- `SettingsView` — 시크릿 git 커밋 안내 경고 배너 (HelpBox/Warning) 상단에 자동 표시
+
 ## [0.4.3] - 2026-04-26
 
 ### Fixed

@@ -70,6 +70,6 @@ Client/
 ## 주의사항
 
 - `SupaRun`은 `partial class`이므로 Source Generator가 Service 프록시 메서드를 추가한다.
-- 자동 초기화 시 에디터는 `UserSettings/SupaRunSettings.json`, 빌드는 `Resources/SupaRunConfig.json`에서 설정을 읽는다.
+- 자동 초기화 시 에디터는 `ProjectSettings/SupaRunProjectSettings.json`, 빌드는 `Resources/SupaRunConfig.json`에서 설정을 읽는다. 마이그레이션 직전 상태에서는 레거시 `UserSettings/SupaRunSettings.json`을 fallback으로 시도.
 - `SupaRunClient`는 5xx/Timeout 에러 시 지수 백오프 재시도 (1s, 2s, 4s), 401 시 토큰 자동 갱신 후 1회 재시도한다.
 - `SupabaseRestClient`는 `[Config]` 어트리뷰트가 붙은 타입만 사용하며, Supabase REST API에 `anonKey`로 직접 쿼리한다. 401 시 `SupaRunRuntime`에서 주입된 `CallbackAuthRefresher`로 `SupaRunAuth.TryRefreshToken`을 호출해 1회 재시도한다.
