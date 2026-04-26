@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3] - 2026-04-26
+
+### Fixed
+- **`DeployRegistry` PascalCase ↔ snake_case 키 불일치** (Critical, v0.5.2 hotfix) — v0.5.2에서 `ServiceGenerator`만 snake_case로 변환하고 `DeployManager.MarkDeployed`는 여전히 PascalCase로 등록하여, Editor에서 `IsDeployed`가 false로 평가됨. 결과: Editor가 LocalDB로 폴백되어 두 클라가 서로 다른 메모리 인스턴스의 데이터를 보고 매칭/조회 실패.
+  - `DeployManager.cs:77`: `endpoints.Add($"{type.Name}/...")` → `endpoints.Add($"{ToSnakeCase(type.Name)}/...")` 로 수정.
+  - `DeployRegistry.EnsureLoaded`에 **자동 마이그레이션** 추가 — `ServiceName/Method` 형태로 저장된 기존 PlayerPrefs 항목을 첫 로드 시 `service_name/Method`로 변환하고 PlayerPrefs 재저장. 이미 snake_case거나 슬래시 없는 키는 그대로 유지. 사용자 액션 불필요 — v0.5.3을 받자마자 자동 동작.
+
 ## [0.5.2] - 2026-04-26
 
 ### Fixed

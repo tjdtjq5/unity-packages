@@ -73,8 +73,9 @@ namespace Tjdtjq5.SupaRun.Editor
                     {
                         var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                             .Where(m => !m.IsSpecialName);
+                        var snakeName = ToSnakeCase(type.Name);
                         foreach (var m in methods)
-                            endpoints.Add($"{type.Name}/{m.Name}");
+                            endpoints.Add($"{snakeName}/{m.Name}");
                     }
                     DeployRegistry.MarkDeployed(endpoints.ToArray());
 
@@ -473,6 +474,17 @@ namespace Tjdtjq5.SupaRun.Editor
                     return path;
             }
             return null;
+        }
+
+        static string ToSnakeCase(string name)
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < name.Length; i++)
+            {
+                if (char.IsUpper(name[i]) && i > 0) sb.Append('_');
+                sb.Append(char.ToLower(name[i]));
+            }
+            return sb.ToString();
         }
     }
 }
