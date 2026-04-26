@@ -160,25 +160,85 @@ namespace Tjdtjq5.Claude
         {
             lastStderr = null;
 
-            StartShellProcess("open", "-a cmux", null);
-
-            bool pingOk = false;
-            for (int i = 0; i < 60; i++)
+            // 데몬이 이미 응답하면 open -a cmux를 호출하지 않는다.
+            // 이미 떠있는 cmux에 open을 다시 때리면 일부 환경(워크스페이스 placement 설정,
+            // 메인 창이 닫혀 있고 데몬만 떠있는 상태 등)에서 워크스페이스가 attach되지 않은
+            // 빈 윈도우가 추가로 뜨는 케이스를 본다. 사용자가 본 "입력 안 되는 빈 창"이 그것.
+            bool pingOk = RunAndCheckExit(bin, "ping");
+            if (!pingOk)
             {
-                System.Threading.Thread.Sleep(200);
-                if (RunAndCheckExit(bin, "ping")) { pingOk = true; break; }
+                StartShellProcess("open", "-a cmux", null);
+                for (int i = 0; i < 60; i++)
+                {
+                    System.Threading.Thread.Sleep(200);
+                    if (RunAndCheckExit(bin, "ping")) { pingOk = true; break; }
+                }
+                // 콜드 스타트 직후 UI 초기화가 끝날 시간을 잠깐 준다.
+                if (pingOk) System.Threading.Thread.Sleep(700);
             }
-            if (pingOk) System.Threading.Thread.Sleep(700);
 
             for (int attempt = 0; attempt < 6; attempt++)
             {
-                if (TryCmuxNewWorkspace(bin, workDir, title, command, out lastStderr))
+                if (TryCmuxNewWorkspace(bin, workDir, title, command, out var workspaceRef, out lastStderr))
+                {
+                    // 새 워크스페이스가 만들어진 창을 명시적으로 포커스. 새 워크스페이스가
+                    // 사용자가 보고 있는 창이 아닌 다른 창에 추가될 경우(또는 cmux가 백그라운드
+                    // 상태일 경우) 사용자가 그 워크스페이스를 못 보는 문제를 막는다. 실패는 무시.
+                    TryFocusWorkspace(bin, workspaceRef);
                     return true;
+                }
                 System.Threading.Thread.Sleep(400);
             }
             if (string.IsNullOrEmpty(lastStderr) && !pingOk)
                 lastStderr = "데몬 응답 없음 (ping timeout)";
             return false;
+        }
+
+        // 워크스페이스가 속한 윈도우를 찾아 활성화한다.
+        // identify는 JSON을 반환하므로 정규식 한 줄로 window_ref만 뽑는다.
+        static void TryFocusWorkspace(string bin, string workspaceRef)
+        {
+            if (string.IsNullOrEmpty(workspaceRef)) return;
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = bin,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                };
+                psi.ArgumentList.Add("identify");
+                psi.ArgumentList.Add("--workspace");
+                psi.ArgumentList.Add(workspaceRef);
+                psi.ArgumentList.Add("--no-caller");
+                using var p = Process.Start(psi);
+                if (p == null) return;
+                var stdout = p.StandardOutput.ReadToEnd();
+                p.WaitForExit(2000);
+                if (p.ExitCode != 0) return;
+
+                var match = System.Text.RegularExpressions.Regex.Match(
+                    stdout, "\"window_ref\"\\s*:\\s*\"(window:[^\"]+)\"");
+                if (!match.Success) return;
+                var windowRef = match.Groups[1].Value;
+
+                using var fp = Process.Start(new ProcessStartInfo
+                {
+                    FileName = bin,
+                    Arguments = $"focus-window --window {windowRef}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                });
+                fp?.WaitForExit(2000);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Claude Code] cmux focus-window 실패(무시): {ex.Message}");
+            }
         }
 
         // ~/.config/cmux/settings.json의 주석 처리된 automation 블록을 활성 블록으로 치환한다.
@@ -286,9 +346,11 @@ namespace Tjdtjq5.Claude
             return $"{shell} -ilc '{safe}; exec {shell} -il'";
         }
 
-        static bool TryCmuxNewWorkspace(string bin, string workDir, string title, string command, out string stderr)
+        // new-workspace의 stdout 형식: "OK workspace:N"
+        static bool TryCmuxNewWorkspace(string bin, string workDir, string title, string command, out string workspaceRef, out string stderr)
         {
             stderr = string.Empty;
+            workspaceRef = null;
             try
             {
                 var psi = new ProcessStartInfo
@@ -317,10 +379,14 @@ namespace Tjdtjq5.Claude
                 }
 
                 using var p = Process.Start(psi);
-                p!.StandardOutput.ReadToEnd();
+                var stdout = p!.StandardOutput.ReadToEnd();
                 stderr = p.StandardError.ReadToEnd();
                 p.WaitForExit(5000);
-                return p.ExitCode == 0;
+                if (p.ExitCode != 0) return false;
+
+                var refMatch = System.Text.RegularExpressions.Regex.Match(stdout, "workspace:[A-Za-z0-9-]+");
+                if (refMatch.Success) workspaceRef = refMatch.Value;
+                return true;
             }
             catch (Exception ex)
             {
