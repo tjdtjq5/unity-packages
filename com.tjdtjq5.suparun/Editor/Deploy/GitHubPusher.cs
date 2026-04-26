@@ -31,7 +31,7 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 // 1. clone
                 Debug.Log($"[SupaRun:Deploy] Cloning {gh.Account}/{repoName}...");
-                var (cloneCode, cloneOut) = PrerequisiteChecker.Run("gh",
+                var (cloneCode, cloneOut) = PrerequisiteChecker.RunGh(
                     $"repo clone {gh.Account}/{repoName} \"{tempDir}\" -- --depth 1");
                 if (cloneCode != 0)
                 {
@@ -172,7 +172,7 @@ namespace Tjdtjq5.SupaRun.Editor
         static void SetSecret(string repo, string name, string value)
         {
             if (string.IsNullOrEmpty(value)) return;
-            PrerequisiteChecker.Run("gh", $"secret set {name} --repo {repo} --body \"{value}\"");
+            PrerequisiteChecker.RunGh($"secret set {name} --repo {repo} --body \"{value}\"");
         }
     }
 }

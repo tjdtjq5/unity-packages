@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.2] - 2026-04-26
+
+### Fixed
+- **`[Service] + [API]` endpoint 라우팅 불일치** (Critical) — 클라이언트가 호출하는 URL과 서버 Controller의 Route가 일치하지 않아 모든 Service 호출이 404로 실패.
+  - 클라 `ServiceGenerator` (SourceGen): `endpoint = $"{svc.Name}/{m.Name}"` → PascalCase 그대로 사용 (`api/ActiveRoomService/Create`)
+  - 서버 `ServerCodeGenerator`: `[Route("api/{ToSnakeCase(name)}")]` → snake_case로 변환 (`api/active_room_service/Create`)
+  - 두 Generator의 변환 규칙이 어긋나서 서버는 정상 동작 중인데 클라 호출은 미들웨어 파이프라인 끝까지 가서 404. `Cloud Run logs`에 `Request reached the end of the middleware pipeline without being handled by application code` 로그가 반복 출력됨.
+  - 수정: `ServiceGenerator`에 `ToSnakeCase` 헬퍼 추가 + endpoint 빌드 시 `svc.Name`을 snake_case로 변환. 서버 Controller가 이미 snake_case로 매핑되어 있으므로 **서버 재배포 없이 클라만 수정**으로 해결.
+  - 영향: SupaRun을 사용하는 모든 프로젝트에서 `[Service]` 호출이 단 한 번도 동작하지 않았음. 즉 모든 사용자가 영향 받음.
+
+### Build
+- **`SourceGen~/Tjdtjq5.SupaRun.SourceGen.csproj` 추가** — 모노레포 `.gitignore`의 `*.csproj` 패턴으로 누락되어 macOS/Linux 환경에서 SourceGen dll 재빌드가 불가능했음. 새 csproj 추가 (Roslyn `IIncrementalGenerator` 빌드용, netstandard2.0 + `Microsoft.CodeAnalysis.CSharp 4.3.0`).
+
 ## [0.5.1] - 2026-04-26
 
 ### Changed (Behavior)

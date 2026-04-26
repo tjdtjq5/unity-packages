@@ -165,7 +165,7 @@ namespace Tjdtjq5.SupaRun.SourceGen
             string respType = hasReturn ? $"ServerResponse<{m.Inner}>" : "ServerResponse";
             string paramDecl = string.Join(", ", m.Params.Select(p => $"{p.Item1} {p.Item2}"));
             string paramPass = string.Join(", ", m.Params.Select(p => p.Item2));
-            string endpoint = $"{svc.Name}/{m.Name}";
+            string endpoint = $"{ToSnakeCase(svc.Name)}/{m.Name}";
 
             string anonObj = m.Params.Count > 0
                 ? $"new {{ {string.Join(", ", m.Params.Select(p => p.Item2))} }}"
@@ -274,6 +274,17 @@ namespace Tjdtjq5.SupaRun.SourceGen
                 }
             }
             return string.Join(", ", args);
+        }
+
+        static string ToSnakeCase(string name)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < name.Length; i++)
+            {
+                if (char.IsUpper(name[i]) && i > 0) sb.Append('_');
+                sb.Append(char.ToLower(name[i]));
+            }
+            return sb.ToString();
         }
     }
 

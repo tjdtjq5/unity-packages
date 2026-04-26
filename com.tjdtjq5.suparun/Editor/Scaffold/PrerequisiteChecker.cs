@@ -419,6 +419,16 @@ namespace Tjdtjq5.SupaRun.Editor
             InvalidateCache();
         }
 
+        /// <summary>
+        /// gh CLI 실행. FindGh()로 절대 경로 자동 탐색하여 macOS GUI 앱 PATH 문제 회피.
+        /// (Apple Silicon brew 설치 시 /opt/homebrew/bin이 GUI PATH에 없어 "gh: command not found" 발생)
+        /// </summary>
+        public static (int code, string output) RunGh(string args)
+        {
+            var path = FindGh() ?? "gh";
+            return Run(path, args);
+        }
+
         public static void SetGcloudProject(string projectId)
         {
             var path = FindGcloud() ?? "gcloud";

@@ -82,7 +82,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         static RunResult CheckLatestRun()
         {
-            var (code, output) = PrerequisiteChecker.Run("gh",
+            var (code, output) = PrerequisiteChecker.RunGh(
                 $"run list --repo {_repo} --limit 1 --json databaseId,status,conclusion --jq \".[0]\"");
 
             if (code != 0 || string.IsNullOrEmpty(output))
@@ -125,7 +125,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             System.Threading.Tasks.Task.Run(() =>
             {
-                var (code, output) = PrerequisiteChecker.Run("gh",
+                var (code, output) = PrerequisiteChecker.RunGh(
                     $"run view {runId} --repo {_repo} --log-failed");
 
                 EditorApplication.delayCall += () =>
