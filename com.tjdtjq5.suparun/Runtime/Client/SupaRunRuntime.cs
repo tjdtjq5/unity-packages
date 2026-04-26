@@ -117,7 +117,7 @@ namespace Tjdtjq5.SupaRun
         }
 
         /// <summary>
-        /// SupaRunSettings.json (Editor) 또는 Resources/SupaRunConfig.json (Build) 에서
+        /// SupaRunProjectSettings.json (Editor) 또는 Resources/SupaRunConfig.json (Build) 에서
         /// 자동 로드하여 SupaRunRuntime을 생성하는 static factory.
         /// </summary>
         public static SupaRunRuntime CreateFromSettings()
@@ -131,11 +131,20 @@ namespace Tjdtjq5.SupaRun
             var options = new SupaRunRuntimeOptions();
 
             #if UNITY_EDITOR
-            // UserSettings/SupaRunSettings.json에서 직접 읽기.
+            // ProjectSettings/SupaRunProjectSettings.json (공유 데이터) 우선.
+            // 마이그레이션 직전 상태에서는 레거시 UserSettings/SupaRunSettings.json fallback.
             // MPPM Virtual Player도 진짜 프로젝트 루트를 공유하도록 GetProjectRoot() 사용.
-            var settingsPath = System.IO.Path.GetFullPath(
-                System.IO.Path.Combine(SupaRun.GetProjectRoot() ?? ".", "UserSettings", "SupaRunSettings.json"));
-            if (System.IO.File.Exists(settingsPath))
+            var projectRoot = SupaRun.GetProjectRoot() ?? ".";
+            var primaryPath = System.IO.Path.GetFullPath(
+                System.IO.Path.Combine(projectRoot, "ProjectSettings", "SupaRunProjectSettings.json"));
+            var legacyPath = System.IO.Path.GetFullPath(
+                System.IO.Path.Combine(projectRoot, "UserSettings", "SupaRunSettings.json"));
+
+            var settingsPath = System.IO.File.Exists(primaryPath) ? primaryPath
+                : System.IO.File.Exists(legacyPath) ? legacyPath
+                : null;
+
+            if (settingsPath != null)
             {
                 try
                 {
@@ -156,7 +165,7 @@ namespace Tjdtjq5.SupaRun
             else
             {
                 UnityEngine.Debug.LogError(
-                    $"[SupaRun] Settings 파일을 찾을 수 없습니다: {settingsPath}\n" +
+                    $"[SupaRun] Settings 파일을 찾을 수 없습니다: {primaryPath}\n" +
                     "SupaRun Dashboard에서 Supabase URL/Anon Key를 입력했는지 확인하세요.");
             }
             #else

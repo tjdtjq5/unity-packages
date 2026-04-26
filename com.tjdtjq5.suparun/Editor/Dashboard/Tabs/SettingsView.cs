@@ -51,6 +51,15 @@ namespace Tjdtjq5.SupaRun.Editor
                     : gcloud.Installed ? 2 : 0),
             });
 
+            // 시크릿 저장 위치 안내 — private repo 전용 가정
+            GUILayout.Space(4);
+            EditorGUILayout.HelpBox(
+                "⚠ 시크릿(DB Password, Access Token, GitHub Token, Cron Secret)은 " +
+                "ProjectSettings/SupaRunProjectSettings.json에 평문 저장되어 git에 커밋됩니다. " +
+                "private repo 전용 사용을 가정합니다.",
+                MessageType.Warning);
+            GUILayout.Space(4);
+
             DrawSupabaseCard(settings);
             DrawGitHubCard(settings, gh);
             DrawGcpCard(settings, gcloud);

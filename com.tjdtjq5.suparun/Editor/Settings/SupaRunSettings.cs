@@ -7,14 +7,21 @@ namespace Tjdtjq5.SupaRun.Editor
 {
     public class SupaRunSettings
     {
-        public const string VERSION = "0.3.0";
-        const string SettingsPath = "UserSettings/SupaRunSettings.json";
-        const string LegacyAssetPath = "Assets/Editor/SupaRunSettings.asset";
+        public const string VERSION = "0.4.0";
 
-        // ── 전체 데이터 (UserSettings/SupaRunSettings.json) ──
+        // 신규 분리 경로 — 공유 데이터는 ProjectSettings/, 개인 환경은 UserSettings/
+        const string ProjectSettingsPath = "ProjectSettings/SupaRunProjectSettings.json";
+        const string UserSettingsPath = "UserSettings/SupaRunUserSettings.json";
+
+        // 레거시 경로 — 마이그레이션 입력 (단일 JSON / .asset / 시크릿 JSON)
+        const string LegacyUnifiedJsonPath = "UserSettings/SupaRunSettings.json";
+        const string LegacyAssetPath = "Assets/Editor/SupaRunSettings.asset";
+        const string LegacySecretsJsonPath = "UserSettings/SupaRunSecrets.json";
+
+        // ── 데이터 클래스 (분리) ──
 
         [Serializable]
-        class Data
+        class ProjectData
         {
             // Supabase
             public string supabaseUrl = "";
@@ -45,47 +52,115 @@ namespace Tjdtjq5.SupaRun.Editor
             // 배포 캐시
             public string enabledServerCaches = "nuget,docker";
 
-            // 서버 로그
-            public bool serverLogToConsole = true;
+            // 상태 (배포 결과)
+            public string cloudRunUrl = "";
+            public string cronSecret = "";
+        }
 
-            // 상태
+        [Serializable]
+        class UserData
+        {
+            public bool serverLogToConsole = true;
+            public bool setupCompleted;
+        }
+
+        // ── 레거시 통합 데이터 (마이그레이션 입력) ──
+
+        [Serializable]
+        class LegacyData
+        {
+            public string supabaseUrl = "";
+            public string supabaseAnonKey = "";
+            public string supabaseDbPassword = "";
+            public string supabaseAccessToken = "";
+            public string gcpProjectId = "";
+            public string gcpRegion = "asia-northeast3";
+            public string gcpServiceName = "";
+            public int gcpMinInstances;
+            public bool gcpCloudRunApiEnabled;
+            public string gcpServiceAccountEmail = "";
+            public string githubRepoName = "";
+            public string githubToken = "";
+            public string enabledAuthProviders = "Guest";
+            public int supabaseMaxConnections = 60;
+            public int gcpMaxInstances = 3;
+            public int dbPoolSize = 20;
+            public string enabledServerCaches = "nuget,docker";
+            public bool serverLogToConsole = true;
             public bool setupCompleted;
             public string cloudRunUrl = "";
             public string cronSecret = "";
         }
 
-        static Data _data;
+        // ── 메모리 캐시 + 로드 ──
+
+        static ProjectData _project;
+        static UserData _user;
         static SupaRunSettings _instance;
 
-        static Data D
+        static ProjectData P
         {
             get
             {
-                if (_data == null)
+                if (_project == null)
                 {
                     MigrateIfNeeded();
-                    _data = LoadData();
+                    _project ??= LoadProject();
                 }
-                return _data;
+                return _project;
             }
         }
 
-        static Data LoadData()
+        static UserData U
         {
-            if (File.Exists(SettingsPath))
+            get
             {
-                try { return JsonUtility.FromJson<Data>(File.ReadAllText(SettingsPath)); }
-                catch (Exception ex) { Debug.LogWarning($"[SupaRun] {SettingsPath} 파싱 실패 — 초기화합니다: {ex.Message}"); }
+                if (_user == null)
+                {
+                    MigrateIfNeeded();
+                    _user ??= LoadUser();
+                }
+                return _user;
             }
-            return new Data();
         }
 
-        static void SaveData()
+        static ProjectData LoadProject()
         {
-            var dir = Path.GetDirectoryName(SettingsPath);
+            if (File.Exists(ProjectSettingsPath))
+            {
+                try { return JsonUtility.FromJson<ProjectData>(File.ReadAllText(ProjectSettingsPath)); }
+                catch (Exception ex) { Debug.LogWarning($"[SupaRun] {ProjectSettingsPath} 파싱 실패 — 초기화합니다: {ex.Message}"); }
+            }
+            return new ProjectData();
+        }
+
+        static UserData LoadUser()
+        {
+            if (File.Exists(UserSettingsPath))
+            {
+                try { return JsonUtility.FromJson<UserData>(File.ReadAllText(UserSettingsPath)); }
+                catch (Exception ex) { Debug.LogWarning($"[SupaRun] {UserSettingsPath} 파싱 실패 — 초기화합니다: {ex.Message}"); }
+            }
+            return new UserData();
+        }
+
+        static void SaveProject()
+        {
+            EnsureDirFor(ProjectSettingsPath);
+            File.WriteAllText(ProjectSettingsPath, JsonUtility.ToJson(P, true));
+        }
+
+        static void SaveUser()
+        {
+            EnsureDirFor(UserSettingsPath);
+            File.WriteAllText(UserSettingsPath, JsonUtility.ToJson(U, true));
+        }
+
+        static void EnsureDirFor(string path)
+        {
+            var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
-            File.WriteAllText(SettingsPath, JsonUtility.ToJson(D, true));
         }
 
         // ── 싱글톤 ──
@@ -100,84 +175,88 @@ namespace Tjdtjq5.SupaRun.Editor
             }
         }
 
-        public void Save() => SaveData();
+        public void Save()
+        {
+            SaveProject();
+            SaveUser();
+        }
 
         // ── Supabase ──
 
         public string supabaseUrl
         {
-            get => D.supabaseUrl;
-            set { D.supabaseUrl = value; }
+            get => P.supabaseUrl;
+            set { P.supabaseUrl = value; }
         }
 
         public string SupabaseAnonKey
         {
-            get => D.supabaseAnonKey;
-            set { D.supabaseAnonKey = value; SaveData(); }
+            get => P.supabaseAnonKey;
+            set { P.supabaseAnonKey = value; SaveProject(); }
         }
 
         public string SupabaseDbPassword
         {
-            get => D.supabaseDbPassword;
-            set { D.supabaseDbPassword = value; SaveData(); }
+            get => P.supabaseDbPassword;
+            set { P.supabaseDbPassword = value; SaveProject(); }
         }
 
         public string SupabaseAccessToken
         {
-            get => D.supabaseAccessToken;
-            set { D.supabaseAccessToken = value; SaveData(); }
+            get => P.supabaseAccessToken;
+            set { P.supabaseAccessToken = value; SaveProject(); }
         }
 
         // ── Google Cloud ──
 
         public string gcpProjectId
         {
-            get => D.gcpProjectId;
-            set { D.gcpProjectId = value; }
+            get => P.gcpProjectId;
+            set { P.gcpProjectId = value; }
         }
 
         public string gcpRegion
         {
-            get => D.gcpRegion;
-            set { D.gcpRegion = value; }
+            get => P.gcpRegion;
+            set { P.gcpRegion = value; }
         }
 
         public string gcpServiceName
         {
-            get => D.gcpServiceName;
-            set { D.gcpServiceName = value; }
+            get => P.gcpServiceName;
+            set { P.gcpServiceName = value; }
         }
 
         public int gcpMinInstances
         {
-            get => D.gcpMinInstances;
-            set { D.gcpMinInstances = value; }
+            get => P.gcpMinInstances;
+            set { P.gcpMinInstances = value; }
         }
 
         public bool gcpCloudRunApiEnabled
         {
-            get => D.gcpCloudRunApiEnabled;
-            set { D.gcpCloudRunApiEnabled = value; }
+            get => P.gcpCloudRunApiEnabled;
+            set { P.gcpCloudRunApiEnabled = value; }
         }
 
         public string gcpServiceAccountEmail
         {
-            get => D.gcpServiceAccountEmail;
-            set { D.gcpServiceAccountEmail = value; }
+            get => P.gcpServiceAccountEmail;
+            set { P.gcpServiceAccountEmail = value; }
         }
 
         // ── GitHub ──
 
         public string githubRepoName
         {
-            get => D.githubRepoName;
-            set { D.githubRepoName = value; }
+            get => P.githubRepoName;
+            set { P.githubRepoName = value; }
         }
 
         public string GithubToken
         {
-            get => D.githubToken;
-            set { D.githubToken = value; SaveData(); }
+            get => P.githubToken;
+            set { P.githubToken = value; SaveProject(); }
         }
 
         // ── Auth ──
@@ -189,7 +268,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             get
             {
-                var raw = D.enabledAuthProviders;
+                var raw = P.enabledAuthProviders;
                 if (_authProvidersCacheKey != raw)
                 {
                     _authProvidersCacheKey = raw;
@@ -201,7 +280,7 @@ namespace Tjdtjq5.SupaRun.Editor
             }
             set
             {
-                D.enabledAuthProviders = string.Join(",", value);
+                P.enabledAuthProviders = string.Join(",", value);
                 _authProvidersCacheKey = null;
             }
         }
@@ -210,20 +289,20 @@ namespace Tjdtjq5.SupaRun.Editor
 
         public int supabaseMaxConnections
         {
-            get => D.supabaseMaxConnections;
-            set { D.supabaseMaxConnections = value; }
+            get => P.supabaseMaxConnections;
+            set { P.supabaseMaxConnections = value; }
         }
 
         public int gcpMaxInstances
         {
-            get => D.gcpMaxInstances;
-            set { D.gcpMaxInstances = value; }
+            get => P.gcpMaxInstances;
+            set { P.gcpMaxInstances = value; }
         }
 
         public int dbPoolSize
         {
-            get => D.dbPoolSize;
-            set { D.dbPoolSize = value; }
+            get => P.dbPoolSize;
+            set { P.dbPoolSize = value; }
         }
 
         // ── 배포 캐시 ──
@@ -235,7 +314,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             get
             {
-                var raw = D.enabledServerCaches;
+                var raw = P.enabledServerCaches;
                 if (_serverCachesCacheKey != raw)
                 {
                     _serverCachesCacheKey = raw;
@@ -247,7 +326,7 @@ namespace Tjdtjq5.SupaRun.Editor
             }
             set
             {
-                D.enabledServerCaches = string.Join(",", value);
+                P.enabledServerCaches = string.Join(",", value);
                 _serverCachesCacheKey = null;
             }
         }
@@ -256,26 +335,26 @@ namespace Tjdtjq5.SupaRun.Editor
 
         public bool serverLogToConsole
         {
-            get => D.serverLogToConsole;
-            set { D.serverLogToConsole = value; }
+            get => U.serverLogToConsole;
+            set { U.serverLogToConsole = value; }
         }
 
         public bool setupCompleted
         {
-            get => D.setupCompleted;
-            set { D.setupCompleted = value; }
+            get => U.setupCompleted;
+            set { U.setupCompleted = value; }
         }
 
         public string cloudRunUrl
         {
-            get => D.cloudRunUrl;
-            set { D.cloudRunUrl = value; }
+            get => P.cloudRunUrl;
+            set { P.cloudRunUrl = value; }
         }
 
         public string CronSecret
         {
-            get => D.cronSecret;
-            set { D.cronSecret = value; SaveData(); }
+            get => P.cronSecret;
+            set { P.cronSecret = value; SaveProject(); }
         }
 
         // ── 설정 완료 판단 ──
@@ -322,18 +401,102 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── 마이그레이션 ──
 
-        /// <summary>레거시 .asset + EditorPrefs → JSON 일회성 마이그레이션.</summary>
+        /// <summary>
+        /// 마이그레이션 진입점. 멱등 — ProjectSettings/SupaRunProjectSettings.json이 있으면 스킵.
+        ///
+        /// 흐름:
+        /// 1. 새 분리 파일이 이미 있으면 종료 (마이그레이션 완료 상태)
+        /// 2. 레거시 단일 JSON(UserSettings/SupaRunSettings.json) 발견 → 2개 파일로 분배 + .bak 백업
+        /// 3. 단일 JSON도 없으면 → 더 오래된 .asset/시크릿/EditorPrefs 마이그레이션 시도
+        /// </summary>
         static void MigrateIfNeeded()
         {
-            if (File.Exists(SettingsPath)) return;
+            if (File.Exists(ProjectSettingsPath)) return;
 
-            // 레거시 시크릿 JSON (이전 버전에서 생성된 것)
-            const string LegacySecretsPath = "UserSettings/SupaRunSecrets.json";
-
-            var data = new Data();
+            var projectData = new ProjectData();
+            var userData = new UserData();
             var migrated = false;
 
-            // 1. 레거시 .asset에서 YAML 텍스트 파싱
+            // Step A: 레거시 단일 JSON (v0.3 형식) → 분리
+            if (File.Exists(LegacyUnifiedJsonPath))
+            {
+                try
+                {
+                    var legacy = JsonUtility.FromJson<LegacyData>(File.ReadAllText(LegacyUnifiedJsonPath));
+                    if (legacy != null)
+                    {
+                        ApplyLegacyToSplit(legacy, projectData, userData);
+                        migrated = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[SupaRun] {LegacyUnifiedJsonPath} 파싱 실패 — 빈 설정으로 시작: {ex.Message}");
+                }
+
+                // 레거시 파일 .bak 백업 (실패해도 무시)
+                try
+                {
+                    var bakPath = LegacyUnifiedJsonPath + ".bak";
+                    if (File.Exists(bakPath)) File.Delete(bakPath);
+                    File.Move(LegacyUnifiedJsonPath, bakPath);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[SupaRun] 레거시 파일 백업 실패: {ex.Message}");
+                }
+            }
+            else
+            {
+                // Step B: v0.2 이전 마이그레이션 (.asset / EditorPrefs / SupaRunSecrets.json)
+                migrated = MigrateFromV02(projectData, userData) || migrated;
+            }
+
+            if (migrated)
+            {
+                _project = projectData;
+                _user = userData;
+                SaveProject();
+                SaveUser();
+                Debug.Log($"[SupaRun] 설정 마이그레이션 완료 → {ProjectSettingsPath} + {UserSettingsPath}");
+            }
+        }
+
+        /// <summary>레거시 통합 데이터 → 분리된 ProjectData/UserData로 복사.</summary>
+        static void ApplyLegacyToSplit(LegacyData legacy, ProjectData project, UserData user)
+        {
+            // ProjectData
+            project.supabaseUrl = legacy.supabaseUrl;
+            project.supabaseAnonKey = legacy.supabaseAnonKey;
+            project.supabaseDbPassword = legacy.supabaseDbPassword;
+            project.supabaseAccessToken = legacy.supabaseAccessToken;
+            project.gcpProjectId = legacy.gcpProjectId;
+            project.gcpRegion = string.IsNullOrEmpty(legacy.gcpRegion) ? "asia-northeast3" : legacy.gcpRegion;
+            project.gcpServiceName = legacy.gcpServiceName;
+            project.gcpMinInstances = legacy.gcpMinInstances;
+            project.gcpCloudRunApiEnabled = legacy.gcpCloudRunApiEnabled;
+            project.gcpServiceAccountEmail = legacy.gcpServiceAccountEmail;
+            project.githubRepoName = legacy.githubRepoName;
+            project.githubToken = legacy.githubToken;
+            project.enabledAuthProviders = string.IsNullOrEmpty(legacy.enabledAuthProviders) ? "Guest" : legacy.enabledAuthProviders;
+            project.supabaseMaxConnections = legacy.supabaseMaxConnections > 0 ? legacy.supabaseMaxConnections : 60;
+            project.gcpMaxInstances = legacy.gcpMaxInstances > 0 ? legacy.gcpMaxInstances : 3;
+            project.dbPoolSize = legacy.dbPoolSize > 0 ? legacy.dbPoolSize : 20;
+            project.enabledServerCaches = string.IsNullOrEmpty(legacy.enabledServerCaches) ? "nuget,docker" : legacy.enabledServerCaches;
+            project.cloudRunUrl = legacy.cloudRunUrl;
+            project.cronSecret = legacy.cronSecret;
+
+            // UserData
+            user.serverLogToConsole = legacy.serverLogToConsole;
+            user.setupCompleted = legacy.setupCompleted;
+        }
+
+        /// <summary>v0.2 이전 마이그레이션: .asset YAML + 시크릿 JSON + EditorPrefs.</summary>
+        static bool MigrateFromV02(ProjectData project, UserData user)
+        {
+            var migrated = false;
+
+            // 1. 레거시 .asset YAML 파싱
             var assetPath = File.Exists(LegacyAssetPath) ? LegacyAssetPath : null;
             if (assetPath == null)
             {
@@ -344,52 +507,54 @@ namespace Tjdtjq5.SupaRun.Editor
             if (assetPath != null)
             {
                 var yaml = File.ReadAllText(assetPath);
-                data.supabaseUrl = ParseYaml(yaml, "supabaseUrl");
-                data.gcpProjectId = ParseYaml(yaml, "gcpProjectId");
-                data.gcpRegion = ParseYaml(yaml, "gcpRegion", "asia-northeast3");
-                data.gcpServiceName = ParseYaml(yaml, "gcpServiceName");
-                data.gcpMinInstances = int.TryParse(ParseYaml(yaml, "gcpMinInstances"), out var mi) ? mi : 0;
-                data.githubRepoName = ParseYaml(yaml, "githubRepoName");
-                data.gcpCloudRunApiEnabled = ParseYaml(yaml, "gcpCloudRunApiEnabled") == "1";
-                data.gcpServiceAccountEmail = ParseYaml(yaml, "gcpServiceAccountEmail");
-                data.setupCompleted = ParseYaml(yaml, "setupCompleted") == "1";
-                data.cloudRunUrl = ParseYaml(yaml, "cloudRunUrl");
-                data.serverLogToConsole = ParseYaml(yaml, "serverLogToConsole", "1") == "1";
-                data.supabaseMaxConnections = int.TryParse(ParseYaml(yaml, "supabaseMaxConnections"), out var mc) ? mc : 60;
-                data.gcpMaxInstances = int.TryParse(ParseYaml(yaml, "gcpMaxInstances"), out var mx) ? mx : 3;
-                data.dbPoolSize = int.TryParse(ParseYaml(yaml, "dbPoolSize"), out var dp) ? dp : 20;
+                project.supabaseUrl = ParseYaml(yaml, "supabaseUrl");
+                project.gcpProjectId = ParseYaml(yaml, "gcpProjectId");
+                project.gcpRegion = ParseYaml(yaml, "gcpRegion", "asia-northeast3");
+                project.gcpServiceName = ParseYaml(yaml, "gcpServiceName");
+                project.gcpMinInstances = int.TryParse(ParseYaml(yaml, "gcpMinInstances"), out var mi) ? mi : 0;
+                project.githubRepoName = ParseYaml(yaml, "githubRepoName");
+                project.gcpCloudRunApiEnabled = ParseYaml(yaml, "gcpCloudRunApiEnabled") == "1";
+                project.gcpServiceAccountEmail = ParseYaml(yaml, "gcpServiceAccountEmail");
+                project.cloudRunUrl = ParseYaml(yaml, "cloudRunUrl");
+                project.supabaseMaxConnections = int.TryParse(ParseYaml(yaml, "supabaseMaxConnections"), out var mc) ? mc : 60;
+                project.gcpMaxInstances = int.TryParse(ParseYaml(yaml, "gcpMaxInstances"), out var mx) ? mx : 3;
+                project.dbPoolSize = int.TryParse(ParseYaml(yaml, "dbPoolSize"), out var dp) ? dp : 20;
+
+                user.setupCompleted = ParseYaml(yaml, "setupCompleted") == "1";
+                user.serverLogToConsole = ParseYaml(yaml, "serverLogToConsole", "1") == "1";
+
                 migrated = true;
             }
 
-            // 2. 레거시 시크릿 JSON에서 읽기
-            if (File.Exists(LegacySecretsPath))
+            // 2. 레거시 시크릿 JSON
+            if (File.Exists(LegacySecretsJsonPath))
             {
                 try
                 {
-                    var json = File.ReadAllText(LegacySecretsPath);
-                    var secrets = JsonUtility.FromJson<Data>(json); // 필드명 호환
-                    if (!string.IsNullOrEmpty(secrets.supabaseAnonKey)) data.supabaseAnonKey = secrets.supabaseAnonKey;
-                    if (!string.IsNullOrEmpty(secrets.supabaseDbPassword)) data.supabaseDbPassword = secrets.supabaseDbPassword;
-                    if (!string.IsNullOrEmpty(secrets.githubToken)) data.githubToken = secrets.githubToken;
-                    if (!string.IsNullOrEmpty(secrets.supabaseAccessToken)) data.supabaseAccessToken = secrets.supabaseAccessToken;
-                    if (!string.IsNullOrEmpty(secrets.cronSecret)) data.cronSecret = secrets.cronSecret;
+                    var json = File.ReadAllText(LegacySecretsJsonPath);
+                    var secrets = JsonUtility.FromJson<LegacyData>(json);
+                    if (!string.IsNullOrEmpty(secrets.supabaseAnonKey)) project.supabaseAnonKey = secrets.supabaseAnonKey;
+                    if (!string.IsNullOrEmpty(secrets.supabaseDbPassword)) project.supabaseDbPassword = secrets.supabaseDbPassword;
+                    if (!string.IsNullOrEmpty(secrets.githubToken)) project.githubToken = secrets.githubToken;
+                    if (!string.IsNullOrEmpty(secrets.supabaseAccessToken)) project.supabaseAccessToken = secrets.supabaseAccessToken;
+                    if (!string.IsNullOrEmpty(secrets.cronSecret)) project.cronSecret = secrets.cronSecret;
                     migrated = true;
                 }
                 catch { /* 파싱 실패 무시 */ }
-                File.Delete(LegacySecretsPath);
+                File.Delete(LegacySecretsJsonPath);
             }
 
-            // 3. EditorPrefs에서 시크릿 읽기
+            // 3. EditorPrefs 시크릿
             var projectPrefix = EditorPrefUtils.ProjectPrefix;
             var legacyPrefixes = new[] { projectPrefix, "SupaRun_", "GameServer_" };
 
             var secretMap = new (string key, Action<string> setter)[]
             {
-                ("SupabaseAnonKey", v => data.supabaseAnonKey = v),
-                ("SupabaseDbPassword", v => data.supabaseDbPassword = v),
-                ("GithubToken", v => data.githubToken = v),
-                ("SupabaseAccessToken", v => data.supabaseAccessToken = v),
-                ("CronSecret", v => data.cronSecret = v),
+                ("SupabaseAnonKey", v => project.supabaseAnonKey = v),
+                ("SupabaseDbPassword", v => project.supabaseDbPassword = v),
+                ("GithubToken", v => project.githubToken = v),
+                ("SupabaseAccessToken", v => project.supabaseAccessToken = v),
+                ("CronSecret", v => project.cronSecret = v),
             };
 
             foreach (var (key, setter) in secretMap)
@@ -407,12 +572,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 }
             }
 
-            if (migrated)
-            {
-                _data = data;
-                SaveData();
-                Debug.Log($"[SupaRun] 설정 마이그레이션 완료 → {SettingsPath}");
-            }
+            return migrated;
         }
 
         /// <summary>간단한 YAML "key: value" 파서.</summary>

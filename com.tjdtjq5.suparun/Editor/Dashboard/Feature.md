@@ -93,6 +93,7 @@ Setup과 Settings에서 공용으로 사용하는 UI 컴포넌트.
 
 ## 주의사항
 
+- 설정 파일 분리 (v0.4.0~) — 공유 데이터는 `ProjectSettings/SupaRunProjectSettings.json` (git 커밋), 개인 환경은 `UserSettings/SupaRunUserSettings.json` (git 미커밋). 레거시 `UserSettings/SupaRunSettings.json`은 첫 실행 시 자동 마이그레이션 + `.bak` 백업. **시크릿(DB Password / Access Token / GitHub Token / Cron Secret)은 ProjectSettings/에 평문 저장되어 git 커밋되므로 private repo 전용 사용을 가정**한다. 외부 공개 저장소에서는 사용 금지. SettingsView 상단에 경고 배너 자동 표시.
 - Dashboard는 3개 모드(Setup / Dashboard / Settings)를 하나의 EditorWindow에서 전환. `setupCompleted` 플래그로 최초 진입 시 Setup 모드 자동 표시
 - `SettingsView.cs`는 약 1100줄 — Supabase/GitHub/GCP/Auth OAuth 프로바이더 설정을 모두 포함하는 대형 뷰
 - `MonitorTab`은 Supabase REST API로 `server_log` 테이블을 직접 조회. Newtonsoft 의존 없이 간이 JSON 파서 사용

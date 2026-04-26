@@ -8,7 +8,7 @@ ASP.NET + Supabase + Cloud Run 자동 배포.
 manifest.json에 추가:
 
 ```json
-"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.4.2"
+"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.5.0"
 ```
 
 ### 의존성
@@ -55,6 +55,19 @@ var result = await ServerAPI.CurrencyService.GetBalance(playerId);
 - **`IRealtimeClient`** — Realtime 추상화. `SupabaseRealtime` 또는 mock 주입.
 - **`IAuthApi`** — Auth HTTP 추상화. `SupabaseAuthApi` 또는 mock 주입.
 - **EditMode 단위 테스트 67개** — 전체 HTTP/Auth/Realtime 계층 mock 검증.
+
+## 설정 파일 (v0.5.0+)
+
+설정은 두 파일로 분리되어 저장된다:
+
+| 파일 | git | 내용 |
+|------|-----|------|
+| `ProjectSettings/SupaRunProjectSettings.json` | ✅ 커밋 | URL, AnonKey, DB Password, Access Token, GitHub Token, Cron Secret, GCP/Auth 정책 등 (22개 필드) |
+| `UserSettings/SupaRunUserSettings.json` | ❌ 미커밋 | `serverLogToConsole`, `setupCompleted` |
+
+> ⚠ **시크릿(DB Password / Access Token / GitHub Token / Cron Secret)이 `ProjectSettings/`에 평문 저장되어 git에 커밋됩니다. private repo 전용 사용을 가정합니다.** 외부 공개 저장소에서는 사용하지 마세요.
+
+기존 v0.4.x 사용자는 첫 실행 시 자동 마이그레이션됩니다 (단일 `UserSettings/SupaRunSettings.json` → 2개 파일 분배 + 원본은 `.bak`으로 백업).
 
 ## 디버깅
 
