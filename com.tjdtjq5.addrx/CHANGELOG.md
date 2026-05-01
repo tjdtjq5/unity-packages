@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0] - 2026-05-02
+
+### Changed (Breaking) — UniTask 마이그레이션
+
+Runtime 전반을 `Task` → `UniTask`로 전환. 외부 시그니처 변경이 다수 발생하므로 minor 범프(0.x).
+
+- **Core** — `AddrX.LoadAsync<T>(object key)`, `AddrX.Initialize()`, 내부 `InitializeCore`/`WaitForResourceLocators` 시그니처 `Task` → `UniTask`. `Task.CompletedTask` → `UniTask.CompletedTask`, `Task.Yield()` → `UniTask.Yield()`.
+- **Loading** — `LoadAsync(AssetReference)`, `LoadBatchAsync<T>`, `InstantiateAsync`, `LoadByLabelAsync<T>`(2 오버로드), 내부 `LoadFromLocations`/`EnsureInitialized` 시그니처 `UniTask`로 변경. `Task.WhenAll`은 Addressables 자체 Task[] await 호환 유지.
+- **Download** — `CheckCatalogUpdatesAsync`, `UpdateCatalogsAsync`(`AddrX.Download.cs`), `CatalogChecker.CheckForUpdatesAsync`/`UpdateCatalogsAsync`, `AddrXDownloader.GetTotalSizeAsync`/`StartAsync`/`DownloadWithRetry` 시그니처 `UniTask`. `Task.Delay` → `UniTask.Delay`.
+- **ComponentLoader** — `WaitForLoad()` 시그니처 `Task` → `UniTask`. 내부 `_loadTask`는 `Task` 유지 (다중 호출자가 같은 작업 await — UniTask는 struct + 1회 await 제약).
+- **`_initTask` 캐싱** — Core의 `_initTask` 필드는 `Task` 유지. 외부 API는 `.AsUniTask()`로 변환해 `UniTask` 노출.
+
+### Migration Guide
+호출자 측은 대부분 `await`만 사용하므로 변경 불요 (Task ↔ UniTask awaiter 호환). 단:
+- 외부에서 `Task` 타입을 명시적으로 변수 선언/필드로 보유한 코드는 `UniTask`로 변경 또는 `.AsTask()` 사용
+- `Tjdtjq5.AddrX.Runtime.asmdef` references에 `"UniTask"` 추가됨 (의존자 asmdef는 UniTask reference 자동 transitive)
+
 ## [0.1.7] - 2026-04-25
 
 ### Fixed

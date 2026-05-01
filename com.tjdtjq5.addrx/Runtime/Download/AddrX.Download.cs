@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.AddrX
 {
@@ -12,13 +12,13 @@ namespace Tjdtjq5.AddrX
         }
 
         /// <summary>리모트 카탈로그 업데이트 여부를 확인한다.</summary>
-        public static Task<List<string>> CheckCatalogUpdatesAsync()
+        public static UniTask<List<string>> CheckCatalogUpdatesAsync()
         {
             return CatalogChecker.CheckForUpdatesAsync();
         }
 
         /// <summary>리모트 카탈로그를 업데이트한다.</summary>
-        public static Task<bool> UpdateCatalogsAsync(List<string> catalogIds = null)
+        public static UniTask<bool> UpdateCatalogsAsync(List<string> catalogIds = null)
         {
             return CatalogChecker.UpdateCatalogsAsync(catalogIds);
         }

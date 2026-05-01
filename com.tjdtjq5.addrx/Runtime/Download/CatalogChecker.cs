@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
 
@@ -11,7 +11,7 @@ namespace Tjdtjq5.AddrX
         const string Tag = "CatalogChecker";
 
         /// <summary>업데이트 가능한 카탈로그가 있는지 확인한다.</summary>
-        public static async Task<List<string>> CheckForUpdatesAsync()
+        public static async UniTask<List<string>> CheckForUpdatesAsync()
         {
             var op = Addressables.CheckForCatalogUpdates(false);
             try
@@ -40,7 +40,7 @@ namespace Tjdtjq5.AddrX
         }
 
         /// <summary>업데이트 가능한 카탈로그를 적용한다.</summary>
-        public static async Task<bool> UpdateCatalogsAsync(List<string> catalogIds = null)
+        public static async UniTask<bool> UpdateCatalogsAsync(List<string> catalogIds = null)
         {
             catalogIds ??= await CheckForUpdatesAsync();
             if (catalogIds.Count == 0) return true;

@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 
 namespace Tjdtjq5.AddrX
@@ -13,6 +14,8 @@ namespace Tjdtjq5.AddrX
         [SerializeField] string _address;
 
         SafeHandle<Object> _handle;
+        // _loadTask는 Task로 유지 — WaitForLoad() 다중 호출자가 같은 작업을 await.
+        // UniTask는 struct + 1회 await 제약. 외부 API는 UniTask로 노출.
         Task _loadTask;
 
         /// <summary>로드된 에셋. 로드 전이면 null.</summary>
@@ -27,7 +30,7 @@ namespace Tjdtjq5.AddrX
         public HandleStatus Status => _handle?.Status ?? HandleStatus.None;
 
         /// <summary>로드 완료를 대기. 외부에서 await 가능.</summary>
-        public Task WaitForLoad() => _loadTask ?? Task.CompletedTask;
+        public UniTask WaitForLoad() => _loadTask?.AsUniTask() ?? UniTask.CompletedTask;
 
         void Awake()
         {

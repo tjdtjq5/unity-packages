@@ -3,7 +3,8 @@
     "rootNamespace": "Tjdtjq5.AddrX",
     "references": [
         "Unity.Addressables",
-        "Unity.ResourceManager"
+        "Unity.ResourceManager",
+        "UniTask"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

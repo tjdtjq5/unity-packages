@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
@@ -12,6 +13,8 @@ namespace Tjdtjq5.AddrX
         const string Tag = "AddrX";
 
         static bool _initialized;
+        // _initTask는 Task로 유지 — 다중 호출자가 같은 작업을 await하는 캐싱 패턴.
+        // UniTask는 struct + 1회 await 제약이라 캐싱 불안전. 외부 API는 UniTask로 노출.
         static Task _initTask;
         static readonly object _initLock = new();
         static int _initFailCount;
@@ -35,23 +38,23 @@ namespace Tjdtjq5.AddrX
         static void AutoInitialize()
         {
             if (!AddrXSettings.Instance.AutoInitialize) return;
-            _initTask ??= InitializeCore();
+            _initTask ??= InitializeCore().AsTask();
         }
 
         /// <summary>수동 초기화. 이미 초기화됐으면 즉시 반환.</summary>
-        public static Task Initialize()
+        public static UniTask Initialize()
         {
-            if (_initialized) return Task.CompletedTask;
+            if (_initialized) return UniTask.CompletedTask;
             lock (_initLock)
             {
-                if (_initialized) return Task.CompletedTask;
-                _initTask ??= InitializeCore();
-                return _initTask;
+                if (_initialized) return UniTask.CompletedTask;
+                _initTask ??= InitializeCore().AsTask();
+                return _initTask.AsUniTask();
             }
         }
 
         /// <summary>Addressable 에셋을 로드하고 SafeHandle로 감싸서 반환한다.</summary>
-        public static async Task<SafeHandle<T>> LoadAsync<T>(object key)
+        public static async UniTask<SafeHandle<T>> LoadAsync<T>(object key)
         {
             await EnsureInitialized();
 
@@ -73,7 +76,7 @@ namespace Tjdtjq5.AddrX
             return handle;
         }
 
-        static async Task InitializeCore()
+        static async UniTask InitializeCore()
         {
             if (_initFailCount >= MaxInitAttempts)
                 throw new InvalidOperationException(
@@ -133,13 +136,13 @@ namespace Tjdtjq5.AddrX
             return Addressables.ResourceLocators.GetEnumerator().MoveNext();
         }
 
-        static async Task WaitForResourceLocators()
+        static async UniTask WaitForResourceLocators()
         {
             const int maxFrames = 300; // ~5초 @60fps
             for (int i = 0; i < maxFrames; i++)
             {
                 if (HasResourceLocators()) return;
-                await Task.Yield();
+                await UniTask.Yield();
             }
             throw new TimeoutException(
                 "Addressables 자동 초기화 대기 시간 초과 (300 frames)");

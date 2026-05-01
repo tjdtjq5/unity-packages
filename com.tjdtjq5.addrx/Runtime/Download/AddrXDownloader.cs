@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
 
@@ -59,7 +59,7 @@ namespace Tjdtjq5.AddrX
         }
 
         /// <summary>등록된 키의 전체 다운로드 크기를 바이트로 반환한다.</summary>
-        public async Task<long> GetTotalSizeAsync()
+        public async UniTask<long> GetTotalSizeAsync()
         {
             long total = 0;
             foreach (var key in _keys)
@@ -74,7 +74,7 @@ namespace Tjdtjq5.AddrX
         }
 
         /// <summary>다운로드를 시작한다. 키 순서대로 순차 다운로드.</summary>
-        public async Task StartAsync()
+        public async UniTask StartAsync()
         {
             if (_keys.Count == 0)
             {
@@ -116,7 +116,7 @@ namespace Tjdtjq5.AddrX
             _onComplete?.Invoke();
         }
 
-        async Task<bool> DownloadWithRetry(string key, int index)
+        async UniTask<bool> DownloadWithRetry(string key, int index)
         {
             for (int attempt = 0; attempt <= _maxRetries; attempt++)
             {
@@ -153,7 +153,7 @@ namespace Tjdtjq5.AddrX
                 {
                     AddrXLog.Warning(Tag,
                         $"[{index + 1}/{_keys.Count}] '{key}' — 실패: {error}, 재시도 예정");
-                    await Task.Delay(RetryBaseDelayMs * (attempt + 1));
+                    await UniTask.Delay(RetryBaseDelayMs * (attempt + 1));
                 }
                 else
                 {

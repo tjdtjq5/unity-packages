@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
@@ -12,7 +13,7 @@ namespace Tjdtjq5.AddrX
     public static partial class AddrX
     {
         /// <summary>AssetReference로 에셋을 로드한다.</summary>
-        public static async Task<SafeHandle<T>> LoadAsync<T>(AssetReference reference)
+        public static async UniTask<SafeHandle<T>> LoadAsync<T>(AssetReference reference)
         {
             if (reference == null)
                 throw new ArgumentNullException(nameof(reference));
@@ -24,7 +25,7 @@ namespace Tjdtjq5.AddrX
         }
 
         /// <summary>여러 에셋을 동시에 로드하고 진행률을 보고한다.</summary>
-        public static async Task<SafeHandle<T>[]> LoadBatchAsync<T>(
+        public static async UniTask<SafeHandle<T>[]> LoadBatchAsync<T>(
             IList<string> keys, Action<float> onProgress = null)
         {
             await EnsureInitialized();
@@ -84,7 +85,7 @@ namespace Tjdtjq5.AddrX
         }
 
         /// <summary>Addressable 에셋을 로드하고 인스턴스화한다.</summary>
-        public static async Task<SafeHandle<GameObject>> InstantiateAsync(
+        public static async UniTask<SafeHandle<GameObject>> InstantiateAsync(
             string key, Transform parent = null)
         {
             await EnsureInitialized();
@@ -108,7 +109,7 @@ namespace Tjdtjq5.AddrX
         }
 
         /// <summary>AssetLabelReference로 에셋을 로드한다. Inspector 드롭다운 연동.</summary>
-        public static Task<SafeHandle<T>[]> LoadByLabelAsync<T>(
+        public static UniTask<SafeHandle<T>[]> LoadByLabelAsync<T>(
             AssetLabelReference labelRef, Action<float> onProgress = null)
         {
             if (labelRef == null)
@@ -117,7 +118,7 @@ namespace Tjdtjq5.AddrX
         }
 
         /// <summary>라벨에 해당하는 모든 에셋을 로드한다.</summary>
-        public static async Task<SafeHandle<T>[]> LoadByLabelAsync<T>(
+        public static async UniTask<SafeHandle<T>[]> LoadByLabelAsync<T>(
             string label, Action<float> onProgress = null)
         {
             await EnsureInitialized();
@@ -149,7 +150,7 @@ namespace Tjdtjq5.AddrX
         }
 
         /// <summary>여러 라벨 조합으로 에셋을 로드한다. Union(합집합) 또는 Intersection(교집합).</summary>
-        public static async Task<SafeHandle<T>[]> LoadByLabelAsync<T>(
+        public static async UniTask<SafeHandle<T>[]> LoadByLabelAsync<T>(
             IList<string> labels,
             Addressables.MergeMode mergeMode = Addressables.MergeMode.Union,
             Action<float> onProgress = null)
@@ -186,7 +187,7 @@ namespace Tjdtjq5.AddrX
         }
 
         /// <summary>리소스 위치 목록에서 개별 SafeHandle로 로드하는 내부 공통 로직.</summary>
-        static async Task<SafeHandle<T>[]> LoadFromLocations<T>(
+        static async UniTask<SafeHandle<T>[]> LoadFromLocations<T>(
             IList<UnityEngine.ResourceManagement.ResourceLocations.IResourceLocation> locations,
             string desc, Action<float> onProgress)
         {
@@ -243,14 +244,14 @@ namespace Tjdtjq5.AddrX
             return handles;
         }
 
-        static async Task EnsureInitialized()
+        static async UniTask EnsureInitialized()
         {
             if (_initialized) return;
 
-            // 진행 중인 초기화가 있으면 대기
+            // 진행 중인 초기화가 있으면 대기 (Task → UniTask 변환)
             if (_initTask != null)
             {
-                await _initTask;
+                await _initTask.AsUniTask();
                 if (_initialized) return;
             }
 
