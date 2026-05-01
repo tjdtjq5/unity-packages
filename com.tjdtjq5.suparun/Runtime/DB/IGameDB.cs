@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun
 {
@@ -11,14 +12,14 @@ namespace Tjdtjq5.SupaRun
     /// </summary>
     public interface IGameDB
     {
-        Task<T> Get<T>(object primaryKey);
-        Task<List<T>> GetAll<T>();
-        Task Save<T>(T entity);
-        Task Delete<T>(object primaryKey);
-        Task<List<T>> Query<T>(QueryOptions options);
-        Task<int> Count<T>(QueryOptions options);
-        Task SaveAll<T>(List<T> entities);
-        Task DeleteAll<T>(QueryOptions options);
-        Task Transaction(Func<IGameDB, Task> action);
+        UniTask<T> Get<T>(object primaryKey, CancellationToken ct = default);
+        UniTask<List<T>> GetAll<T>(CancellationToken ct = default);
+        UniTask Save<T>(T entity, CancellationToken ct = default);
+        UniTask Delete<T>(object primaryKey, CancellationToken ct = default);
+        UniTask<List<T>> Query<T>(QueryOptions options, CancellationToken ct = default);
+        UniTask<int> Count<T>(QueryOptions options, CancellationToken ct = default);
+        UniTask SaveAll<T>(List<T> entities, CancellationToken ct = default);
+        UniTask DeleteAll<T>(QueryOptions options, CancellationToken ct = default);
+        UniTask Transaction(Func<IGameDB, UniTask> action, CancellationToken ct = default);
     }
 }

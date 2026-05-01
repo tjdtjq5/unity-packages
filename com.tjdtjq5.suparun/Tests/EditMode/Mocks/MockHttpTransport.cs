@@ -1,6 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun.Tests
 {
@@ -29,10 +30,10 @@ namespace Tjdtjq5.SupaRun.Tests
             });
         }
 
-        public Task<HttpTransportResponse> SendAsync(HttpTransportRequest request)
+        public UniTask<HttpTransportResponse> SendAsync(HttpTransportRequest request, CancellationToken ct = default)
         {
             _sent.Add(request);
-            return Task.FromResult(_responses.Dequeue());
+            return UniTask.FromResult(_responses.Dequeue());
         }
     }
 }

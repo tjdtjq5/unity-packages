@@ -1,7 +1,9 @@
 {
     "name": "Tjdtjq5.SupaRun.Runtime",
     "rootNamespace": "Tjdtjq5.SupaRun",
-    "references": [],
+    "references": [
+        "UniTask"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

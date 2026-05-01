@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 
 namespace Tjdtjq5.SupaRun.Tests
@@ -103,7 +104,7 @@ namespace Tjdtjq5.SupaRun.Tests
             // 동시 호출 — 중복 방지
             var t1 = auth.EnsureLoggedIn();
             var t2 = auth.EnsureLoggedIn();
-            await Task.WhenAll(t1, t2);
+            await UniTask.WhenAll(t1, t2);
 
             Assert.AreEqual(1, mockApi.CallCount);
         }

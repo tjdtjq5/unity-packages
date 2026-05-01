@@ -1,7 +1,8 @@
 #nullable enable
 using System;
 using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using Newtonsoft.Json;
 
 namespace Tjdtjq5.SupaRun
@@ -24,7 +25,7 @@ namespace Tjdtjq5.SupaRun
         public AuthSession? Session { get; internal set; }
 
         /// <summary>토큰 갱신 콜백. 401 시 호출되어 새 세션을 반환. 실패 시 null.</summary>
-        public Func<Task<AuthSession?>>? OnTokenRefresh { get; set; }
+        public Func<UniTask<AuthSession?>>? OnTokenRefresh { get; set; }
 
         public SupaRunClient(ServerConfig config, IHttpTransport? transport = null)
         {
@@ -44,23 +45,23 @@ namespace Tjdtjq5.SupaRun
 
         string BaseUrl => _config.cloudRunUrl;
 
-        public async Task<ServerResponse<T>> GetAsync<T>(string endpoint)
+        public async UniTask<ServerResponse<T>> GetAsync<T>(string endpoint, CancellationToken ct = default)
         {
             var request = BuildRequest("GET", endpoint, null);
-            var response = await _executor.ExecuteAsync(request);
+            var response = await _executor.ExecuteAsync(request, ct);
             return ParseResponse<T>(response);
         }
 
-        public async Task<ServerResponse<T>> PostAsync<T>(string endpoint, object payload)
+        public async UniTask<ServerResponse<T>> PostAsync<T>(string endpoint, object payload, CancellationToken ct = default)
         {
             var request = BuildRequest("POST", endpoint, payload);
-            var response = await _executor.ExecuteAsync(request);
+            var response = await _executor.ExecuteAsync(request, ct);
             return ParseResponse<T>(response);
         }
 
-        public async Task<ServerResponse> PostAsync(string endpoint, object payload)
+        public async UniTask<ServerResponse> PostAsync(string endpoint, object payload, CancellationToken ct = default)
         {
-            var result = await PostAsync<object>(endpoint, payload);
+            var result = await PostAsync<object>(endpoint, payload, ct);
             return new ServerResponse
             {
                 success = result.success,

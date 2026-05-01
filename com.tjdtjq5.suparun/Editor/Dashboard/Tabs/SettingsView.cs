@@ -1,4 +1,5 @@
 using System;
+using Cysharp.Threading.Tasks;
 using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
@@ -731,7 +732,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── Provider Supabase 적용 ──
 
-        async void ApplyProviderToSupabase(SupaRunSettings settings, string providerKey)
+        async UniTaskVoid ApplyProviderToSupabase(SupaRunSettings settings, string providerKey)
         {
             _providerApplyState[providerKey] = "applying";
 
@@ -835,7 +836,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── Auth Config 조회 (provider 상태 확인용) ──
 
-        async void FetchAuthConfig(SupaRunSettings settings)
+        async UniTaskVoid FetchAuthConfig(SupaRunSettings settings)
         {
             _authConfigLoading = true;
             var (ok, json, _) = await SupabaseManagementApi.GetAuthConfig(
@@ -888,7 +889,7 @@ namespace Tjdtjq5.SupaRun.Editor
             return "[설정 완료]";
         }
 
-        async void FetchSettingsProjects()
+        async UniTaskVoid FetchSettingsProjects()
         {
             _settingsLoadingProjects = true;
             var (ok, projects, _) = await SupabaseManagementApi.ListProjects(
@@ -915,7 +916,7 @@ namespace Tjdtjq5.SupaRun.Editor
             }
         }
 
-        async void FetchAnonKey(SupaRunSettings settings)
+        async UniTaskVoid FetchAnonKey(SupaRunSettings settings)
         {
             var (ok, anonKey, error) = await SupabaseManagementApi.GetAnonKey(
                 settings.SupabaseProjectId, SupaRunSettings.Instance.SupabaseAccessToken);
@@ -930,7 +931,7 @@ namespace Tjdtjq5.SupaRun.Editor
             }
         }
 
-        async void RunConnectionTest(SupaRunSettings settings)
+        async UniTaskVoid RunConnectionTest(SupaRunSettings settings)
         {
             var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token))
@@ -975,7 +976,7 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         /// <summary>Provider를 Supabase에 활성화. Access Token 필요.</summary>
-        async void EnableProviderOnSupabase(SupaRunSettings settings, string provider)
+        async UniTaskVoid EnableProviderOnSupabase(SupaRunSettings settings, string provider)
         {
             var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token)) return;
@@ -994,7 +995,7 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         /// <summary>Provider를 Supabase에서 비활성화.</summary>
-        async void DisableProviderOnSupabase(SupaRunSettings settings, string provider)
+        async UniTaskVoid DisableProviderOnSupabase(SupaRunSettings settings, string provider)
         {
             var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token)) return;

@@ -1,7 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun
 {
@@ -160,10 +160,10 @@ namespace Tjdtjq5.SupaRun
         // ── 데이터 API (Instance 위임) ──
 
         /// <summary>단건 조회. [Config]→Supabase REST 직접, [Table]→Cloud Run, 미배포→LocalGameDB.</summary>
-        public static Task<ServerResponse<T>> Get<T>(object id) => Instance.Get<T>(id);
+        public static UniTask<ServerResponse<T>> Get<T>(object id) => Instance.Get<T>(id);
 
         /// <summary>전체 조회. [Config]→Supabase REST 직접, [Table]→Cloud Run, 미배포→LocalGameDB.</summary>
-        public static Task<ServerResponse<List<T>>> GetAll<T>() => Instance.GetAll<T>();
+        public static UniTask<ServerResponse<List<T>>> GetAll<T>() => Instance.GetAll<T>();
 
         // ── Auth 진입점 (Instance 위임) ──
 
@@ -187,7 +187,7 @@ namespace Tjdtjq5.SupaRun
         /// SignOut/DeleteAccount 후 재호출도 안전 (IsLoggedIn 체크로 진실 소스는 SupaRunAuth).
         /// 이 호출 이전에는 데이터 API(GetAll/Get/서비스 프록시)를 쓰면 안 됨.
         /// </summary>
-        public static Task Login() => Instance.Login();
+        public static UniTask Login() => Instance.Login();
 
         /// <summary>Realtime. 채널 기반 실시간 통신 (Broadcast/Presence/PostgresChanges).</summary>
         public static Supabase.IRealtimeClient? Realtime => Instance.Realtime;
@@ -204,6 +204,6 @@ namespace Tjdtjq5.SupaRun
         /// 비정상 흐름: Login() 미호출 상태로 서비스 호출이 들어오면 에러 로그 출력 후
         ///           안전망으로 자동 게스트 로그인 (silent failure 방지).
         /// </summary>
-        public static Task WaitForAuth() => Instance.WaitForAuth();
+        public static UniTask WaitForAuth() => Instance.WaitForAuth();
     }
 }

@@ -1,6 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun.Tests
 {
@@ -26,20 +27,20 @@ namespace Tjdtjq5.SupaRun.Tests
         /// </summary>
         public void EnqueueGet(string? response) => _getResponses.Enqueue(response);
 
-        public Task<string?> PostAsync(string endpoint, string jsonBody)
+        public UniTask<string?> PostAsync(string endpoint, string jsonBody, CancellationToken ct = default)
         {
             _requests.Add((endpoint, jsonBody));
             var response = _responses.Count > 0 ? _responses.Dequeue() : null;
-            return Task.FromResult(response);
+            return UniTask.FromResult(response);
         }
 
-        public Task<string?> GetAuthenticatedAsync(string endpoint, string accessToken)
+        public UniTask<string?> GetAuthenticatedAsync(string endpoint, string accessToken, CancellationToken ct = default)
         {
             _getRequests.Add((endpoint, accessToken));
             // 기본값 "ok": 큐를 따로 세팅하지 않은 기존 테스트의 세션 복원 경로가 VerifySession을 통과하도록.
             // 검증 실패 시나리오는 EnqueueGet(null)을 명시적으로 호출.
             var response = _getResponses.Count > 0 ? _getResponses.Dequeue() : "ok";
-            return Task.FromResult(response);
+            return UniTask.FromResult(response);
         }
     }
 }

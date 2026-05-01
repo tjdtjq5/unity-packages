@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -70,7 +71,7 @@ namespace Tjdtjq5.SupaRun.Supabase
         }
 
         /// <summary>Broadcast 메시지 전송.</summary>
-        public async Task SendBroadcast(string eventName, object payload)
+        public async UniTask SendBroadcast(string eventName, object payload)
         {
             if (_state != ChannelState.Joined)
             {
@@ -109,7 +110,7 @@ namespace Tjdtjq5.SupaRun.Supabase
         // === Presence ===
 
         /// <summary>Presence 추적 시작.</summary>
-        public async Task TrackPresence(object metadata)
+        public async UniTask TrackPresence(object metadata)
         {
             if (_state != ChannelState.Joined)
             {
@@ -132,7 +133,7 @@ namespace Tjdtjq5.SupaRun.Supabase
         }
 
         /// <summary>Presence 추적 중지.</summary>
-        public async Task UntrackPresence()
+        public async UniTask UntrackPresence()
         {
             await _realtime.Send(new PhoenixMessage
             {
@@ -201,7 +202,7 @@ namespace Tjdtjq5.SupaRun.Supabase
         // === Subscribe / Unsubscribe ===
 
         /// <summary>채널 구독 시작.</summary>
-        public async Task Subscribe()
+        public async UniTask Subscribe()
         {
             if (_state == ChannelState.Joined || _state == ChannelState.Joining)
                 return;
@@ -211,7 +212,7 @@ namespace Tjdtjq5.SupaRun.Supabase
         }
 
         /// <summary>채널 구독 해제.</summary>
-        public async Task Unsubscribe()
+        public async UniTask Unsubscribe()
         {
             if (_state == ChannelState.Closed) return;
 
@@ -230,7 +231,7 @@ namespace Tjdtjq5.SupaRun.Supabase
         }
 
         /// <summary>재연결 시 자동 재구독.</summary>
-        internal async Task Rejoin()
+        internal async UniTask Rejoin()
         {
             if (_state == ChannelState.Closed) return;
             _state = ChannelState.Closed;
@@ -238,21 +239,28 @@ namespace Tjdtjq5.SupaRun.Supabase
         }
 
         /// <summary>액세스 토큰 갱신.</summary>
-        internal async void PushAccessToken(string token)
+        internal async UniTaskVoid PushAccessToken(string token)
         {
-            if (_state != ChannelState.Joined) return;
-            await _realtime.Send(new PhoenixMessage
+            try
             {
-                topic = _topic,
-                evt = "access_token",
-                payload = new { access_token = token },
-                msgRef = _realtime.MakeRef()
-            });
+                if (_state != ChannelState.Joined) return;
+                await _realtime.Send(new PhoenixMessage
+                {
+                    topic = _topic,
+                    evt = "access_token",
+                    payload = new { access_token = token },
+                    msgRef = _realtime.MakeRef()
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[SupaRun][Realtime] PushAccessToken failed: {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         // === 내부: Join ===
 
-        async Task Join()
+        async UniTask Join()
         {
             _state = ChannelState.Joining;
             _joinRef = _realtime.MakeRef();

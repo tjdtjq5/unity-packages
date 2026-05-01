@@ -1,7 +1,8 @@
 #nullable enable
 using System;
 using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 
 namespace Tjdtjq5.SupaRun
@@ -24,7 +25,7 @@ namespace Tjdtjq5.SupaRun
             _executor = new HttpExecutor(t, auth, new NoRetry());
         }
 
-        public async Task<string?> PostAsync(string endpoint, string jsonBody)
+        public async UniTask<string?> PostAsync(string endpoint, string jsonBody, CancellationToken ct = default)
         {
             var url = _supabaseUrl + endpoint;
             SupaRun.LogVerbose($"[SupaRun:Auth] POST {url}");
@@ -38,7 +39,7 @@ namespace Tjdtjq5.SupaRun
             request.Headers["Content-Type"] = "application/json";
             request.Body = Encoding.UTF8.GetBytes(jsonBody);
 
-            var response = await _executor.ExecuteAsync(request);
+            var response = await _executor.ExecuteAsync(request, ct);
 
             SupaRun.LogVerbose($"[SupaRun:Auth] Response {response.StatusCode}: " +
                 $"{response.ResponseText?.Substring(0, Math.Min(200, response.ResponseText?.Length ?? 0))}");
@@ -50,7 +51,7 @@ namespace Tjdtjq5.SupaRun
             return null;
         }
 
-        public async Task<string?> GetAuthenticatedAsync(string endpoint, string accessToken)
+        public async UniTask<string?> GetAuthenticatedAsync(string endpoint, string accessToken, CancellationToken ct = default)
         {
             var url = _supabaseUrl + endpoint;
             SupaRun.LogVerbose($"[SupaRun:Auth] GET {url} (Bearer)");
@@ -65,7 +66,7 @@ namespace Tjdtjq5.SupaRun
             // ApiKeyAuth는 Authorization을 건드리지 않으므로 충돌 없음.
             request.Headers["Authorization"] = $"Bearer {accessToken}";
 
-            var response = await _executor.ExecuteAsync(request);
+            var response = await _executor.ExecuteAsync(request, ct);
 
             SupaRun.LogVerbose($"[SupaRun:Auth] Response {response.StatusCode}");
 

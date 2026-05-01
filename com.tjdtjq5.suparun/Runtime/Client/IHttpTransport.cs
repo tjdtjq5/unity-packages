@@ -1,4 +1,5 @@
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun
 {
@@ -15,6 +16,6 @@ namespace Tjdtjq5.SupaRun
         /// HTTP 요청 1회 송신. 재시도/인증 적용은 호출자 책임.
         /// 네트워크 에러든 HTTP 4xx/5xx든 응답 객체로 반환 (예외 throw 안 함).
         /// </summary>
-        Task<HttpTransportResponse> SendAsync(HttpTransportRequest request);
+        UniTask<HttpTransportResponse> SendAsync(HttpTransportRequest request, CancellationToken ct = default);
     }
 }

@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -46,7 +47,7 @@ namespace Tjdtjq5.SupaRun
         }
 
         /// <summary>OAuth 로그인. 브라우저 열고 토큰 대기.</summary>
-        public async Task<string> Authenticate(AuthProvider provider)
+        public async UniTask<string> Authenticate(AuthProvider provider)
         {
             var providerName = provider switch
             {
@@ -95,7 +96,7 @@ namespace Tjdtjq5.SupaRun
         }
 
         /// <summary>게스트 → 소셜 연결용. Supabase Identity Link API 사용.</summary>
-        public async Task<string> AuthenticateForLink(AuthProvider provider, string accessToken)
+        public async UniTask<string> AuthenticateForLink(AuthProvider provider, string accessToken)
         {
             var providerName = provider switch
             {
@@ -126,7 +127,7 @@ namespace Tjdtjq5.SupaRun
 
                 var op = request.SendWebRequest();
                 while (!op.isDone)
-                    await Task.Yield();
+                    await UniTask.Yield();
 
                 if (request.result != UnityWebRequest.Result.Success)
                 {
@@ -169,7 +170,7 @@ namespace Tjdtjq5.SupaRun
                     _httpListener = new HttpListener();
                     _httpListener.Prefixes.Add($"http://localhost:{port}/");
                     _httpListener.Start();
-                    _ = Task.Run(() => ListenForCallback());
+                    UniTask.RunOnThreadPool(() => ListenForCallback()).Forget();
                     Application.OpenURL(urlWithRedirect);
                 }
                 catch (Exception ex)
@@ -207,7 +208,7 @@ namespace Tjdtjq5.SupaRun
 
         // ── PC: localhost HTTP 서버 ──
 
-        async Task StartLocalServer(string providerName)
+        async UniTask StartLocalServer(string providerName)
         {
             // 랜덤 포트
             var port = UnityEngine.Random.Range(49152, 65535);
@@ -228,7 +229,7 @@ namespace Tjdtjq5.SupaRun
                 Debug.Log($"[SupaRun:Auth] OAuth 시작 (localhost): {providerName}");
 
                 // 백그라운드에서 요청 대기
-                _ = Task.Run(() => ListenForCallback());
+                UniTask.RunOnThreadPool(() => ListenForCallback()).Forget();
             }
             catch (Exception ex)
             {

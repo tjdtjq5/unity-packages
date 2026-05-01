@@ -1,6 +1,6 @@
 #nullable enable
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -45,7 +45,7 @@ namespace Tjdtjq5.SupaRun
             return sb.ToString();
         }
 
-        public async Task<ServerResponse<T>> Get<T>(object id)
+        public async UniTask<ServerResponse<T>> Get<T>(object id)
         {
             var table = ToSnakeCase(typeof(T).Name);
             var url = $"{_restUrl}/{table}?id=eq.{id}&limit=1";
@@ -65,14 +65,14 @@ namespace Tjdtjq5.SupaRun
             };
         }
 
-        public async Task<ServerResponse<List<T>>> GetAll<T>()
+        public async UniTask<ServerResponse<List<T>>> GetAll<T>()
         {
             var table = ToSnakeCase(typeof(T).Name);
             var url = $"{_restUrl}/{table}";
             return await Fetch<List<T>>(url);
         }
 
-        async Task<ServerResponse<T>> Fetch<T>(string url)
+        async UniTask<ServerResponse<T>> Fetch<T>(string url)
         {
             // anonymous 호출 사전 경고: silent failure(success=true, count=0) 진단용
             // RLS authenticated 정책이 걸린 테이블이면 빈 결과가 반환된다.

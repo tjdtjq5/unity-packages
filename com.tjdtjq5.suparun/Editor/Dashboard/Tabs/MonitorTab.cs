@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
@@ -263,7 +264,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── 데이터 조회 ──
 
-        async void FetchLogs(SupaRunSettings settings)
+        async UniTaskVoid FetchLogs(SupaRunSettings settings)
         {
             _state = FetchState.Loading;
             _dashboard.Repaint();

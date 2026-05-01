@@ -1,4 +1,5 @@
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun
 {
@@ -18,6 +19,6 @@ namespace Tjdtjq5.SupaRun
         /// 토큰 갱신 시도. true 반환 시 HttpExecutor가 1회 재시도.
         /// false 반환 시 401 응답을 그대로 반환.
         /// </summary>
-        Task<bool> TryRefreshAsync();
+        UniTask<bool> TryRefreshAsync(CancellationToken ct = default);
     }
 }

@@ -1,4 +1,5 @@
 using System.Text;
+using Cysharp.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 
@@ -67,7 +68,7 @@ namespace Tjdtjq5.SupaRun.Editor
             SyncToSupabase(settings, current);
         }
 
-        static async void SyncToSupabase(SupaRunSettings settings, (string bundleId, string cloudRunUrl, string supabaseUrl) current)
+        static async UniTaskVoid SyncToSupabase(SupaRunSettings settings, (string bundleId, string cloudRunUrl, string supabaseUrl) current)
         {
             IsSyncing = true;
             LastState = SyncState.Unknown;

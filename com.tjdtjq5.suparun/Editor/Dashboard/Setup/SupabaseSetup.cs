@@ -1,3 +1,4 @@
+using Cysharp.Threading.Tasks;
 using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
@@ -216,7 +217,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── 프로젝트 목록 조회 ──
 
-        async void FetchProjects()
+        async UniTaskVoid FetchProjects()
         {
             _loadingProjects = true;
             _projectsError = null;
@@ -273,7 +274,7 @@ namespace Tjdtjq5.SupaRun.Editor
             AuthUrlSyncManager.InvalidateCache();
         }
 
-        async void FetchAnonKey(string projectRef)
+        async UniTaskVoid FetchAnonKey(string projectRef)
         {
             _anonKeyState = AnonKeyState.Loading;
             _dashboard.Repaint();
@@ -298,7 +299,7 @@ namespace Tjdtjq5.SupaRun.Editor
             _dashboard.Repaint();
         }
 
-        async void RunAutoAuthSetup(string projectRef)
+        async UniTaskVoid RunAutoAuthSetup(string projectRef)
         {
             var token = SupaRunSettings.Instance.SupabaseAccessToken;
             var bundleId = PlayerSettings.applicationIdentifier;
@@ -364,7 +365,7 @@ namespace Tjdtjq5.SupaRun.Editor
             }
         }
 
-        async void RunConnectionTest(SupaRunSettings settings)
+        async UniTaskVoid RunConnectionTest(SupaRunSettings settings)
         {
             var url = settings.supabaseUrl?.TrimEnd('/');
             var key = SupaRunSettings.Instance.SupabaseAnonKey;

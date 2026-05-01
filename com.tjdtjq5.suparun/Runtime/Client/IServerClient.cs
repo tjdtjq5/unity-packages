@@ -1,4 +1,5 @@
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun
 {
@@ -14,12 +15,12 @@ namespace Tjdtjq5.SupaRun
     public interface IServerClient
     {
         /// <summary>GET 요청. 서버에서 T로 역직렬화된 데이터 반환.</summary>
-        Task<ServerResponse<T>> GetAsync<T>(string endpoint);
+        UniTask<ServerResponse<T>> GetAsync<T>(string endpoint, CancellationToken ct = default);
 
         /// <summary>POST 요청 (제네릭). 서버에서 T로 역직렬화된 데이터 반환.</summary>
-        Task<ServerResponse<T>> PostAsync<T>(string endpoint, object payload);
+        UniTask<ServerResponse<T>> PostAsync<T>(string endpoint, object payload, CancellationToken ct = default);
 
         /// <summary>POST 요청 (반환값 없음). 성공 여부와 에러만 반환.</summary>
-        Task<ServerResponse> PostAsync(string endpoint, object payload);
+        UniTask<ServerResponse> PostAsync(string endpoint, object payload, CancellationToken ct = default);
     }
 }

@@ -1,6 +1,7 @@
 #nullable enable
 using System;
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun
 {
@@ -34,7 +35,7 @@ namespace Tjdtjq5.SupaRun
         /// HTTP 요청 실행. 인증 적용 + 송신 + 401 갱신 재시도 + 일반 재시도까지 처리.
         /// 최종 응답을 반환 (재시도 한도 도달 또는 더 이상 재시도 불가능 시).
         /// </summary>
-        public async Task<HttpTransportResponse> ExecuteAsync(HttpTransportRequest request)
+        public async UniTask<HttpTransportResponse> ExecuteAsync(HttpTransportRequest request, CancellationToken ct = default)
         {
             bool refreshAttempted = false;
 
@@ -44,20 +45,20 @@ namespace Tjdtjq5.SupaRun
                 _auth.Apply(request);
 
                 // 2) 송신
-                var response = await _transport.SendAsync(request);
+                var response = await _transport.SendAsync(request, ct);
 
                 // 3) 401 처리: 토큰 갱신 후 1회만 재시도
                 if (response.StatusCode == 401 && _refresher != null && !refreshAttempted)
                 {
                     refreshAttempted = true;
-                    if (await _refresher.TryRefreshAsync()) continue; // 재시도 (attempt 증가 안 함, auth 재적용)
+                    if (await _refresher.TryRefreshAsync(ct)) continue; // 재시도 (attempt 증가 안 함, auth 재적용)
                 }
 
                 // 4) 일반 재시도 (5xx, Timeout 등)
                 var delay = _retry.GetRetryDelay(response, attempt);
                 if (delay < 0) return response; // 재시도 불가 → 최종 반환
 
-                if (delay > 0) await Task.Delay(delay);
+                if (delay > 0) await UniTask.Delay(delay, cancellationToken: ct);
                 // delay==0 또는 대기 후 → 다음 attempt
             }
         }

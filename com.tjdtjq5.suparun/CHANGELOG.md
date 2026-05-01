@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.6.0] - 2026-05-02
+
+### Changed (Breaking) — UniTask 마이그레이션
+
+Runtime + Editor 전반을 `Task` → `UniTask`로 전환. 외부 시그니처 변경이 다수 발생하므로 minor 범프(0.x).
+
+- **인터페이스 6개 시그니처 변경** — `IAuthApi`, `IPlatformAuth`, `IAuthRefresher`, `IHttpTransport`, `IServerClient`, `IGameDB`. 모두 `Task` → `UniTask` 반환 + `CancellationToken ct = default` 인자 추가. 구현체(`SupabaseAuthApi`, `GPGSAuthHandler`, `GameCenterAuthHandler`, `UnityHttpTransport`, `SupaRunClient`, `LocalGameDB`)도 동시 변경.
+- **callback delegate** — `CallbackAuthRefresher`의 `Func<Task<AuthSession?>>` → `Func<UniTask<AuthSession?>>`. `SupaRunClient.OnTokenRefresh` 프로퍼티 시그니처도 동일.
+- **Auth/Client/Realtime 핵심** — `SupaRunAuth`(13 메서드), `OAuthHandler`, `SupaRun` 정적 facade(4), `SupaRunRuntime`(4), `SupabaseRestClient`, `RealtimeChannel`(7), `SupabaseRealtime`(6) 시그니처 일괄 UniTask로 전환.
+- **`async void` 17건 → 0건** — Runtime `RealtimeChannel.PushAccessToken`(앱 크래시 위험 1건) + Editor 16건 모두 `async UniTaskVoid` + try/catch로 안전화.
+- **`UniTaskCompletionSource` 캐싱** — `SupaRunAuth.EnsureLoggedIn`을 `Task? _loginTask` → `UniTaskCompletionSource? _loginUcs`로 전환 (다중 호출자 dedup).
+- **Realtime 안정화** — `ReceiveLoop`/`HeartbeatLoop`/`TryReconnect`/`Rejoin` fire-and-forget 4건이 `_ = Method()` → `Method().Forget(예외 핸들러)`로 변경. silent 죽음 방지.
+- **`Task.Run` → `UniTask.RunOnThreadPool`** — `OAuthHandler` HttpListener 백그라운드 호출 2곳.
+
+### `[Service]`/`[API]` 정책 — 서버 호환 유지
+
+`[Service]` 클래스의 `[API]` 메서드는 **`Task`로 유지**한다. 이유: `ServerCodeGenerator`가 `[Service]` 타입을 reflection으로 읽어 ASP.NET 컨트롤러를 생성할 때, 서버 .NET 환경에는 UniTask가 없으므로 클라 [Service] 인스턴스가 서버에서도 컴파일 가능해야 한다.
+
+대신 **Source Generator 출력**(`ServerAPI.{Service}.{Method}` 프록시)은 항상 `UniTask` 반환:
+- 입력: `[API]` 메서드의 `Task` 또는 `UniTask` 모두 인식 (`ServiceGenerator`/`TableQueryGenerator` 패치)
+- 출력: `public static async UniTask<ServerResponse<T>>` 시그니처
+- → 클라 호출자는 `await ServerAPI.X.Y()` 패턴 그대로, UniTask로 일관 사용
+
+### Build
+- SourceGen `Tjdtjq5.SupaRun.SourceGen.dll` 재빌드 + `Runtime/` 복사. UniTask 인식 로직 추가.
+
+### Migration Guide
+호출 측 코드는 대부분 `await`만 사용하므로 변경 불요 (Task ↔ UniTask awaiter 호환). 단:
+- 외부에서 `Task` 타입을 명시적으로 변수 선언/필드로 보유한 코드는 `UniTask`로 변경 또는 `.AsTask()` 사용
+- `IGameDB`/`IDataProvider`를 직접 구현하는 외부 코드는 `UniTask` 시그니처로 갱신
+- Tests asmdef에 `"UniTask"` reference 추가 필요 (`Tjdtjq5.SupaRun.Tests.EditMode.asmdef`에 이미 추가됨)
+
 ## [0.5.4] - 2026-04-26
 
 ### Changed (Behavior)

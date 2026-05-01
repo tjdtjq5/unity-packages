@@ -1,7 +1,8 @@
 using System;
 using System.Linq;
 using System.Reflection;
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 
 namespace Tjdtjq5.SupaRun
@@ -22,7 +23,7 @@ namespace Tjdtjq5.SupaRun
             return null;
         }
 
-        public async Task<string> GetToken()
+        public async UniTask<string> GetToken(CancellationToken ct = default)
         {
             var platformType = GetPlatformType();
             if (platformType == null)
@@ -47,7 +48,7 @@ namespace Tjdtjq5.SupaRun
                 }
 
                 // Authenticate
-                var loginTcs = new TaskCompletionSource<bool>();
+                var loginTcs = new UniTaskCompletionSource<bool>();
                 var signInStatusType = platformType.Assembly.GetType("GooglePlayGames.BasicApi.SignInStatus");
 
                 if (signInStatusType != null)
@@ -96,7 +97,7 @@ namespace Tjdtjq5.SupaRun
                 }
 
                 // RequestServerSideAccess
-                var codeTcs = new TaskCompletionSource<string>();
+                var codeTcs = new UniTaskCompletionSource<string>();
                 var requestMethod = platformType.GetMethod("RequestServerSideAccess",
                     new[] { typeof(bool), typeof(Action<string>) });
 
@@ -124,7 +125,7 @@ namespace Tjdtjq5.SupaRun
         }
 
         /// <summary>Reflection으로 Action&lt;SignInStatus&gt; 콜백 생성. status == Success → loginTcs.SetResult(true)</summary>
-        static Delegate CreateSignInCallback(Type signInStatusType, object successValue, TaskCompletionSource<bool> loginTcs)
+        static Delegate CreateSignInCallback(Type signInStatusType, object successValue, UniTaskCompletionSource<bool> loginTcs)
         {
             // Action<object>로 래핑 후 변환
             var helperMethod = typeof(GPGSAuthHandler)
@@ -134,7 +135,7 @@ namespace Tjdtjq5.SupaRun
             return (Delegate)helperMethod.Invoke(null, new object[] { successValue, loginTcs });
         }
 
-        static Action<T> MakeTypedCallback<T>(object successValue, TaskCompletionSource<bool> loginTcs)
+        static Action<T> MakeTypedCallback<T>(object successValue, UniTaskCompletionSource<bool> loginTcs)
         {
             var success = (T)successValue;
             return status =>

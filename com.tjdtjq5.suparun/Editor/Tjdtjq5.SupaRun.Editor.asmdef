@@ -4,7 +4,8 @@
     "references": [
         "Tjdtjq5.SupaRun.Runtime",
         "Tjdtjq5.EditorToolkit.Editor",
-        "Tjdtjq5.EditorToolkit.Runtime"
+        "Tjdtjq5.EditorToolkit.Runtime",
+        "UniTask"
     ],
     "includePlatforms": [
         "Editor"

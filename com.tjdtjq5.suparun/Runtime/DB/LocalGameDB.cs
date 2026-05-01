@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 
 namespace Tjdtjq5.SupaRun
@@ -35,7 +36,7 @@ namespace Tjdtjq5.SupaRun
 
         // ── Get ──
 
-        public Task<T> Get<T>(object primaryKey)
+        public UniTask<T> Get<T>(object primaryKey, CancellationToken ct = default)
         {
             var table = GetTable(typeof(T).Name);
             var pk = primaryKey?.ToString() ?? "";
@@ -44,16 +45,16 @@ namespace Tjdtjq5.SupaRun
             {
                 var entity = JsonUtility.FromJson<T>(json);
                 Log($"Get<{typeof(T).Name}>(\"{pk}\") → found");
-                return Task.FromResult(entity);
+                return UniTask.FromResult(entity);
             }
 
             Log($"Get<{typeof(T).Name}>(\"{pk}\") → not found");
-            return Task.FromResult(default(T));
+            return UniTask.FromResult(default(T));
         }
 
         // ── GetAll ──
 
-        public Task<List<T>> GetAll<T>()
+        public UniTask<List<T>> GetAll<T>(CancellationToken ct = default)
         {
             var table = GetTable(typeof(T).Name);
             var list = table.Values
@@ -69,12 +70,12 @@ namespace Tjdtjq5.SupaRun
             }
 
             Log($"GetAll<{typeof(T).Name}>() → {list.Count} rows");
-            return Task.FromResult(list);
+            return UniTask.FromResult(list);
         }
 
         // ── Save ──
 
-        public Task Save<T>(T entity)
+        public UniTask Save<T>(T entity, CancellationToken ct = default)
         {
             if (entity == null)
                 throw new ArgumentNullException(nameof(entity));
@@ -104,24 +105,24 @@ namespace Tjdtjq5.SupaRun
             table[pk] = JsonUtility.ToJson(entity);
 
             Log($"Save<{type.Name}>(\"{pk}\") → {(isNew ? "created" : "updated")}");
-            return Task.CompletedTask;
+            return UniTask.CompletedTask;
         }
 
         // ── Delete ──
 
-        public Task Delete<T>(object primaryKey)
+        public UniTask Delete<T>(object primaryKey, CancellationToken ct = default)
         {
             var table = GetTable(typeof(T).Name);
             var pk = primaryKey?.ToString() ?? "";
             var removed = table.Remove(pk);
 
             Log($"Delete<{typeof(T).Name}>(\"{pk}\") → {(removed ? "deleted" : "not found")}");
-            return Task.CompletedTask;
+            return UniTask.CompletedTask;
         }
 
         // ── Query ──
 
-        public Task<List<T>> Query<T>(QueryOptions options)
+        public UniTask<List<T>> Query<T>(QueryOptions options, CancellationToken ct = default)
         {
             if (options == null || options.Filters.Count == 0)
             {
@@ -131,7 +132,7 @@ namespace Tjdtjq5.SupaRun
                     .Select(json => JsonUtility.FromJson<T>(json))
                     .ToList();
                 Log($"Query<{typeof(T).Name}>(no filters) → {allList.Count} rows");
-                return Task.FromResult(allList);
+                return UniTask.FromResult(allList);
             }
 
             var table = GetTable(typeof(T).Name);
@@ -169,7 +170,7 @@ namespace Tjdtjq5.SupaRun
                 results = results.Take(options.Limit).ToList();
 
             Log($"Query<{typeof(T).Name}>({options.Filters.Count} filters) → {results.Count} rows");
-            return Task.FromResult(results);
+            return UniTask.FromResult(results);
         }
 
         static bool MatchesFilters<T>(T entity, FieldInfo[] fields, System.Collections.Generic.List<QueryFilter> filters)
@@ -219,13 +220,13 @@ namespace Tjdtjq5.SupaRun
 
         // ── Count ──
 
-        public Task<int> Count<T>(QueryOptions options)
+        public UniTask<int> Count<T>(QueryOptions options, CancellationToken ct = default)
         {
             if (options == null || options.Filters.Count == 0)
             {
                 var count = GetTable(typeof(T).Name).Count;
                 Log($"Count<{typeof(T).Name}>(no filters) → {count}");
-                return Task.FromResult(count);
+                return UniTask.FromResult(count);
             }
 
             var table = GetTable(typeof(T).Name);
@@ -240,26 +241,26 @@ namespace Tjdtjq5.SupaRun
             }
 
             Log($"Count<{typeof(T).Name}>({options.Filters.Count} filters) → {result}");
-            return Task.FromResult(result);
+            return UniTask.FromResult(result);
         }
 
         // ── SaveAll ──
 
-        public Task SaveAll<T>(List<T> entities)
+        public UniTask SaveAll<T>(List<T> entities, CancellationToken ct = default)
         {
             if (entities == null || entities.Count == 0)
-                return Task.CompletedTask;
+                return UniTask.CompletedTask;
 
             foreach (var e in entities)
-                Save(e);
+                _ = Save(e, ct);  // LocalGameDB는 동기 완료 — fire-and-forget OK
 
             Log($"SaveAll<{typeof(T).Name}>({entities.Count} entities)");
-            return Task.CompletedTask;
+            return UniTask.CompletedTask;
         }
 
         // ── DeleteAll ──
 
-        public Task DeleteAll<T>(QueryOptions options)
+        public UniTask DeleteAll<T>(QueryOptions options, CancellationToken ct = default)
         {
             var table = GetTable(typeof(T).Name);
             var fields = CachedFields(typeof(T));
@@ -276,12 +277,12 @@ namespace Tjdtjq5.SupaRun
                 table.Remove(pk);
 
             Log($"DeleteAll<{typeof(T).Name}>({options?.Filters.Count ?? 0} filters) → {toRemove.Count} deleted");
-            return Task.CompletedTask;
+            return UniTask.CompletedTask;
         }
 
         // ── Transaction ──
 
-        public async Task Transaction(Func<IGameDB, Task> action)
+        public async UniTask Transaction(Func<IGameDB, UniTask> action, CancellationToken ct = default)
         {
             // 스냅샷 생성 → 실패 시 롤백
             var snapshot = _tables.ToDictionary(

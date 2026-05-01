@@ -1,5 +1,7 @@
 #nullable enable
+using System.Threading;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 
 namespace Tjdtjq5.SupaRun.Tests
@@ -180,7 +182,7 @@ namespace Tjdtjq5.SupaRun.Tests
             readonly bool _result;
             public int CallCount;
             public FakeRefresher(bool result) => _result = result;
-            public Task<bool> TryRefreshAsync() { CallCount++; return Task.FromResult(_result); }
+            public UniTask<bool> TryRefreshAsync(CancellationToken ct = default) { CallCount++; return UniTask.FromResult(_result); }
         }
     }
 }

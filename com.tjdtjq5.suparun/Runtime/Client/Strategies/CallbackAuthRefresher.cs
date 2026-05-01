@@ -1,5 +1,6 @@
 using System;
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun
 {
@@ -11,14 +12,14 @@ namespace Tjdtjq5.SupaRun
     /// </summary>
     public class CallbackAuthRefresher : IAuthRefresher
     {
-        readonly Func<Task<AuthSession?>> _refresh;
+        readonly Func<UniTask<AuthSession?>> _refresh;
 
-        public CallbackAuthRefresher(Func<Task<AuthSession?>> refresh)
+        public CallbackAuthRefresher(Func<UniTask<AuthSession?>> refresh)
         {
             _refresh = refresh ?? throw new ArgumentNullException(nameof(refresh));
         }
 
-        public async Task<bool> TryRefreshAsync()
+        public async UniTask<bool> TryRefreshAsync(CancellationToken ct = default)
         {
             var session = await _refresh();
             return session != null;

@@ -2,7 +2,8 @@
     "name": "Tjdtjq5.SupaRun.Tests.EditMode",
     "rootNamespace": "Tjdtjq5.SupaRun.Tests",
     "references": [
-        "Tjdtjq5.SupaRun.Runtime"
+        "Tjdtjq5.SupaRun.Runtime",
+        "UniTask"
     ],
     "includePlatforms": [
         "Editor"

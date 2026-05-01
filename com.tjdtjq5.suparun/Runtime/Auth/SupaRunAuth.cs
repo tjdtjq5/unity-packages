@@ -1,7 +1,9 @@
 #nullable enable
 using System;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -55,17 +57,33 @@ namespace Tjdtjq5.SupaRun
             _authApi = authApi ?? new SupabaseAuthApi(supabaseUrl, anonKey);
         }
 
-        Task? _loginTask;
+        // 다중 호출자가 같은 비동기 작업을 await하는 캐싱 — UniTaskCompletionSource 사용.
+        // UniTaskCompletionSource는 Task와 달리 struct 기반이지만, .Task 프로퍼티가 다중 await를 안전 지원.
+        UniTaskCompletionSource? _loginUcs;
 
         /// <summary>자동 로그인. 중복 호출 방지.</summary>
-        public Task EnsureLoggedIn()
+        public UniTask EnsureLoggedIn()
         {
-            if (_loginTask != null) return _loginTask;
-            _loginTask = DoEnsureLoggedIn();
-            return _loginTask;
+            if (_loginUcs != null) return _loginUcs.Task;
+            _loginUcs = new UniTaskCompletionSource();
+            DoEnsureLoggedInImpl(_loginUcs).Forget();
+            return _loginUcs.Task;
         }
 
-        async Task DoEnsureLoggedIn()
+        async UniTaskVoid DoEnsureLoggedInImpl(UniTaskCompletionSource ucs)
+        {
+            try
+            {
+                await DoEnsureLoggedIn();
+                ucs.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                ucs.TrySetException(ex);
+            }
+        }
+
+        async UniTask DoEnsureLoggedIn()
         {
             try
             {
@@ -143,14 +161,14 @@ namespace Tjdtjq5.SupaRun
             }
             finally
             {
-                _loginTask = null;
+                _loginUcs = null;
             }
         }
 
         // ── Supabase API ──
 
         /// <summary>Supabase Anonymous Sign-in. 이메일/비밀번호 불필요.</summary>
-        async Task<AuthSession?> SignInAnonymously()
+        async UniTask<AuthSession?> SignInAnonymously()
         {
             var result = await Post("/auth/v1/signup", "{}");
             return result != null ? ParseAuthResponse(result) : null;
@@ -161,7 +179,7 @@ namespace Tjdtjq5.SupaRun
         /// /auth/v1/user 호출로 200 OK 확인. 실패 시 false.
         /// JWT exp 클레임이 미래여도 서버가 세션을 invalidate(예: refresh token rotation)한 경우를 잡아낸다.
         /// </summary>
-        async Task<bool> VerifySession()
+        async UniTask<bool> VerifySession()
         {
             if (Session == null || string.IsNullOrEmpty(Session.accessToken))
                 return false;
@@ -171,7 +189,7 @@ namespace Tjdtjq5.SupaRun
         }
 
         /// <summary>현재 세션의 토큰을 갱신. 성공 시 새 세션 반환 + OnSessionChanged 발행.</summary>
-        public async Task<AuthSession?> TryRefreshToken()
+        public async UniTask<AuthSession?> TryRefreshToken()
         {
             if (Session == null || string.IsNullOrEmpty(Session.refreshToken))
                 return null;
@@ -187,7 +205,7 @@ namespace Tjdtjq5.SupaRun
             return refreshed;
         }
 
-        async Task<AuthSession?> RefreshSession(string refreshToken)
+        async UniTask<AuthSession?> RefreshSession(string refreshToken)
         {
             var body = JsonConvert.SerializeObject(new { refresh_token = refreshToken });
             var result = await Post("/auth/v1/token?grant_type=refresh_token", body);
@@ -232,7 +250,7 @@ namespace Tjdtjq5.SupaRun
 
         // ── HTTP (IAuthApi 위임) ──
 
-        async Task<string?> Post(string endpoint, string jsonBody)
+        async UniTask<string?> Post(string endpoint, string jsonBody)
         {
             if (string.IsNullOrEmpty(_supabaseUrl) || string.IsNullOrEmpty(_anonKey))
             {
@@ -282,7 +300,7 @@ namespace Tjdtjq5.SupaRun
         // ── v2: OAuth 로그인 ──
 
         /// <summary>소셜 로그인. 브라우저 열고 인증 후 토큰 수신.</summary>
-        public async Task SignIn(AuthProvider provider)
+        public async UniTask SignIn(AuthProvider provider)
         {
             if (provider == AuthProvider.Guest)
             {
@@ -330,7 +348,7 @@ namespace Tjdtjq5.SupaRun
         }
 
         /// <summary>게스트 계정에 소셜 계정 연결. Supabase Identity Link API 사용.</summary>
-        public async Task<bool> LinkProvider(AuthProvider provider)
+        public async UniTask<bool> LinkProvider(AuthProvider provider)
         {
             if (!IsLoggedIn || !IsGuest)
             {
@@ -360,7 +378,7 @@ namespace Tjdtjq5.SupaRun
         }
 
         /// <summary>로그아웃. 이후 게스트로 자동 재로그인.</summary>
-        public async Task SignOut()
+        public async UniTask SignOut()
         {
             if (!IsLoggedIn) return;
 
@@ -373,7 +391,7 @@ namespace Tjdtjq5.SupaRun
         }
 
         /// <summary>계정 삭제. 서버에서 데이터 삭제 후 Auth 삭제.</summary>
-        public async Task<bool> DeleteAccount()
+        public async UniTask<bool> DeleteAccount()
         {
             if (!IsLoggedIn)
             {
@@ -405,7 +423,7 @@ namespace Tjdtjq5.SupaRun
         }
 
         /// <summary>밴 체크. 서버에서 확인.</summary>
-        public async Task CheckBan()
+        public async UniTask CheckBan()
         {
             if (!IsLoggedIn) return;
             if (_serverClient == null) return; // 서버 미연결 — 밴 체크 스킵
@@ -421,7 +439,7 @@ namespace Tjdtjq5.SupaRun
         // ── 플랫폼 네이티브 인증 (GPGS, Game Center) ──
 
         /// <summary>플랫폼 SDK → 서버 토큰 교환 → JWT.</summary>
-        async Task SignInWithPlatform(IPlatformAuth handler)
+        async UniTask SignInWithPlatform(IPlatformAuth handler)
         {
             if (!handler.IsAvailable)
             {

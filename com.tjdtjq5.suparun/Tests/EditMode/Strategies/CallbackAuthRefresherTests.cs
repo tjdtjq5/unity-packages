@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 
 namespace Tjdtjq5.SupaRun.Tests
@@ -11,7 +12,7 @@ namespace Tjdtjq5.SupaRun.Tests
         public async Task Callback_Returns_Session_Returns_True()
         {
             var session = new AuthSession { accessToken = "new-token" };
-            var refresher = new CallbackAuthRefresher(() => Task.FromResult(session));
+            var refresher = new CallbackAuthRefresher(() => UniTask.FromResult<AuthSession?>(session));
 
             Assert.IsTrue(await refresher.TryRefreshAsync());
         }
@@ -19,7 +20,7 @@ namespace Tjdtjq5.SupaRun.Tests
         [Test]
         public async Task Callback_Returns_Null_Returns_False()
         {
-            var refresher = new CallbackAuthRefresher(() => Task.FromResult<AuthSession>(null!));
+            var refresher = new CallbackAuthRefresher(() => UniTask.FromResult<AuthSession?>(null));
 
             Assert.IsFalse(await refresher.TryRefreshAsync());
         }

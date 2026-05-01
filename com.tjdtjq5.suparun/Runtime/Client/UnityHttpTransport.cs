@@ -1,5 +1,6 @@
 using System;
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using UnityEngine.Networking;
 
 namespace Tjdtjq5.SupaRun
@@ -13,7 +14,7 @@ namespace Tjdtjq5.SupaRun
     /// </summary>
     public class UnityHttpTransport : IHttpTransport
     {
-        public async Task<HttpTransportResponse> SendAsync(HttpTransportRequest request)
+        public async UniTask<HttpTransportResponse> SendAsync(HttpTransportRequest request, CancellationToken ct = default)
         {
             try
             {
@@ -32,7 +33,7 @@ namespace Tjdtjq5.SupaRun
                 req.timeout = request.TimeoutSeconds > 0 ? request.TimeoutSeconds : 30;
 
                 var op = req.SendWebRequest();
-                while (!op.isDone) await Task.Yield();
+                while (!op.isDone) await UniTask.Yield(ct);
 
                 return new HttpTransportResponse
                 {

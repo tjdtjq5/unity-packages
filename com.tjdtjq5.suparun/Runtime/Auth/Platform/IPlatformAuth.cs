@@ -1,4 +1,5 @@
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun
 {
@@ -7,6 +8,6 @@ namespace Tjdtjq5.SupaRun
     {
         AuthProvider Provider { get; }
         bool IsAvailable { get; }
-        Task<string> GetToken();
+        UniTask<string> GetToken(CancellationToken ct = default);
     }
 }

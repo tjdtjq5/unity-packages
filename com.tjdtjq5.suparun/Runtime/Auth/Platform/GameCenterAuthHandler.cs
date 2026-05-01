@@ -1,4 +1,5 @@
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -16,10 +17,10 @@ namespace Tjdtjq5.SupaRun
             false;
 #endif
 
-        public Task<string> GetToken()
+        public UniTask<string> GetToken(CancellationToken ct = default)
         {
 #if UNITY_IOS
-            var tcs = new TaskCompletionSource<string>();
+            var tcs = new UniTaskCompletionSource<string>();
 
             Social.localUser.Authenticate(success =>
             {
@@ -42,7 +43,7 @@ namespace Tjdtjq5.SupaRun
             return tcs.Task;
 #else
             Debug.LogWarning("[SupaRun:Auth] Game Center는 iOS에서만 지원됩니다.");
-            return Task.FromResult<string>(null);
+            return UniTask.FromResult<string>(null);
 #endif
         }
     }

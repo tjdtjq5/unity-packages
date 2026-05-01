@@ -1,5 +1,6 @@
 #nullable enable
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun
 {
@@ -11,13 +12,13 @@ namespace Tjdtjq5.SupaRun
     public interface IAuthApi
     {
         /// <summary>Supabase Auth 엔드포인트에 JSON POST. 성공 시 응답 텍스트, 실패 시 null.</summary>
-        Task<string?> PostAsync(string endpoint, string jsonBody);
+        UniTask<string?> PostAsync(string endpoint, string jsonBody, CancellationToken ct = default);
 
         /// <summary>
         /// Bearer 토큰으로 Supabase Auth 엔드포인트에 GET 요청.
         /// 저장된 세션의 유효성을 서버 측에서 검증할 때 사용 (예: /auth/v1/user).
         /// 성공(2xx) 시 응답 텍스트, 실패(401/403/5xx) 시 null.
         /// </summary>
-        Task<string?> GetAuthenticatedAsync(string endpoint, string accessToken);
+        UniTask<string?> GetAuthenticatedAsync(string endpoint, string accessToken, CancellationToken ct = default);
     }
 }

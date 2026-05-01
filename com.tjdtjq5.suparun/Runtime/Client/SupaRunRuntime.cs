@@ -1,7 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 
 namespace Tjdtjq5.SupaRun
 {
@@ -193,7 +193,7 @@ namespace Tjdtjq5.SupaRun
         // ── 데이터 API ──
 
         /// <summary>단건 조회. [Config]→Supabase REST 직접, [Table]→Cloud Run, 미배포→LocalGameDB.</summary>
-        public async Task<ServerResponse<T>> Get<T>(object id)
+        public async UniTask<ServerResponse<T>> Get<T>(object id)
         {
             if (_client != null)
             {
@@ -220,7 +220,7 @@ namespace Tjdtjq5.SupaRun
         }
 
         /// <summary>전체 조회. [Config]→Supabase REST 직접, [Table]→Cloud Run, 미배포→LocalGameDB.</summary>
-        public async Task<ServerResponse<List<T>>> GetAll<T>()
+        public async UniTask<ServerResponse<List<T>>> GetAll<T>()
         {
             if (_client != null)
             {
@@ -251,7 +251,7 @@ namespace Tjdtjq5.SupaRun
         /// SignOut/DeleteAccount 후 재호출도 안전 (IsLoggedIn 체크로 진실 소스는 SupaRunAuth).
         /// 이 호출 이전에는 데이터 API(GetAll/Get/서비스 프록시)를 쓰면 안 됨.
         /// </summary>
-        public async Task Login()
+        public async UniTask Login()
         {
             if (_auth == null)
             {
@@ -269,7 +269,7 @@ namespace Tjdtjq5.SupaRun
         /// 비정상 흐름: Login() 미호출 상태로 서비스 호출이 들어오면 에러 로그 출력 후
         ///           안전망으로 자동 게스트 로그인 (silent failure 방지).
         /// </summary>
-        public async Task WaitForAuth()
+        public async UniTask WaitForAuth()
         {
             if (_auth == null) return;
             if (_auth.IsLoggedIn) return;

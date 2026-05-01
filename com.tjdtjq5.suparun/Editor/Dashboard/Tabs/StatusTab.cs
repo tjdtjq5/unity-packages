@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
@@ -218,7 +219,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── 데이터 조회 ──
 
-        async void FetchAll(SupaRunSettings settings)
+        async UniTaskVoid FetchAll(SupaRunSettings settings)
         {
             _state = FetchState.Loading;
             _dashboard.Repaint();

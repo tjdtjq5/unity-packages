@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using Cysharp.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 
@@ -163,7 +164,7 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         /// <summary>어드민 회원가입 즉시 로그인을 위해 autoconfirm 보장.</summary>
-        static async void EnsureAutoConfirm(SupaRunSettings settings)
+        static async UniTaskVoid EnsureAutoConfirm(SupaRunSettings settings)
         {
             var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token)) return;
@@ -173,7 +174,7 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         /// <summary>pg_cron 잡 관리. [Cron] 있으면 활성화+등록, 없으면 기존 잡 삭제.</summary>
-        public static async void RegisterCronJobs()
+        public static async UniTaskVoid RegisterCronJobs()
         {
             var settings = SupaRunSettings.Instance;
             var accessToken = SupaRunSettings.Instance.SupabaseAccessToken;

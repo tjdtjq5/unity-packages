@@ -5,6 +5,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -47,9 +48,9 @@ namespace Tjdtjq5.SupaRun.Supabase
         public void SetAccessToken(string token)
         {
             _accessToken = token;
-            // 이미 연결된 채널에 토큰 갱신
+            // 이미 연결된 채널에 토큰 갱신 (UniTaskVoid — fire-and-forget, 내부에서 try/catch)
             foreach (var ch in _channels.Values)
-                ch.PushAccessToken(token);
+                _ = ch.PushAccessToken(token);
         }
 
         internal string AccessToken => _accessToken ?? _anonKey;
@@ -92,7 +93,7 @@ namespace Tjdtjq5.SupaRun.Supabase
         }
 
         /// <summary>WebSocket 연결 (첫 채널 Subscribe 시 자동 호출).</summary>
-        internal async Task EnsureConnected()
+        internal async UniTask EnsureConnected()
         {
             if (IsConnected) return;
 
@@ -103,7 +104,7 @@ namespace Tjdtjq5.SupaRun.Supabase
             await Connect();
         }
 
-        async Task Connect()
+        async UniTask Connect()
         {
             // URL 빌드: wss://xxx.supabase.co/realtime/v1/websocket?apikey=xxx&vsn=1.0.0
             var wsUrl = _url.Replace("https://", "wss://").Replace("http://", "ws://");
@@ -118,18 +119,18 @@ namespace Tjdtjq5.SupaRun.Supabase
                 _reconnectAttempt = 0;
                 Debug.Log("[Realtime] WebSocket 연결 성공");
 
-                // 백그라운드 수신 루프 + 하트비트 시작
-                _ = ReceiveLoop(_cts.Token);
-                _ = HeartbeatLoop(_cts.Token);
+                // 백그라운드 수신 루프 + 하트비트 시작 (UniTask는 .Forget()로 명시적 fire-and-forget)
+                ReceiveLoop(_cts.Token).Forget(ex => Debug.LogError($"[Realtime] ReceiveLoop died: {ex}"));
+                HeartbeatLoop(_cts.Token).Forget(ex => Debug.LogError($"[Realtime] HeartbeatLoop died: {ex}"));
             }
             catch (Exception ex)
             {
                 Debug.LogWarning($"[Realtime] 연결 실패: {ex.Message}");
-                _ = TryReconnect();
+                TryReconnect().Forget(ex2 => Debug.LogError($"[Realtime] TryReconnect died: {ex2}"));
             }
         }
 
-        async Task ReceiveLoop(CancellationToken ct)
+        async UniTask ReceiveLoop(CancellationToken ct)
         {
             var buffer = new byte[ReceiveBufferSize];
 
@@ -164,16 +165,16 @@ namespace Tjdtjq5.SupaRun.Supabase
             }
 
             if (!_intentionalDisconnect)
-                _ = TryReconnect();
+                TryReconnect().Forget(ex => Debug.LogError($"[Realtime] TryReconnect died: {ex}"));
         }
 
-        async Task HeartbeatLoop(CancellationToken ct)
+        async UniTask HeartbeatLoop(CancellationToken ct)
         {
             try
             {
                 while (!ct.IsCancellationRequested)
                 {
-                    await Task.Delay(HeartbeatIntervalMs, ct);
+                    await UniTask.Delay(HeartbeatIntervalMs, cancellationToken: ct);
                     if (ct.IsCancellationRequested) break;
 
                     // 이전 하트비트 응답 안 옴 → 연결 죽음
@@ -226,7 +227,7 @@ namespace Tjdtjq5.SupaRun.Supabase
             }
         }
 
-        async Task TryReconnect()
+        async UniTask TryReconnect()
         {
             if (_intentionalDisconnect) return;
 
@@ -237,7 +238,7 @@ namespace Tjdtjq5.SupaRun.Supabase
             _reconnectAttempt++;
             Debug.Log($"[Realtime] {delay}ms 후 재연결 시도 (#{_reconnectAttempt})");
 
-            await Task.Delay(delay);
+            await UniTask.Delay(delay);
             if (_intentionalDisconnect) return;
 
             _cts = new CancellationTokenSource();
@@ -247,7 +248,7 @@ namespace Tjdtjq5.SupaRun.Supabase
             if (IsConnected)
             {
                 foreach (var ch in _channels.Values)
-                    _ = ch.Rejoin();
+                    ch.Rejoin().Forget(ex => Debug.LogError($"[Realtime] Rejoin died: {ex}"));
             }
         }
 
@@ -255,7 +256,7 @@ namespace Tjdtjq5.SupaRun.Supabase
 
         internal string MakeRef() => (++_refCounter).ToString();
 
-        internal async Task Send(PhoenixMessage msg)
+        internal async UniTask Send(PhoenixMessage msg)
         {
             if (_ws?.State != WebSocketState.Open) return;
 
