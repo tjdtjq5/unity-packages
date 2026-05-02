@@ -1,4 +1,5 @@
-using DG.Tweening;
+using LitMotion;
+using LitMotion.Extensions;
 using UnityEngine;
 
 namespace Tjdtjq5.UIFramework
@@ -15,7 +16,7 @@ namespace Tjdtjq5.UIFramework
 
         private RectTransform _rect;
         private Vector2 _originalPosition;
-        private Tweener _tweener;
+        private MotionHandle _handle;
 
         private void Awake()
         {
@@ -32,15 +33,16 @@ namespace Tjdtjq5.UIFramework
         {
             Stop();
             _rect.anchoredPosition = _originalPosition;
-            _tweener = _rect.DOShakeAnchorPos(duration, strength, _vibrato, snapping: true)
-                .SetUpdate(true)
-                .OnComplete(() => _rect.anchoredPosition = _originalPosition);
+            _handle = LMotion.Shake.Create(_originalPosition, Vector2.one * strength, duration)
+                .WithFrequency(_vibrato)
+                .WithScheduler(MotionScheduler.UpdateIgnoreTimeScale)
+                .WithOnComplete(() => _rect.anchoredPosition = _originalPosition)
+                .BindToAnchoredPosition(_rect);
         }
 
         public void Stop()
         {
-            _tweener?.Kill();
-            _tweener = null;
+            _handle.TryCancel();
             if (_rect != null)
                 _rect.anchoredPosition = _originalPosition;
         }

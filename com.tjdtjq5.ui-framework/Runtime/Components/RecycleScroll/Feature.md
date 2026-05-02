@@ -7,7 +7,7 @@ stable
 무한 재사용 스크롤 — 화면에 보이는 셀 + 버퍼만 유지하고 나머지는 재활용하여 대량 데이터를 렌더링
 
 ## 의존성
-- DOTween — 스냅 애니메이션
+- LitMotion — 스냅 애니메이션
 - com.tjdtjq5.editor-toolkit — Inspector Attribute (SectionHeader, BoxGroup)
 
 ## 구조

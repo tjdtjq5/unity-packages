@@ -3,7 +3,7 @@
     "rootNamespace": "Tjdtjq5.UIFramework.Editor",
     "references": [
         "Tjdtjq5.UIFramework.Runtime",
-        "DOTween.Modules"
+        "LitMotion"
     ],
     "includePlatforms": [
         "Editor"

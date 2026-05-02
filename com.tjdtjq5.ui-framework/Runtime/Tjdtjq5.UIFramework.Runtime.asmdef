@@ -2,9 +2,18 @@
     "name": "Tjdtjq5.UIFramework.Runtime",
     "rootNamespace": "Tjdtjq5.UIFramework",
     "references": [
-        "DOTween.Modules",
+        "LitMotion",
+        "LitMotion.Extensions",
         "Unity.TextMeshPro",
-        "Tjdtjq5.EditorToolkit.Runtime"
+        "Unity.Addressables",
+        "Unity.ResourceManager",
+        "Tjdtjq5.EditorToolkit.Runtime",
+        "Tjdtjq5.AddrX.Runtime",
+        "UniTask",
+        "R3",
+        "R3.Unity",
+        "VContainer",
+        "VContainer.Unity"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

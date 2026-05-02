@@ -1,4 +1,4 @@
-using DG.Tweening;
+using LitMotion;
 using TMPro;
 using UnityEngine;
 
@@ -17,7 +17,7 @@ namespace Tjdtjq5.UIFramework
 
         private TMP_Text _text;
         private float _currentValue;
-        private Tweener _tweener;
+        private MotionHandle _handle;
 
         private void Awake()
         {
@@ -26,19 +26,20 @@ namespace Tjdtjq5.UIFramework
 
         public void SetValue(float target)
         {
-            _tweener?.Kill();
-            _tweener = DOTween.To(() => _currentValue, x =>
+            _handle.TryCancel();
+            _handle = LMotion.Create(_currentValue, target, _duration)
+                .WithEase(Ease.OutQuad)
+                .WithScheduler(MotionScheduler.UpdateIgnoreTimeScale)
+                .Bind(x =>
                 {
                     _currentValue = x;
                     UpdateText();
-                }, target, _duration)
-                .SetEase(Ease.OutQuad)
-                .SetUpdate(true);
+                });
         }
 
         public void SetValueImmediate(float value)
         {
-            _tweener?.Kill();
+            _handle.TryCancel();
             _currentValue = value;
             UpdateText();
         }
@@ -51,8 +52,7 @@ namespace Tjdtjq5.UIFramework
 
         private void OnDisable()
         {
-            _tweener?.Kill();
-            _tweener = null;
+            _handle.TryCancel();
         }
     }
 }

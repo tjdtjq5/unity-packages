@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using DG.Tweening;
+using LitMotion;
+using LitMotion.Extensions;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -21,7 +22,7 @@ namespace Tjdtjq5.UIFramework
 
         private Dictionary<string, StateBinding> _bindingMap;
         private string _currentState;
-        private readonly List<Tween> _activeTweens = new();
+        private readonly List<MotionHandle> _activeHandles = new();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics() { }
@@ -31,7 +32,7 @@ namespace Tjdtjq5.UIFramework
             // Domain Reload 비활성화 시 인스턴스 상태 리셋
             _bindingMap = null;
             _currentState = null;
-            _activeTweens.Clear();
+            _activeHandles.Clear();
             EnsureInitialized();
         }
 
@@ -85,7 +86,7 @@ namespace Tjdtjq5.UIFramework
             }
 
             _currentState = stateName;
-            KillActiveTweens();
+            KillActiveHandles();
             ApplyBinding(binding);
         }
 
@@ -101,93 +102,106 @@ namespace Tjdtjq5.UIFramework
             var f = binding.features;
             bool useTween = (f & BindingFeatures.Tween) != 0 && binding.tweenConfig != null;
 
-            // Exclusive: pool 전체 끄고 → exclusiveShow만 켬 (항상 즉시)
-            if ((f & BindingFeatures.Exclusive) != 0 && _exclusivePool != null)
-            {
-                foreach (var go in _exclusivePool)
+            if ((f & BindingFeatures.Exclusive) != 0) ApplyExclusive(binding);
+            if ((f & BindingFeatures.Objects) != 0) ApplyObjects(binding);
+            if ((f & BindingFeatures.Animator) != 0) ApplyAnimator(binding);
+            if ((f & BindingFeatures.Visual) != 0) ApplyVisual(binding, useTween);
+            if (useTween && binding.targetScale != Vector3.one) ApplyScaleTween(binding);
+            if ((f & BindingFeatures.Event) != 0) ApplyEvent(binding, useTween);
+        }
+
+        private void ApplyExclusive(StateBinding binding)
+        {
+            // pool 전체 끄고 → exclusiveShow만 켬 (항상 즉시)
+            if (_exclusivePool == null) return;
+
+            foreach (var go in _exclusivePool)
+                if (go != null) go.SetActive(false);
+
+            if (binding.exclusiveShow != null)
+                foreach (var go in binding.exclusiveShow)
+                    if (go != null) go.SetActive(true);
+        }
+
+        private static void ApplyObjects(StateBinding binding)
+        {
+            if (binding.activateObjects != null)
+                foreach (var go in binding.activateObjects)
+                    if (go != null) go.SetActive(true);
+
+            if (binding.deactivateObjects != null)
+                foreach (var go in binding.deactivateObjects)
                     if (go != null) go.SetActive(false);
+        }
 
-                if (binding.exclusiveShow != null)
-                    foreach (var go in binding.exclusiveShow)
-                        if (go != null) go.SetActive(true);
-            }
-
-            // Objects (항상 즉시)
-            if ((f & BindingFeatures.Objects) != 0)
+        private static void ApplyAnimator(StateBinding binding)
+        {
+            if (binding.animatorTargets is { Length: > 0 })
             {
-                if (binding.activateObjects != null)
-                    foreach (var go in binding.activateObjects)
-                        if (go != null) go.SetActive(true);
-
-                if (binding.deactivateObjects != null)
-                    foreach (var go in binding.deactivateObjects)
-                        if (go != null) go.SetActive(false);
+                foreach (var at in binding.animatorTargets)
+                    SetAnimatorParameter(at);
+                return;
             }
 
-            // Animator (항상 즉시)
-            if ((f & BindingFeatures.Animator) != 0)
+            if (binding.animator != null && !string.IsNullOrEmpty(binding.animatorTrigger))
+                binding.animator.SetTrigger(binding.animatorTrigger);
+        }
+
+        private static void SetAnimatorParameter(AnimatorTarget at)
+        {
+            if (at.animator == null || string.IsNullOrEmpty(at.parameterName)) return;
+
+            switch (at.paramType)
             {
-                if (binding.animatorTargets is { Length: > 0 })
-                {
-                    foreach (var at in binding.animatorTargets)
-                    {
-                        if (at.animator == null || string.IsNullOrEmpty(at.parameterName)) continue;
-                        switch (at.paramType)
-                        {
-                            case AnimatorParamType.Trigger:
-                                at.animator.SetTrigger(at.parameterName);
-                                break;
-                            case AnimatorParamType.Bool:
-                                at.animator.SetBool(at.parameterName, at.floatValue > 0.5f);
-                                break;
-                            case AnimatorParamType.Int:
-                                at.animator.SetInteger(at.parameterName, (int)at.floatValue);
-                                break;
-                            case AnimatorParamType.Float:
-                                at.animator.SetFloat(at.parameterName, at.floatValue);
-                                break;
-                        }
-                    }
-                }
-                else if (binding.animator != null && !string.IsNullOrEmpty(binding.animatorTrigger))
-                {
-                    binding.animator.SetTrigger(binding.animatorTrigger);
-                }
+                case AnimatorParamType.Trigger:
+                    at.animator.SetTrigger(at.parameterName);
+                    break;
+                case AnimatorParamType.Bool:
+                    at.animator.SetBool(at.parameterName, at.floatValue > 0.5f);
+                    break;
+                case AnimatorParamType.Int:
+                    at.animator.SetInteger(at.parameterName, (int)at.floatValue);
+                    break;
+                case AnimatorParamType.Float:
+                    at.animator.SetFloat(at.parameterName, at.floatValue);
+                    break;
+            }
+        }
+
+        private void ApplyVisual(StateBinding binding, bool useTween)
+        {
+            if (useTween) ApplyVisualTween(binding);
+            else ApplyVisualImmediate(binding);
+        }
+
+        private void ApplyScaleTween(StateBinding binding)
+        {
+            var cfg = binding.tweenConfig;
+            var handle = LMotion.Create(transform.localScale, binding.targetScale, cfg.duration)
+                .WithEase(cfg.ease)
+                .WithDelay(cfg.delay)
+                .WithScheduler(GetScheduler(cfg.useUnscaledTime))
+                .BindToLocalScale(transform);
+            _activeHandles.Add(handle);
+        }
+
+        // Tween 시: 완료 시점에 onEnter 호출 (모든 트윈이 동일 cfg 사용 가정).
+        // 즉시 모드: 바로 호출.
+        private void ApplyEvent(StateBinding binding, bool useTween)
+        {
+            if (!useTween || _activeHandles.Count == 0)
+            {
+                binding.onEnter?.Invoke();
+                return;
             }
 
-            // Visual
-            if ((f & BindingFeatures.Visual) != 0)
-            {
-                if (useTween)
-                    ApplyVisualTween(binding);
-                else
-                    ApplyVisualImmediate(binding);
-            }
-
-            // Scale Tween
-            if (useTween && binding.targetScale != Vector3.one)
-            {
-                var cfg = binding.tweenConfig;
-                var tw = transform.DOScale(binding.targetScale, cfg.duration)
-                    .SetEase(cfg.ease)
-                    .SetDelay(cfg.delay)
-                    .SetUpdate(cfg.useUnscaledTime);
-                _activeTweens.Add(tw);
-            }
-
-            // Event — Tween 시 완료 후 호출, 즉시 시에는 바로 호출
-            if ((f & BindingFeatures.Event) != 0)
-            {
-                if (useTween && _activeTweens.Count > 0)
-                {
-                    var lastTween = _activeTweens[^1];
-                    lastTween.OnComplete(() => binding.onEnter?.Invoke());
-                }
-                else
-                {
-                    binding.onEnter?.Invoke();
-                }
-            }
+            var cfg = binding.tweenConfig;
+            var callbackHandle = LMotion.Create(0f, 1f, cfg.duration)
+                .WithDelay(cfg.delay)
+                .WithScheduler(GetScheduler(cfg.useUnscaledTime))
+                .WithOnComplete(() => binding.onEnter?.Invoke())
+                .Bind(_ => { });
+            _activeHandles.Add(callbackHandle);
         }
 
         private void ApplyVisualImmediate(StateBinding binding)
@@ -215,6 +229,7 @@ namespace Tjdtjq5.UIFramework
         private void ApplyVisualTween(StateBinding binding)
         {
             var cfg = binding.tweenConfig;
+            var scheduler = GetScheduler(cfg.useUnscaledTime);
 
             if (binding.visualTargets is { Length: > 0 })
             {
@@ -229,33 +244,42 @@ namespace Tjdtjq5.UIFramework
                     var c = vt.color;
                     if (vt.alpha >= 0f) c.a = vt.alpha;
 
-                    var tw = vt.target.DOColor(c, cfg.duration)
-                        .SetEase(cfg.ease)
-                        .SetDelay(cfg.delay)
-                        .SetUpdate(cfg.useUnscaledTime);
-                    _activeTweens.Add(tw);
+                    var handle = LMotion.Create(vt.target.color, c, cfg.duration)
+                        .WithEase(cfg.ease)
+                        .WithDelay(cfg.delay)
+                        .WithScheduler(scheduler)
+                        .BindToColor(vt.target);
+                    _activeHandles.Add(handle);
                 }
             }
             else if (binding.targetImage != null)
             {
-                var tw = binding.targetImage.DOColor(binding.imageColor, cfg.duration)
-                    .SetEase(cfg.ease)
-                    .SetDelay(cfg.delay)
-                    .SetUpdate(cfg.useUnscaledTime);
-                _activeTweens.Add(tw);
+                var handle = LMotion.Create(binding.targetImage.color, binding.imageColor, cfg.duration)
+                    .WithEase(cfg.ease)
+                    .WithDelay(cfg.delay)
+                    .WithScheduler(scheduler)
+                    .BindToColor(binding.targetImage);
+                _activeHandles.Add(handle);
             }
         }
 
-        private void KillActiveTweens()
+        private static IMotionScheduler GetScheduler(bool useUnscaledTime)
         {
-            foreach (var tw in _activeTweens)
-                tw?.Kill();
-            _activeTweens.Clear();
+            return useUnscaledTime
+                ? MotionScheduler.UpdateIgnoreTimeScale
+                : MotionScheduler.Update;
+        }
+
+        private void KillActiveHandles()
+        {
+            foreach (var handle in _activeHandles)
+                handle.TryCancel();
+            _activeHandles.Clear();
         }
 
         private void OnDisable()
         {
-            KillActiveTweens();
+            KillActiveHandles();
         }
 
         // ─── Enums ─────────────────────────────────────────

@@ -1,5 +1,6 @@
 using System;
-using DG.Tweening;
+using LitMotion;
+using LitMotion.Extensions;
 using Tjdtjq5.EditorToolkit;
 using TMPro;
 using UnityEngine;
@@ -63,7 +64,7 @@ namespace Tjdtjq5.UIFramework
         private TutorialStep[] _sequenceSteps;
         private Action _onSequenceComplete;
         private int _sequenceIndex;
-        private Tweener _fadeTween;
+        private MotionHandle _fadeHandle;
 
         private void Awake()
         {
@@ -109,14 +110,15 @@ namespace Tjdtjq5.UIFramework
         /// </summary>
         public void Hide()
         {
-            _fadeTween?.Kill();
-            _fadeTween = _canvasGroup.DOFade(0f, _fadeDuration)
-                .SetUpdate(true)
-                .OnComplete(() =>
+            _fadeHandle.TryCancel();
+            _fadeHandle = LMotion.Create(_canvasGroup.alpha, 0f, _fadeDuration)
+                .WithScheduler(MotionScheduler.UpdateIgnoreTimeScale)
+                .WithOnComplete(() =>
                 {
                     gameObject.SetActive(false);
                     _onClicked = null;
-                });
+                })
+                .BindToAlpha(_canvasGroup);
         }
 
         /// <summary>
@@ -242,10 +244,11 @@ namespace Tjdtjq5.UIFramework
 
         private void FadeIn()
         {
-            _fadeTween?.Kill();
+            _fadeHandle.TryCancel();
             _canvasGroup.alpha = 0f;
-            _fadeTween = _canvasGroup.DOFade(1f, _fadeDuration)
-                .SetUpdate(true);
+            _fadeHandle = LMotion.Create(0f, 1f, _fadeDuration)
+                .WithScheduler(MotionScheduler.UpdateIgnoreTimeScale)
+                .BindToAlpha(_canvasGroup);
         }
 
         private void OnOverlayClicked()
@@ -264,8 +267,7 @@ namespace Tjdtjq5.UIFramework
 
         private void OnDisable()
         {
-            _fadeTween?.Kill();
-            _fadeTween = null;
+            _fadeHandle.TryCancel();
         }
     }
 }

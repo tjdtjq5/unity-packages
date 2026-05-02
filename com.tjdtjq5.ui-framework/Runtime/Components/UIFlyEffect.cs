@@ -1,5 +1,5 @@
 using System;
-using DG.Tweening;
+using LitMotion;
 using Tjdtjq5.EditorToolkit;
 using UnityEngine;
 using UnityEngine.UI;
@@ -20,6 +20,7 @@ namespace Tjdtjq5.UIFramework
 
         private RectTransform _rectTransform;
         private Canvas _rootCanvas;
+        private MotionHandle _handle;
 
         private void Awake()
         {
@@ -77,10 +78,17 @@ namespace Tjdtjq5.UIFramework
             _rectTransform.anchoredPosition = fromLocal;
             _rectTransform.localScale = Vector3.one;
 
-            float t = 0f;
-            DOTween.To(() => t, v =>
+            _handle.TryCancel();
+            _handle = LMotion.Create(0f, 1f, _duration)
+                .WithEase(Ease.InQuad)
+                .WithScheduler(MotionScheduler.UpdateIgnoreTimeScale)
+                .WithOnComplete(() =>
                 {
-                    t = v;
+                    gameObject.SetActive(false);
+                    onComplete?.Invoke();
+                })
+                .Bind(t =>
+                {
                     // 쿼드라틱 베지어: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
                     float oneMinusT = 1f - t;
                     var pos = oneMinusT * oneMinusT * fromLocal
@@ -91,14 +99,12 @@ namespace Tjdtjq5.UIFramework
                     // 도착에 가까울수록 축소
                     float scale = Mathf.Lerp(1f, 0.5f, t);
                     _rectTransform.localScale = Vector3.one * scale;
-                }, 1f, _duration)
-                .SetEase(Ease.InQuad)
-                .SetUpdate(true)
-                .OnComplete(() =>
-                {
-                    gameObject.SetActive(false);
-                    onComplete?.Invoke();
                 });
+        }
+
+        private void OnDisable()
+        {
+            _handle.TryCancel();
         }
     }
 }

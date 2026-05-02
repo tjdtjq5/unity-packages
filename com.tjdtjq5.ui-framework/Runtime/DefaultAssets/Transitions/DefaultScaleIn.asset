@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16376461d28ee4aa3b1380549096ab54, type: 3}
+  m_Name: DefaultScaleIn
+  m_EditorClassIdentifier: Tjdtjq5.UIFramework.Runtime::Tjdtjq5.UIFramework.Screens.Core.Transitions.ScaleTransition
+  _duration: 0.3
+  _ease: 26
+  _direction: 0
+  _fromScale: 0.8
+  _withFade: 1

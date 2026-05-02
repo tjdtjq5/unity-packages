@@ -1,4 +1,5 @@
-using DG.Tweening;
+using LitMotion;
+using LitMotion.Extensions;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -14,7 +15,7 @@ namespace Tjdtjq5.UIFramework
         [SerializeField] private float _releaseDuration = 0.1f;
 
         private Vector3 _originalScale;
-        private Tweener _tweener;
+        private MotionHandle _handle;
 
         private void Awake()
         {
@@ -26,26 +27,25 @@ namespace Tjdtjq5.UIFramework
 
         public void OnPointerDown(PointerEventData eventData)
         {
-            _tweener?.Kill();
-            _tweener = transform
-                .DOScale(_originalScale * _pressedScale, _pressDuration)
-                .SetEase(Ease.InQuad)
-                .SetUpdate(true);
+            _handle.TryCancel();
+            _handle = LMotion.Create(transform.localScale, _originalScale * _pressedScale, _pressDuration)
+                .WithEase(Ease.InQuad)
+                .WithScheduler(MotionScheduler.UpdateIgnoreTimeScale)
+                .BindToLocalScale(transform);
         }
 
         public void OnPointerUp(PointerEventData eventData)
         {
-            _tweener?.Kill();
-            _tweener = transform
-                .DOScale(_originalScale, _releaseDuration)
-                .SetEase(Ease.OutBack)
-                .SetUpdate(true);
+            _handle.TryCancel();
+            _handle = LMotion.Create(transform.localScale, _originalScale, _releaseDuration)
+                .WithEase(Ease.OutBack)
+                .WithScheduler(MotionScheduler.UpdateIgnoreTimeScale)
+                .BindToLocalScale(transform);
         }
 
         private void OnDisable()
         {
-            _tweener?.Kill();
-            _tweener = null;
+            _handle.TryCancel();
             transform.localScale = _originalScale;
         }
     }

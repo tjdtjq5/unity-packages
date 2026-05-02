@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using DG.Tweening;
+using LitMotion;
 using Tjdtjq5.EditorToolkit;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -59,7 +59,7 @@ namespace Tjdtjq5.UIFramework
 
         private bool _initialized;
         private bool _isDragging;
-        private Tweener _snapTween;
+        private MotionHandle _snapHandle;
 
         private void Awake()
         {
@@ -328,7 +328,7 @@ namespace Tjdtjq5.UIFramework
         private void LateUpdate()
         {
             if (!_initialized || _isDragging || _snapMode == SnapMode.None) return;
-            if (_snapTween != null && _snapTween.IsActive()) return;
+            if (_snapHandle.IsActive()) return;
 
             // Inertia 감속 중 → 속도가 충분히 줄면 스냅
             float vel = _scrollRect.velocity.sqrMagnitude;
@@ -352,24 +352,19 @@ namespace Tjdtjq5.UIFramework
             _scrollRect.velocity = Vector2.zero;
             _scrollRect.StopMovement();
 
-            float current = GetScrollPosition();
-            _snapTween = DOTween.To(
-                () => current,
-                v =>
+            _snapHandle = LMotion.Create(GetScrollPosition(), snapped, _snapDuration)
+                .WithEase(_snapEase)
+                .WithScheduler(MotionScheduler.UpdateIgnoreTimeScale)
+                .Bind(v =>
                 {
-                    current = v;
                     SetContentPosition(v);
                     RefreshVisibleCells();
-                },
-                snapped,
-                _snapDuration
-            ).SetEase(_snapEase).SetUpdate(true);
+                });
         }
 
         private void KillSnap()
         {
-            _snapTween?.Kill();
-            _snapTween = null;
+            _snapHandle.TryCancel();
         }
 
         // ── Helpers ──
