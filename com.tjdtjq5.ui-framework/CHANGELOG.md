@@ -1,5 +1,52 @@
 # Changelog
 
+## [3.5.0] - 2026-05-02
+
+### Added
+- **Unity-UI-Extensions Tier 1 컴포넌트 4종 흡수** (BSD-3 라이선스, 우리 namespace로 이식)
+  - `Components/Accordion/Accordion.cs` + `AccordionElement.cs` — 펼침/접힘 컨테이너 (Toggle 상속, LitMotion height tween)
+  - `Components/FlowLayoutGroup.cs` — 가변폭 자동 wrap LayoutGroup (태그/뱃지/칩 표시)
+  - `Components/Tooltip/Tooltip.cs` + `TooltipTrigger.cs` — 호버/long-press 툴팁 (Singleton 제거 + 모바일 long-press + ScreenSpaceOverlay/Camera 자동 보정)
+  - `Components/SegmentedControl/SegmentedControl.cs` + `Segment.cs` — iOS 스타일 토글 버튼 묶음 (단순화: ColorTint만 지원)
+
+### 우리 스타일 적응
+- DOTween/LeanTween/FloatTween → **LitMotion**
+- Coroutine → **UniTask** (TooltipTrigger long-press)
+- Singleton (`ToolTip.Instance`) 제거 → 명시적 SerializeField wire
+- TMP_Text 권장 (Unity 6 정합성)
+- BSD-3 라이선스 표기 (각 파일 상단)
+
+### 단순화
+- SegmentedControl: Sprite cutting (8-slice 자동 잘라내기) 제거 — 디자이너가 좌/우 sprite 직접 준비
+- SegmentedControl: SpriteSwap/Animation transition 제거, ColorTint만 지원
+- Tooltip: Worldspace 미지원 (ScreenSpaceOverlay/Camera만)
+
+### 사용 예
+```csharp
+// Accordion
+[RequireComponent(VerticalLayoutGroup, ContentSizeFitter, ToggleGroup)]
+GameObject + Accordion script
+└── AccordionElement (Toggle 상속) ×N
+
+// FlowLayoutGroup
+GameObject + FlowLayoutGroup script
+└── 자식들 자동 wrap
+
+// Tooltip
+Canvas
+├── Tooltip (prefab, CanvasGroup + Image + TMP_Text 자식)
+└── Button + TooltipTrigger (_tooltip slot에 위 Tooltip 와이어, _text 입력)
+
+// SegmentedControl
+GameObject + SegmentedControl script
+├── Button + Segment (자동 index 부여)
+├── Button + Segment
+└── Button + Segment
+```
+
+### 의존성
+변경 없음.
+
 ## [3.4.0] - 2026-05-02
 
 ### Added

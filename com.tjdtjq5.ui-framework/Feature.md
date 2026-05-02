@@ -4,7 +4,7 @@
 stable
 
 ## 용도
-범용 UI 도구 모음 패키지 — 독립적인 UI 컴포넌트 + Screen 시스템(Page/Modal/Sheet) + 기본 자산 제공 (v3.4.0)
+범용 UI 도구 모음 패키지 — 독립적인 UI 컴포넌트 + Screen 시스템(Page/Modal/Sheet) + 기본 자산 + Unity-UI-Extensions Tier 1 흡수 (v3.5.0)
 
 ## 의존성
 - com.tjdtjq5.editor-toolkit — Inspector Attribute (SectionHeader, Required, BoxGroup 등)
@@ -19,7 +19,7 @@ stable
 
 ```
 com.tjdtjq5.ui-framework/
-├── package.json                     # v3.4.0
+├── package.json                     # v3.5.0
 ├── Feature.md
 ├── README.md
 ├── Runtime/
@@ -32,10 +32,19 @@ com.tjdtjq5.ui-framework/
 │   │   ├── UIShake.cs               # RectTransform 흔들림 효과
 │   │   ├── UIStateBinder.cs         # enum/string 상태 전환 바인딩
 │   │   ├── UITutorialMask.cs        # 스텐실 기반 튜토리얼 스포트라이트
-│   │   └── RecycleScroll/
-│   │       ├── Feature.md
-│   │       ├── IScrollCell.cs       # 셀 인터페이스
-│   │       └── RecycleScrollView.cs # 무한 재사용 스크롤
+│   │   ├── FlowLayoutGroup.cs       # 가변폭 자동 wrap LayoutGroup (v3.5)
+│   │   ├── RecycleScroll/
+│   │   │   ├── IScrollCell.cs       # 셀 인터페이스
+│   │   │   └── RecycleScrollView.cs # 무한 재사용 스크롤
+│   │   ├── Accordion/                       # v3.5 — UI-Extensions 흡수
+│   │   │   ├── Accordion.cs                 # 펼침/접힘 컨테이너
+│   │   │   └── AccordionElement.cs          # 펼침/접힘 요소 (Toggle 상속)
+│   │   ├── Tooltip/                         # v3.5
+│   │   │   ├── Tooltip.cs                   # 툴팁 박스 (위치 자동 보정)
+│   │   │   └── TooltipTrigger.cs            # 호버/long-press 트리거
+│   │   └── SegmentedControl/                # v3.5
+│   │       ├── SegmentedControl.cs          # iOS 스타일 토글 버튼 묶음
+│   │       └── Segment.cs                   # 개별 segment
 │   ├── Screens/                             # Page/Modal/Sheet 시스템 (v3.1+)
 │   │   ├── Core/
 │   │   │   ├── IScreenContainer.cs        # 컨테이너 공통 인터페이스
@@ -92,6 +101,12 @@ com.tjdtjq5.ui-framework/
 - RecycleScrollView.Init(totalCount) — 무한 재사용 스크롤 초기화 → Components/RecycleScroll/RecycleScrollView.cs
 - RecycleScrollView.ScrollTo(index) — 특정 셀로 이동 → Components/RecycleScroll/RecycleScrollView.cs
 
+### UI-Extensions 흡수 (v3.5+, BSD-3)
+- FlowLayoutGroup — 가변폭 자동 wrap (태그/뱃지/칩) → Components/FlowLayoutGroup.cs
+- Accordion + AccordionElement — 펼침/접힘 (LitMotion height tween) → Components/Accordion/
+- Tooltip + TooltipTrigger — 호버/long-press 툴팁 → Components/Tooltip/
+- SegmentedControl + Segment — iOS 스타일 토글 묶음 → Components/SegmentedControl/
+
 ### Screens (Sheet 시스템 — v3.1+)
 - SheetContainer.RegisterAsync(addressableKey, ct) → int sheetId — Addressable 프리팹을 로드해 Sheet 등록
 - SheetContainer.ShowAsync(sheetId, playAnimation, ct) — 지정 Sheet 표시 (이전 활성 sheet 자동 숨김)
@@ -128,6 +143,7 @@ com.tjdtjq5.ui-framework/
 - Tjdtjq5/UIFramework/Transition/Slide — anchoredPosition 슬라이드 (4방향)
 
 ## 주의사항
+- v3.5.0 — Unity-UI-Extensions Tier 1 흡수 (Accordion/FlowLayoutGroup/Tooltip/SegmentedControl, BSD-3). 의존성 변경 없음
 - v3.4.0 — Default 자산 추가 (ModalBackdrop 1개 + Transitions 8개) + Screens 하위 Feature.md 5개. 의존성 변경 없음
 - v3.3.0 — Modal 시스템 추가 (backdrop strategy, 다중 stacking, popAll). Screen 시스템 (Page/Modal/Sheet) 완성. 의존성 변경 없음
 - v3.2.0 — Page 시스템 추가 (history stack, push/pop). 의존성 변경 없음

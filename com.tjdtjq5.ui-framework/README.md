@@ -5,7 +5,7 @@
 ## 설치
 
 ```json
-"com.tjdtjq5.ui-framework": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ui-framework#ui-framework/v3.4.0"
+"com.tjdtjq5.ui-framework": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ui-framework#ui-framework/v3.5.0"
 ```
 
 ## 의존성
@@ -31,6 +31,10 @@
 | **SafeAreaFitter** | 모바일 노치/SafeArea 자동 적응 |
 | **UIShake** | RectTransform 흔들림 효과 |
 | **UITutorialMask** | 스텐실 기반 튜토리얼 스포트라이트 |
+| **FlowLayoutGroup** (v3.5) | 가변폭 자동 wrap LayoutGroup (태그/뱃지/칩) |
+| **Accordion + AccordionElement** (v3.5) | 펼침/접힘 컨테이너 (LitMotion height tween) |
+| **Tooltip + TooltipTrigger** (v3.5) | 호버/long-press 툴팁 (모바일 대응) |
+| **SegmentedControl + Segment** (v3.5) | iOS 스타일 토글 버튼 묶음 |
 
 ## Screen 시스템 (v3.1+)
 
@@ -209,6 +213,15 @@ recycleScrollView.ScrollTo(index);
 
 _binder.SetState(MyEnum.Active);  // GC-free enum 상태 전환
 ```
+
+## v3.5.0
+
+- **Unity-UI-Extensions Tier 1 흡수** (BSD-3, 우리 namespace로 이식)
+  - Accordion + AccordionElement — 펼침/접힘 (LitMotion height tween)
+  - FlowLayoutGroup — 가변폭 자동 wrap
+  - Tooltip + TooltipTrigger — 호버/long-press (Singleton 제거 + 모바일 long-press)
+  - SegmentedControl + Segment — iOS 스타일 토글 묶음 (단순화: ColorTint만)
+- 의존성 변경 없음
 
 ## v3.4.0
 
