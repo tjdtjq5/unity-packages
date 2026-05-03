@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.8.0] - 2026-05-03
+
+### Changed (Visual) — Brutalist Terminal redesign
+
+어드민 web app 전체를 90s computer terminal 톤으로 통째 재디자인. CRT scanlines + green phosphor (#00ff66) 액센트 + monospace 타이포 + ASCII tree 사이드바.
+
+- **폰트**: JetBrains Mono + Pretendard fallback (영문 mono / 한글 자동 sans)
+- **컬러 시스템**: 절대 검정 베이스 + green phosphor primary + amber/red 보조. 기존 Bootstrap/Tabler 변수 통째 override.
+- **CRT atmosphere**: 5% scanline (`repeating-linear-gradient`) + green ambient glow (radial) + corner vignette (body::after).
+- **상단 titlebar 신규**: `● SUPARUN.ADMIN :: PERK_CONFIG.SH ... v0.x.x / user@host`. 1.6s blink dot.
+- **사이드바 ASCII tree**: 기존 Bootstrap dropdown navigation을 `├─`/`└─` 트리 구조로 전면 재작성 (`renderSidebar()` 수정). 마지막 항목만 `└─`. section header `[CONFIGS]`/`[SYSTEM]`/`[TABLES]`. active 시 `▶ ` prefix + green tint.
+- **사이드바 status footer**: `conn ● live / user / env / ver` 신규.
+- **페이지 prompt 신규**: `admin@suparun:~/configs/perk_config$ inspect --list-all_` (cursor blink). `selectType()` 호출 시 동적 갱신 (`setTerminalContext()` 신규 함수).
+- **로그인 페이지 풀 변환**: `terminal-window` 박스 형태. `> email:` `> password:` prefix + `[ENTER]` `[REGISTER]` 버튼. 기존 ID(`#login-email`, `#login-password`, `#login-error`, `#oauth-section`, `#oauth-buttons`) 모두 보존.
+- **모든 컴포넌트 변환**: `border-radius: 0` 강제. button (1px green outline + hover inverse), form-control (1px line + green focus), table (amber uppercase header, green PK), modal (green border + ASCII style), badge (mono + green-soft), toast (좌측 3px line + bg-2), pagination, dropdown, alert 모두 brutalist 톤.
+- **JSON 매트릭스 모달 디테일**: `#json-editor-back` 버튼이 `[< BACK]` 스타일 (`::before/::after` 브래킷). breadcrumb green mono. nested 모달도 동일.
+- **Chart.js global defaults**: 색상 indigo → green, font-family mono. `renderDistChart` 색상 변경.
+
+### Notes
+
+- **JS 동작 보존**: `jsonEditorStack`, `openJsonEditor`, `openNestedJsonEditor`, `jsonEditorBack`, `renderJsonEditor`, `renderJsonEditorRows`, FK dropdown 분기, PREVIEW mode IIFE (`__SUPARUN_PREVIEW__`/`__previewApi`/`__previewTableApi`/`__previewAdminApi`), `showAdmin`/`renderTable`/`api`/`tableApi`/`adminApi`/`showAdmins`/`showAuditLog`/`showCrossSearch`/`showPlayerSearch` 모두 시그니처/동작 그대로.
+- **Bootstrap 5.3 + Tabler 1.2 클래스 보존** — 모든 셀렉터는 CSS override로 변환.
+- **PREVIEW mode IIFE 본체 무수정** — 사이드바 ASCII tree에 mock 데이터 정상 표시.
+
 ## [0.7.0] - 2026-05-03
 
 ### Added — Admin nested JSON 모달
