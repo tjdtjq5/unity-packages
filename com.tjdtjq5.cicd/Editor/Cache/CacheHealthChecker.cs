@@ -155,16 +155,21 @@ namespace Tjdtjq5.CICD.Editor
 
         static void CheckManifestLocalPaths(List<Alert> alerts)
         {
-            var repoRoot = GitHelper.GetRepoRoot();
-            if (string.IsNullOrEmpty(repoRoot)) return;
+            var localPkgs = ManifestModeSwapper.DetectLocalPackages();
+            if (localPkgs.Count == 0) return;
 
-            var manifestPath = Path.Combine(repoRoot, "Packages", "manifest.json");
-            if (!File.Exists(manifestPath)) return;
-
-            var content = File.ReadAllText(manifestPath);
-            if (content.Contains("\"file:"))
+            var unsafePkgs = localPkgs.Where(p => !p.HasBackup).ToArray();
+            if (unsafePkgs.Length > 0)
+            {
+                var names = string.Join(", ", unsafePkgs.Select(p => p.PackageName));
                 alerts.Add(new Alert(Severity.Error,
-                    "manifest.json에 로컬 경로(file:) 포함 — CI 빌드 실패 확실"));
+                    $"manifest.json: 백업 URL 없는 file: 경로 — CI 빌드 실패 확실 ({names})"));
+                return;
+            }
+
+            // 백업 URL이 모두 있으면 Release 시 자동 swap되므로 안내만
+            alerts.Add(new Alert(Severity.Info,
+                $"패키지 dev 모드 활성 ({localPkgs.Count}개) — Release 시 자동 swap"));
         }
 
         static void CheckFirstBuild(List<Alert> alerts)

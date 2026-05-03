@@ -38,19 +38,10 @@ namespace Tjdtjq5.CICD.Editor
 
             GUILayout.Space(8);
 
-            // ── Unity 계정 ──
-            EditorUI.DrawSectionHeader("Unity 계정", BuildAutomationWindow.COL_PRIMARY);
+            // ── Unity 계정 (GitHub Secrets 등록 상태 표시) ──
+            EditorUI.DrawSectionHeader("Unity 계정 (GitHub Secrets)", BuildAutomationWindow.COL_PRIMARY);
             EditorUI.BeginBody();
-
-            BuildAutomationSettings.UnityEmail =
-                EditorUI.DrawTextField("이메일", BuildAutomationSettings.UnityEmail);
-            BuildAutomationSettings.UnityPassword =
-                EditorUI.DrawPasswordField("비밀번호", BuildAutomationSettings.UnityPassword);
-
-            EditorUI.DrawDescription(
-                "CI 서버에서 Unity 인증에 사용됩니다.\n" +
-                "변경 시 Secret을 다시 등록해야 합니다. (SetupWizard 재실행)",
-                EditorUI.COL_MUTED);
+            DrawUnityCredentialStatus();
             EditorUI.EndBody();
 
             GUILayout.Space(8);
@@ -80,6 +71,64 @@ namespace Tjdtjq5.CICD.Editor
             EditorUI.EndBody();
 
             EditorGUILayout.EndScrollView();
+        }
+
+        // ── Unity 계정 등록 상태 ──
+
+        static readonly string[] _licenseSecrets = { "UNITY_LICENSE", "UNITY_EMAIL", "UNITY_PASSWORD" };
+
+        void DrawUnityCredentialStatus()
+        {
+            if (!SecretRegistry.IsLoaded)
+            {
+                SecretRegistry.Load();
+                EditorUI.DrawDescription("GitHub Secrets 상태 확인 중...", EditorUI.COL_MUTED);
+                return;
+            }
+
+            var allRegistered = SecretRegistry.AllRegistered(_licenseSecrets);
+            if (allRegistered)
+            {
+                foreach (var name in _licenseSecrets)
+                    EditorUI.DrawCellLabel($"  ✓ {name} 등록됨", 0, EditorUI.COL_SUCCESS);
+
+                GUILayout.Space(4);
+                EditorUI.DrawDescription(
+                    "팀의 GitHub Secrets에 등록된 값을 CI에서 사용합니다.\n" +
+                    "변경하려면 SetupWizard에서 [재등록]을 실행하세요.",
+                    EditorUI.COL_MUTED);
+            }
+            else
+            {
+                int registered = SecretRegistry.RegisteredCount(_licenseSecrets);
+                EditorUI.DrawCellLabel(
+                    $"  ⚠ 일부 Secret 미등록 ({registered}/{_licenseSecrets.Length})",
+                    0, EditorUI.COL_WARN);
+
+                GUILayout.Space(4);
+                foreach (var name in _licenseSecrets)
+                {
+                    var ok = SecretRegistry.IsRegistered(name);
+                    EditorUI.DrawCellLabel(
+                        $"  {(ok ? "✓" : "✗")} {name}",
+                        0, ok ? EditorUI.COL_SUCCESS : EditorUI.COL_ERROR);
+                }
+
+                GUILayout.Space(4);
+                EditorUI.DrawDescription(
+                    "UNITY_LICENSE / UNITY_EMAIL / UNITY_PASSWORD 세 가지가 모두 필요합니다.\n" +
+                    "SetupWizard를 실행해 등록하세요.",
+                    EditorUI.COL_WARN);
+            }
+
+            GUILayout.Space(4);
+            EditorUI.BeginRow();
+            if (EditorUI.DrawColorButton("새로고침", EditorUI.COL_MUTED))
+            {
+                SecretRegistry.Invalidate();
+                SecretRegistry.Load();
+            }
+            EditorUI.EndRow();
         }
     }
 }

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.6] - 2026-05-03
+
+### Added
+- **ManifestModeSwapper**: manifest.json `file:` ↔ git URL 자동 swap (`/ft:pkg-dev`의 `_xxx_remote` 백업 필드 활용)
+- **SecretRegistry**: GitHub Secrets 등록 상태 비동기 캐시 (60초 TTL, `gh secret list` 기반)
+
+### Changed
+- **ReleaseManager**:
+  - 로컬 dev 모드(`file:`)인 패키지를 release 시 자동으로 git URL로 swap → release → 워킹트리만 file: 복원
+  - 미커밋 변경사항 발생 시 다이얼로그로 확인 후 자동 commit 실행 (`WIP: pre-release {version}`)
+  - `PreflightCheck`에 `checkDirty` 옵션 추가 + manifest.json은 git status 검사에서 제외
+- **CacheHealthChecker**: 백업 URL 있는 `file:` 경로는 Info 알림(자동 swap 안내)으로 완화, 백업 없는 경우만 Error
+- **GhChecker**: macOS GUI Unity의 짧은 PATH 문제 해결
+  - `/bin/sh -lc` 로그인 셸로 PATH 상속
+  - `/opt/homebrew/bin/gh`, `/usr/local/bin/gh` fallback 추가
+  - 발견된 절대 경로를 캐싱 (셸 PATH 재의존 제거)
+- **LicenseStep**: GitHub Secrets에 이미 등록된 경우 입력 필드 숨기고 등록 상태만 표시 + 첫 진입 시 1회성 공용 계정 권고 다이얼로그 + 재등록 버튼
+- **SettingsTab**: Unity 계정 입력 필드 제거 (변경 효과 없는 입력 헷갈림 해소) → GitHub Secrets 등록 상태 표시로 대체
+
 ## [0.5.5] - 2026-04-19
 
 ### Changed

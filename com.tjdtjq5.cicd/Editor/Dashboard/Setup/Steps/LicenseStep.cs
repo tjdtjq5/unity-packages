@@ -10,10 +10,23 @@ namespace Tjdtjq5.CICD.Editor
     /// <summary>Step 2: Unity 라이선스 (Unity Hub로 발급 → .ulf 자동 탐색 → Secret 등록)</summary>
     public class LicenseStep : IWizardStep
     {
+        const string SHARED_WARNING_KEY = "CICD_LicenseSharedWarning_Shown_v1";
+        static readonly string[] LICENSE_SECRETS = { "UNITY_LICENSE", "UNITY_EMAIL", "UNITY_PASSWORD" };
+
         public string StepLabel => "라이선스";
-        public bool IsCompleted => !string.IsNullOrEmpty(_ulfContent)
-            && IsValidEmail(BuildAutomationSettings.UnityEmail)
-            && !string.IsNullOrEmpty(BuildAutomationSettings.UnityPassword);
+        public bool IsCompleted
+        {
+            get
+            {
+                // 팀이 이미 GitHub Secrets에 등록한 경우 입력 없이 통과
+                if (!_forceReentry && SecretRegistry.AllRegistered(LICENSE_SECRETS))
+                    return true;
+
+                return !string.IsNullOrEmpty(_ulfContent)
+                    && IsValidEmail(BuildAutomationSettings.UnityEmail)
+                    && !string.IsNullOrEmpty(BuildAutomationSettings.UnityPassword);
+            }
+        }
         public bool IsRequired => true;
 
         string _ulfPath;
@@ -22,6 +35,8 @@ namespace Tjdtjq5.CICD.Editor
         bool _showAccountHelp;
         bool _showHubFallback;
         bool _initialized;
+        bool _forceReentry;
+        bool _warningShown;
 
         // 체크리스트 상태 (미발견 시 사용자 진행 추적)
         bool _step1Done;
@@ -35,6 +50,42 @@ namespace Tjdtjq5.CICD.Editor
             {
                 _initialized = true;
                 TryAutoDetect();
+                SecretRegistry.Load();
+            }
+
+            // Secret 로딩 중에는 가벼운 안내만
+            if (!SecretRegistry.IsLoaded)
+            {
+                EditorUI.DrawSubLabel("Step 2/6: Unity 라이선스");
+                EditorUI.DrawDescription("GitHub Secrets 등록 상태 확인 중...", EditorUI.COL_MUTED);
+                return;
+            }
+
+            // 이미 팀이 등록한 경우 — 입력 필드 없이 안내
+            if (!_forceReentry && SecretRegistry.AllRegistered(LICENSE_SECRETS))
+            {
+                DrawAlreadyRegistered();
+                return;
+            }
+
+            // 미등록 상태에서 첫 진입 시 1회 — 공용 계정 권고
+            if (!_warningShown)
+            {
+                _warningShown = true;
+                if (!SessionState.GetBool(SHARED_WARNING_KEY, false))
+                {
+                    SessionState.SetBool(SHARED_WARNING_KEY, true);
+                    EditorUtility.DisplayDialog(
+                        "팀 공용 Unity 계정 권장",
+                        "여기서 입력하는 자격증명은 GitHub Secrets에 등록되어 " +
+                        "팀 전체 빌드에 사용됩니다.\n\n" +
+                        "개인 계정 대신 팀 공용 Unity 계정을 사용하세요:\n" +
+                        " ㆍ 멤버 변동에도 빌드 안정\n" +
+                        " ㆍ 개인 비밀번호 변경/2FA 영향 없음\n" +
+                        " ㆍ Personal 라이선스는 무료\n\n" +
+                        "팀 공용 계정이 없다면 Unity Hub에서 신규 가입 후 진행하세요.",
+                        "확인");
+                }
             }
 
             EditorUI.DrawSubLabel("Step 2/6: Unity 라이선스");
@@ -60,6 +111,42 @@ namespace Tjdtjq5.CICD.Editor
                 GUILayout.Space(4);
                 EditorUI.DrawDescription($"  ✗ {_error}", EditorUI.COL_ERROR);
             }
+        }
+
+        // ── 이미 등록된 상태 화면 ──
+
+        void DrawAlreadyRegistered()
+        {
+            EditorUI.DrawSubLabel("Step 2/6: Unity 라이선스");
+            EditorUI.DrawDescription(
+                "팀의 GitHub Secrets에 이미 등록되어 있습니다.\n" +
+                "추가 입력 없이 다음 단계로 진행할 수 있습니다.",
+                EditorUI.COL_INFO);
+
+            GUILayout.Space(8);
+
+            EditorUI.DrawSectionHeader("등록 상태", BuildAutomationWindow.COL_PRIMARY);
+            EditorUI.BeginBody();
+            foreach (var name in LICENSE_SECRETS)
+                EditorUI.DrawCellLabel($"  ✓ {name} 등록됨", 0, EditorUI.COL_SUCCESS);
+
+            GUILayout.Space(4);
+            EditorUI.DrawDescription(
+                "다른 계정으로 변경하려면 [재등록]을 누르세요.\n" +
+                "재등록 시 GitHub Secrets는 새 값으로 덮어써집니다.",
+                EditorUI.COL_MUTED);
+
+            GUILayout.Space(4);
+            EditorUI.BeginRow();
+            if (EditorUI.DrawColorButton("재등록 (다른 계정으로 변경)", EditorUI.COL_MUTED))
+                _forceReentry = true;
+            if (EditorUI.DrawColorButton("새로고침", EditorUI.COL_MUTED))
+            {
+                SecretRegistry.Invalidate();
+                SecretRegistry.Load();
+            }
+            EditorUI.EndRow();
+            EditorUI.EndBody();
         }
 
         // ── Unity 계정 입력 ──

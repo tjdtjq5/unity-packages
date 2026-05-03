@@ -110,19 +110,31 @@ namespace Tjdtjq5.CICD.Editor
         }
 
         // ── CLI 경로 찾기 ──
+        // macOS GUI Unity는 짧은 PATH(/usr/bin:/bin)를 상속받아 brew 경로(/opt/homebrew/bin)를
+        // 못 보므로, 로그인 셸로 PATH 확장 + 알려진 경로 fallback + 절대 경로로 저장.
 
         static string FindGh()
         {
             if (_ghPath != null) return _ghPath;
 
+            // 1. PATH 탐색 (로그인 셸 사용해 사용자 PATH 상속)
 #if UNITY_EDITOR_WIN
-            var (code, _) = RunDirect("cmd.exe", "/c where gh");
-            if (code == 0)
+            var (code, output) = RunDirect("cmd.exe", "/c where gh");
+#else
+            var (code, output) = RunDirect("/bin/sh", "-lc \"command -v gh\"");
+#endif
+            if (code == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                _ghPath = "gh";
-                return _ghPath;
+                var first = output.Split('\n', '\r')[0].Trim();
+                if (!string.IsNullOrEmpty(first) && File.Exists(first))
+                {
+                    _ghPath = first;
+                    return _ghPath;
+                }
             }
 
+            // 2. 알려진 설치 경로 fallback
+#if UNITY_EDITOR_WIN
             var programFiles = System.Environment.GetFolderPath(
                 System.Environment.SpecialFolder.ProgramFiles);
             string[] knownPaths =
@@ -131,6 +143,13 @@ namespace Tjdtjq5.CICD.Editor
                 @"C:\Program Files\GitHub CLI\gh.exe",
                 @"C:\Program Files (x86)\GitHub CLI\gh.exe",
             };
+#else
+            string[] knownPaths =
+            {
+                "/opt/homebrew/bin/gh",   // Homebrew (Apple Silicon)
+                "/usr/local/bin/gh",      // Homebrew (Intel) / Linux
+            };
+#endif
             foreach (var p in knownPaths)
             {
                 if (File.Exists(p))
@@ -139,14 +158,7 @@ namespace Tjdtjq5.CICD.Editor
                     return _ghPath;
                 }
             }
-#else
-            var (code, _) = RunDirect("which", "gh");
-            if (code == 0)
-            {
-                _ghPath = "gh";
-                return _ghPath;
-            }
-#endif
+
             return null;
         }
 
