@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.7.0] - 2026-05-03
+
+### Added — Admin nested JSON 모달
+
+JSON 모달 안에서 또 다른 JSON 컬럼을 매트릭스로 편집 가능하도록 하위 모달 지원 추가. PerkConfig.tiers 같은 다단계 JSON 구조 어드민에서 직관적 편집.
+
+- `jsonEditorStack` — 기존 4개 전역 변수(`jsonEditorRowId`/`jsonEditorFieldName`/`jsonEditorSchema`/`jsonEditorOrigItems`) 통합. 모달 element 1개 재사용 + 빵부스러기(breadcrumb)로 layer 위치 표시.
+- `openNestedJsonEditor` / `jsonEditorBack` / `renderJsonEditor` / `jsonEditorCancel` 신설.
+- `mapJsonSchema` / `countJsonItems` 헬퍼 신설.
+- `renderJsonEditorRows`에 `isJson` 분기 — cyan 배지(`N개 항목 ✏️`)로 카운트 표시. 클릭 시 자식 모달 진입.
+- 모달 헤더에 `< 뒤로` 버튼 + `#json-editor-breadcrumb`.
+- `BuildJsonSchemaJson`은 무수정 — nested isJson + jsonSchema 메타 자동 재귀 생성이 이미 OK.
+
+### Added — JSON 모달 안 ForeignKey dropdown
+
+JSON 모달 안 컬럼이 `[ForeignKey]` 가지면 자동 dropdown. 평면 셀(`renderCell`)과 동일한 UX.
+
+- `loadRewardSources`에 `collectFk(fields)` 재귀 함수 — 평면 + nested jsonSchema 모두 순회해 fkTargets 수집. 미순회 시 nested FK dropdown 옵션 비어있던 문제 해결.
+- `mapJsonSchema`에 `foreignKey` 필드 보존 추가.
+- `renderJsonEditorRows`에 `s.foreignKey && fkSources[s.foreignKey]` 분기 추가 — 평면 셀의 dropdown 패턴 복제 + 미지원 값 보존 옵션.
+
+### Changed
+
+- `AspNetTemplate~/SupaRun.csproj.template`에 `Newtonsoft.Json` v13.* PackageReference 추가. server build에서 `[JsonObject(MemberSerialization.Fields)]` 같은 Newtonsoft attribute 사용 가능 — `[Json]` attribute가 field-only인 제약과 Newtonsoft 기본 ContractResolver의 properties-only 처리 사이의 충돌 해결.
+- `#json-editor-rows th` CSS에서 `text-transform:uppercase` 제거. 컬럼명이 schema.key 그대로(예: `field_orb_id`) 보여 평면 테이블과 시각 일관성 ↑.
+
+### Notes
+
+- `BuildMemberJson` 무수정 — nested 멤버의 `[ForeignKey]` attribute가 메타에 자동 포함되는 동작 그대로.
+- 사용 예: 프로젝트의 PerkConfig.tiers JSON에 nested PerkStatBonusDef 매트릭스 + `field_orb_id`/`skill_id` FK dropdown 동작 확인.
+
 ## [0.6.0] - 2026-05-02
 
 ### Changed (Breaking) — UniTask 마이그레이션

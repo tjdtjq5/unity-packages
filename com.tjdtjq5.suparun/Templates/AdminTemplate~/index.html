@@ -46,7 +46,7 @@
   @keyframes pageTransition{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
   tbody tr{animation:rowStagger .25s ease both}
   #json-editor-rows table{table-layout:fixed}
-  #json-editor-rows th{font-size:.7rem;text-transform:uppercase;letter-spacing:.03em;color:#667382;position:sticky;top:0;background:#fff;z-index:1}
+  #json-editor-rows th{font-size:.75rem;color:#667382;position:sticky;top:0;background:#fff;z-index:1}
   #json-editor-rows td{padding:4px 6px}
   #json-editor-rows input[type="text"],#json-editor-rows input[type="number"]{min-width:60px}
   .row-highlight{animation:rowHighlight 1s ease}
@@ -208,15 +208,19 @@
   <div class="modal-dialog modal-xl">
     <div class="modal-content">
       <div class="modal-header">
+        <button id="json-editor-back" class="btn btn-sm btn-ghost-primary me-2" onclick="jsonEditorBack()" style="display:none">
+          <i class="ti ti-chevron-left"></i> 뒤로
+        </button>
         <h5 class="modal-title" id="json-editor-title">JSON 편집</h5>
-        <button class="btn-close" data-bs-dismiss="modal"></button>
+        <small class="text-muted ms-2" id="json-editor-breadcrumb"></small>
+        <button class="btn-close" onclick="jsonEditorCancel()"></button>
       </div>
       <div class="modal-body p-0" style="max-height:60vh;overflow:auto">
         <div id="json-editor-rows"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline-primary btn-sm me-auto" onclick="jsonEditorAddRow()"><i class="ti ti-plus me-1"></i>행 추가</button>
-        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-secondary" onclick="jsonEditorCancel()">취소</button>
         <button class="btn btn-primary" onclick="saveJsonEditor()"><i class="ti ti-check me-1"></i>저장</button>
       </div>
     </div>
@@ -513,13 +517,16 @@ async function loadRewardSources() {
       try { rewardSources[t.tableName] = await api(`/${t.tableName}`); } catch {}
     }
   }
-  // FK 참조 대상 Config 로드
+  // FK 참조 대상 Config 로드 — 평면 컬럼 + nested jsonSchema(재귀) 모두 순회.
+  // nested 미순회 시 JSON 모달 안 FK dropdown이 옵션 비어있게 됨.
   const fkTargets = new Set();
-  for (const t of types) {
-    for (const f of t.fields) {
+  function collectFk(fields) {
+    for (const f of fields || []) {
       if (f.foreignKey) fkTargets.add(f.foreignKey);
+      if (f.isJson && f.jsonSchema) collectFk(f.jsonSchema);
     }
   }
+  for (const t of types) collectFk(t.fields);
   await Promise.all([...fkTargets].map(async name => {
     const t = types.find(x => x.name === name);
     if (t && !fkSources[name]) {
@@ -871,8 +878,30 @@ function formatRewards(json) {
     return a.map(r => `${r.type==='currency'?'🪙':'📦'} ${escHtml(String(r.id||''))} ×${parseInt(r.amount)||0}`).join(', '); } catch { return escHtml(json); }
 }
 
-// ── 범용 JSON 배열 에디터 ──
-let jsonEditorRowId = null, jsonEditorFieldName = null, jsonEditorSchema = [], jsonEditorOrigItems = [];
+// ── 범용 JSON 배열 에디터 (Stack 기반 nested 지원) ──
+// 각 entry: { schema, items, origItems, onSave, label, storageKey }
+//   schema     : 현재 layer 컬럼 정의 (jsonSchema 항목 매핑됨)
+//   items      : 편집 중 row 배열 (root는 row[fieldName] 파싱, child는 부모 item의 nested 필드 파싱)
+//   origItems  : input 미렌더 시 폴백용 원본 (collectJsonEditorRows 보존 로직)
+//   onSave     : 자식 pop / root save 시 호출 — 현 layer items를 부모/서버에 반영
+//   label      : breadcrumb 텍스트 (예: `perk_config.tiers > [3].StatBonuses`)
+//   storageKey : enableColResize용 컬럼 폭 저장 키 (depth별로 분리)
+let jsonEditorStack = [];
+function jsonEditorPeek() { return jsonEditorStack[jsonEditorStack.length - 1]; }
+
+// jsonSchema 항목(서버 메타) → 에디터 내부 스키마로 매핑.
+// isJson/jsonSchema도 보존해야 nested 진입 가능.
+// foreignKey도 보존 — nested FK dropdown 렌더에 사용 (renderJsonEditorRows가 fkSources 조회).
+function mapJsonSchema(arr) {
+  return (arr || []).map(s => ({
+    key: s.name,
+    type: s.type === 'number' ? 'float' : s.type,
+    isEnum: s.isEnum, enumValues: s.enumValues,
+    isJson: s.isJson, jsonSchema: s.jsonSchema,
+    foreignKey: s.foreignKey,
+    visibleIf: s.visibleIf, hiddenIf: s.hiddenIf
+  }));
+}
 
 function formatJsonArray(json) {
   if (!json) return '(비어있음)';
@@ -880,26 +909,95 @@ function formatJsonArray(json) {
   catch { return escHtml(json.substring(0, 30) + '...'); }
 }
 
+// nested 필드의 항목 수 계산 (string/array/null 모두 안전 처리)
+function countJsonItems(raw) {
+  if (raw == null || raw === '') return 0;
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(arr) ? arr.length : 0;
+  } catch { return 0; }
+}
+
 function openJsonEditor(rowId, fieldName) {
-  jsonEditorRowId = rowId; jsonEditorFieldName = fieldName;
   const row = currentData.find(r => r.id === rowId);
+  if (!row) return;
   let items = []; try { items = JSON.parse(row[fieldName] || '[]'); } catch {}
   if (!Array.isArray(items)) items = [];
-  // 서버 메타데이터 우선, 없으면 자동 감지
   const fieldMeta = currentType?.fields?.find(f => f.name === fieldName);
-  if (fieldMeta?.jsonSchema) {
-    jsonEditorSchema = fieldMeta.jsonSchema.map(s => ({
-      key: s.name, type: s.type === 'number' ? 'float' : s.type,
-      isEnum: s.isEnum, enumValues: s.enumValues,
-      visibleIf: s.visibleIf, hiddenIf: s.hiddenIf
-    }));
-  } else {
-    jsonEditorSchema = items.length > 0 ? detectSchema(items[0]) : [];
-  }
-  jsonEditorOrigItems = items.map(it => ({...it}));
+  const schema = fieldMeta?.jsonSchema
+    ? mapJsonSchema(fieldMeta.jsonSchema)
+    : (items.length > 0 ? detectSchema(items[0]) : []);
+
+  jsonEditorStack = [{
+    schema,
+    items: items.map(it => ({...it})),
+    origItems: items.map(it => ({...it})),
+    onSave: async (newItems) => {
+      row[fieldName] = JSON.stringify(newItems);
+      await api(`/${currentType.tableName}/${rowId}`, 'PUT', row);
+      renderTable();
+      toast('저장됨', 'success');
+    },
+    label: `${currentType?.tableName || ''}.${fieldName}`,
+    storageKey: 'json_' + fieldName
+  }];
   document.getElementById('json-editor-title').textContent = fieldName.replace(/_/g, ' ');
-  renderJsonEditorRows(items);
+  renderJsonEditor();
   new bootstrap.Modal(document.getElementById('json-editor-modal')).show();
+}
+
+// nested 자식 layer 진입. 부모의 현재 input 상태를 sync한 후 push.
+function openNestedJsonEditor(rowIndex, childFieldName) {
+  const parent = jsonEditorPeek();
+  if (!parent) return;
+  parent.items = collectJsonEditorRows();  // 부모 표 상태 먼저 보존
+  parent.origItems = parent.items.map(it => ({...it}));
+
+  const childMeta = parent.schema.find(s => s.key === childFieldName);
+  const childSchema = mapJsonSchema(childMeta?.jsonSchema || []);
+  const raw = parent.items[rowIndex]?.[childFieldName];
+  let childItems = [];
+  if (raw != null && raw !== '') {
+    try {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (Array.isArray(parsed)) childItems = parsed;
+    } catch {}
+  }
+  if (childSchema.length === 0 && childItems.length > 0) {
+    // schema 없는 nested fallback
+    childSchema.push(...detectSchema(childItems[0]));
+  }
+
+  jsonEditorStack.push({
+    schema: childSchema,
+    items: childItems.map(it => ({...it})),
+    origItems: childItems.map(it => ({...it})),
+    onSave: (newItems) => {
+      // child 데이터를 부모 item의 해당 필드에 string으로 직렬화 (서버 round-trip 동일)
+      parent.items[rowIndex][childFieldName] = JSON.stringify(newItems);
+    },
+    label: `${parent.label} > [${rowIndex + 1}].${childFieldName}`,
+    storageKey: parent.storageKey + '__' + childFieldName  // depth별 폭 저장 분리
+  });
+  renderJsonEditor();
+}
+
+// 자식 모달 닫기 (저장하며 부모로 복귀). root에서는 동작 안 함.
+function jsonEditorBack() {
+  if (jsonEditorStack.length <= 1) return;
+  const child = jsonEditorStack.pop();
+  child.onSave(collectJsonEditorRows());
+  renderJsonEditor();
+}
+
+// 현재 layer 렌더 진입점 (헤더 + 표 갱신)
+function renderJsonEditor() {
+  const cur = jsonEditorPeek();
+  if (!cur) return;
+  document.getElementById('json-editor-breadcrumb').textContent = cur.label;
+  document.getElementById('json-editor-back').style.display =
+    jsonEditorStack.length > 1 ? '' : 'none';
+  renderJsonEditorRows(cur.items);
 }
 
 function detectSchema(obj) {
@@ -915,18 +1013,26 @@ function detectSchema(obj) {
 const JE_COL_WIDTHS = { bool: '60px', int: '80px', float: '90px', string: '160px' };
 
 function renderJsonEditorRows(items) {
+  const cur = jsonEditorPeek();
+  if (!cur) return;
   const c = document.getElementById('json-editor-rows'); c.innerHTML = '';
-  if (jsonEditorSchema.length === 0 && items.length === 0) {
+
+  // schema 폴백: 비어있으면 첫 item에서 감지하여 stack 갱신
+  if (cur.schema.length === 0 && items.length > 0) {
+    cur.schema = detectSchema(items[0]);
+  }
+
+  if (cur.schema.length === 0 && items.length === 0) {
     c.innerHTML = '<div class="text-muted text-center py-4">데이터가 없습니다. "행 추가"를 클릭하세요.</div>';
     return;
   }
-  const schema = jsonEditorSchema.length > 0 ? jsonEditorSchema : (items.length > 0 ? detectSchema(items[0]) : []);
-  if (jsonEditorSchema.length === 0 && schema.length > 0) jsonEditorSchema = schema;
+
+  const schema = cur.schema;
 
   let html = '<table class="table table-vcenter table-hover mb-0" style="table-layout:fixed"><thead><tr>';
   html += '<th style="width:40px">#</th>';
   schema.forEach(s => {
-    const w = JE_COL_WIDTHS[s.type] || JE_COL_WIDTHS.string;
+    const w = s.isJson ? '120px' : (JE_COL_WIDTHS[s.type] || JE_COL_WIDTHS.string);
     html += `<th style="min-width:${w};white-space:nowrap">${escHtml(s.key)}</th>`;
   });
   html += '<th style="width:40px"></th></tr></thead><tbody>';
@@ -942,10 +1048,19 @@ function renderJsonEditorRows(items) {
         html += '<td><span class="cell-na">—</span></td>';
         return;
       }
-      if (s.isEnum && s.enumValues) {
+      if (s.foreignKey && fkSources[s.foreignKey]) {
+        // 평면 셀(renderCell)의 FK dropdown 패턴 그대로 복제 — id + name 표시, 옵션 외 값은 보존 옵션으로 추가.
+        const src = fkSources[s.foreignKey];
+        let opts = src.map(o => `<option value="${escHtml(o.id)}" ${o.id===val?'selected':''}>${escHtml(o.name||o.id)}</option>`).join('');
+        if (!val || !src.find(o => o.id === val)) opts = `<option value="${escHtml(val||'')}" selected>${escHtml(val||'(없음)')}</option>` + opts;
+        html += `<td><select class="form-select form-select-sm" id="${eid}" onchange="onJsonFieldChange()">${opts}</select></td>`;
+      } else if (s.isEnum && s.enumValues) {
         const sv = val || s.enumValues[0] || '';
         let opts = s.enumValues.map(v => `<option value="${escHtml(v)}" ${v===sv?'selected':''}>${escHtml(v)}</option>`).join('');
         html += `<td><select class="form-select form-select-sm" id="${eid}" onchange="onJsonFieldChange()">${opts}</select></td>`;
+      } else if (s.isJson) {
+        const count = countJsonItems(val);
+        html += `<td><span class="badge bg-cyan-lt" style="cursor:pointer" onclick="openNestedJsonEditor(${i}, '${escHtml(s.key)}')"><i class="ti ti-code me-1"></i>${count}개 항목 ✏️</span></td>`;
       } else if (s.type === 'bool') {
         html += `<td><input type="checkbox" class="form-check-input" id="${eid}" ${val?'checked':''} onchange="onJsonFieldChange()"></td>`;
       } else if (s.type === 'int' || s.type === 'float') {
@@ -960,7 +1075,7 @@ function renderJsonEditorRows(items) {
 
   html += '</tbody></table>';
   c.innerHTML = html;
-  enableColResize(c, 'json_' + (jsonEditorFieldName || 'editor'));
+  enableColResize(c, cur.storageKey || 'json_editor');
 }
 
 function isJsonFieldDisabled(item, s) {
@@ -978,44 +1093,60 @@ function isJsonFieldDisabled(item, s) {
 }
 
 function onJsonFieldChange() {
+  const cur = jsonEditorPeek();
+  if (!cur) return;
   const items = collectJsonEditorRows();
-  jsonEditorOrigItems = items.map(it => ({...it}));
+  cur.items = items;
+  cur.origItems = items.map(it => ({...it}));
   renderJsonEditorRows(items);
 }
 
 function jsonEditorAddRow() {
-  if (jsonEditorSchema.length === 0) {
+  const cur = jsonEditorPeek();
+  if (!cur) return;
+  if (cur.schema.length === 0) {
     const keys = prompt('필드 이름을 쉼표로 입력하세요:\n예) State,StartRow,FrameCount,FrameTime,Loop');
     if (!keys) return;
-    jsonEditorSchema = keys.split(',').map(k => ({ key: k.trim(), type: 'string' }));
+    cur.schema = keys.split(',').map(k => ({ key: k.trim(), type: 'string' }));
   }
   const items = collectJsonEditorRows();
   const newItem = {};
-  jsonEditorSchema.forEach(s => {
+  cur.schema.forEach(s => {
     if (s.type === 'bool') newItem[s.key] = false;
     else if (s.type === 'int' || s.type === 'float') newItem[s.key] = 0;
     else if (s.isEnum && s.enumValues?.length > 0) newItem[s.key] = s.enumValues[0];
+    else if (s.isJson) newItem[s.key] = '[]';
     else newItem[s.key] = '';
   });
   items.push(newItem);
+  cur.items = items;
   renderJsonEditorRows(items);
 }
 
 function jsonEditorRemoveRow(i) {
   const items = collectJsonEditorRows();
   items.splice(i, 1);
+  const cur = jsonEditorPeek();
+  if (cur) cur.items = items;
   renderJsonEditorRows(items);
 }
 
 function collectJsonEditorRows() {
+  const cur = jsonEditorPeek();
+  if (!cur) return [];
   const items = [];
   const container = document.getElementById('json-editor-rows');
   const rows = container.querySelectorAll('tbody tr');
   rows.forEach((row, i) => {
     const item = {};
-    jsonEditorSchema.forEach(s => {
+    cur.schema.forEach(s => {
       const el = document.getElementById(`je_${i}_${s.key}`);
-      if (!el) { const orig = jsonEditorOrigItems[i]; item[s.key] = orig?.[s.key] ?? ''; return; }
+      if (!el) {
+        // input 미렌더 (cell-na, isJson 배지 등): origItems의 원본 값 보존
+        const orig = cur.origItems?.[i] ?? cur.items?.[i];
+        item[s.key] = orig?.[s.key] ?? (s.isJson ? '[]' : '');
+        return;
+      }
       if (s.type === 'bool') item[s.key] = el.checked;
       else if (s.type === 'int') item[s.key] = parseInt(el.value) || 0;
       else if (s.type === 'float') item[s.key] = parseFloat(el.value) || 0;
@@ -1026,14 +1157,26 @@ function collectJsonEditorRows() {
   return items;
 }
 
+// 전체 취소 — 모든 stack 폐기, onSave 호출 안 함
+function jsonEditorCancel() {
+  jsonEditorStack = [];
+  bootstrap.Modal.getInstance(document.getElementById('json-editor-modal'))?.hide();
+}
+
 async function saveJsonEditor() {
-  const row = currentData.find(r => r.id === jsonEditorRowId); if (!row) return;
-  row[jsonEditorFieldName] = JSON.stringify(collectJsonEditorRows());
+  // 자식 stack을 모두 부모로 반영 (각 child.onSave가 부모 items를 갱신)
+  while (jsonEditorStack.length > 1) {
+    const child = jsonEditorStack.pop();
+    child.onSave(collectJsonEditorRows());
+    renderJsonEditor();
+  }
+  const root = jsonEditorPeek();
+  if (!root) return;
   try {
-    await api(`/${currentType.tableName}/${jsonEditorRowId}`, 'PUT', row);
-    renderTable();
+    // root.onSave는 비동기 (서버 PUT 포함)
+    await root.onSave(collectJsonEditorRows());
+    jsonEditorStack = [];
     bootstrap.Modal.getInstance(document.getElementById('json-editor-modal'))?.hide();
-    toast('저장됨', 'success');
   } catch (e) { toast('저장 실패: ' + e.message, 'error'); }
 }
 

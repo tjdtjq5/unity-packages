@@ -52,6 +52,7 @@
 - **JSON 필드 메타데이터**: `[Json(typeof(T))]`의 T 클래스에서 enum/VisibleIf 메타데이터를 서버가 제공
 - **JSON 모달 enum 드롭다운**: 메타데이터가 있는 필드는 텍스트 input 대신 enum 드롭다운 렌더링
 - **JSON 모달 조건부 표시**: JSON 행 내부에서도 VisibleIf/HiddenIf 동작
+- **Nested JSON 편집**: `[Json(typeof(T))]` DTO 안에 또 `[Json(...)]` 필드가 있을 때 단일 모달 + Stack + Breadcrumb로 자식 layer 진입. 자식 자식(3단+) 무제한 자연 지원. `jsonEditorStack` 전역 + `openNestedJsonEditor`/`jsonEditorBack`/`jsonEditorCancel`
 
 ### 관리자 관리
 - **관리자 목록**: 이메일, 상태(admin/pending), 등록일 표시
