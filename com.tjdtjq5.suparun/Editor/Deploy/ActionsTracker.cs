@@ -18,16 +18,24 @@ namespace Tjdtjq5.SupaRun.Editor
         static double _startTime;
         static double _lastPollTime;
         static string _repo;
+        static string _headSha;       // null이면 head_sha 필터 없이 latest run 조회 (구버전 호환)
+        static int _foundAttempts;    // head_sha에 해당하는 run을 못 찾은 횟수
         static bool _polling;
 
-        const double POLL_INTERVAL = 15;
-        const double TIMEOUT = 600; // 10분
+        const double POLL_INTERVAL = 5;       // 폴링 주기 (초)
+        const double TIMEOUT = 600;            // 10분
+        const int MAX_FOUND_ATTEMPTS = 12;     // 5초 × 12 = 60초 동안 새 run 등록 대기
 
-        public static void StartTracking(string repo)
+        // 기존 호출 호환 (head_sha 필터 비활성, latest run 사용)
+        public static void StartTracking(string repo) => StartTracking(repo, null);
+
+        public static void StartTracking(string repo, string headSha)
         {
             _repo = repo;
+            _headSha = string.IsNullOrEmpty(headSha) ? null : headSha;
             _startTime = EditorApplication.timeSinceStartup;
             _lastPollTime = 0;
+            _foundAttempts = 0;
             CurrentStatus = Status.Polling;
             FailedLog = null;
             CloudRunUrl = null;
@@ -75,22 +83,36 @@ namespace Tjdtjq5.SupaRun.Editor
 
         struct RunResult
         {
-            public string status;     // queued, in_progress, completed
+            public string status;     // queued, in_progress, completed, not_found
             public string conclusion;  // success, failure, cancelled
             public long runId;
         }
 
         static RunResult CheckLatestRun()
         {
-            var (code, output) = PrerequisiteChecker.RunGh(
-                $"run list --repo {_repo} --limit 1 --json databaseId,status,conclusion --jq \".[0]\"");
+            // head_sha가 있으면 GitHub REST API로 정확히 필터링.
+            // 없으면 (구버전 호환) 기존 동작인 latest run 1건 조회.
+            string args;
+            if (!string.IsNullOrEmpty(_headSha))
+            {
+                args = $"api repos/{_repo}/actions/runs?head_sha={_headSha}&per_page=1 " +
+                       "--jq \".workflow_runs[0]\"";
+            }
+            else
+            {
+                args = $"run list --repo {_repo} --limit 1 --json databaseId,status,conclusion --jq \".[0]\"";
+            }
 
-            if (code != 0 || string.IsNullOrEmpty(output))
-                return new RunResult { status = "unknown" };
+            var (code, output) = PrerequisiteChecker.RunGh(args);
+
+            // gh api는 매칭 없으면 "null"을 반환. gh run list는 빈 출력.
+            if (code != 0 || string.IsNullOrEmpty(output) || output.Trim() == "null")
+                return new RunResult { status = "not_found" };
 
             // 간단 JSON 파싱 (Newtonsoft 의존 없이)
+            // gh api는 databaseId가 아니라 "id" 필드를 반환하므로 둘 다 매칭.
             var result = new RunResult();
-            var idMatch = Regex.Match(output, "\"databaseId\":\\s*(\\d+)");
+            var idMatch = Regex.Match(output, "\"(?:databaseId|id)\":\\s*(\\d+)");
             var statusMatch = Regex.Match(output, "\"status\":\\s*\"(\\w+)\"");
             var conclusionMatch = Regex.Match(output, "\"conclusion\":\\s*\"(\\w+)\"");
 
@@ -103,6 +125,28 @@ namespace Tjdtjq5.SupaRun.Editor
 
         static void HandleResult(RunResult result)
         {
+            // head_sha에 해당하는 run이 아직 등록 안 됨 → 일정 시간 대기.
+            if (result.status == "not_found")
+            {
+                if (string.IsNullOrEmpty(_headSha))
+                {
+                    // head_sha 필터 미사용인데 not_found면 그냥 무시하고 다음 폴링 대기.
+                    return;
+                }
+
+                _foundAttempts++;
+                if (_foundAttempts > MAX_FOUND_ATTEMPTS)
+                {
+                    Debug.LogWarning(
+                        $"[SupaRun:Deploy] head_sha={_headSha[..7]}에 대한 workflow run을 60초 동안 찾지 못함. " +
+                        "Actions가 설정되지 않은 repo이거나 trigger 조건 불일치 가능성. push는 성공으로 간주.");
+                    CurrentStatus = Status.Success;
+                    FetchCloudRunUrl();   // 워크플로우는 못 찾았어도 Cloud Run URL은 시도
+                    EditorApplication.update -= Poll;
+                }
+                return;
+            }
+
             if (result.status != "completed") return; // 아직 진행 중
 
             EditorApplication.update -= Poll;

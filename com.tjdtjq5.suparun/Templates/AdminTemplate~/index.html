@@ -1176,6 +1176,34 @@ input, select, textarea, button { border-radius: 0 !important; }
 
 /* ── 코드 ── */
 code { color: var(--green); background: var(--bg); padding: 1px 4px; border-radius: 0; }
+
+/* ── 컬럼 ellipsis (자동/수동 너비 + wrap 토글에 맞춰) ── */
+.table thead th { overflow: hidden; text-overflow: ellipsis; }
+
+/* ── 컬럼 우클릭 컨텍스트 메뉴 ── */
+.col-menu {
+  position: fixed;
+  background: var(--bg-2);
+  border: 1px solid var(--green-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 0;
+  z-index: 9999;
+  min-width: 200px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  letter-spacing: 0.04em;
+}
+.col-menu-item {
+  padding: 7px 14px;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+}
+.col-menu-item:hover {
+  background: var(--green);
+  color: var(--bg);
+}
+.col-menu-divider { height: 1px; background: var(--line); margin: 4px 0; }
 </style>
 </head>
 <body data-bs-theme="dark" class="theme-dark">
@@ -1832,7 +1860,10 @@ function renderTable(filter = '') {
     html = `<div class="empty-state"><i class="ti ti-search"></i><h3>검색 결과 없음</h3><p>"${escHtml(filter)}"에 대한 결과가 없습니다.</p></div>`;
   }
   container.innerHTML = html;
-  enableColResize(container, currentType ? 'config_' + currentType.tableName : null);
+  enableColResize(container, currentType ? 'config_' + currentType.tableName : null, {
+    fields: currentType?.fields,
+    data: filtered
+  });
 }
 
 function isFieldDisabled(row, field) {
@@ -2251,7 +2282,12 @@ function renderJsonEditorRows(items) {
 
   html += '</tbody></table>';
   c.innerHTML = html;
-  enableColResize(c, cur.storageKey || 'json_editor');
+  // JSON 모달은 헤더가 [# col, ...schema, action col]. fields 배열을 인덱스 정렬해 전달.
+  const padFields = [null, ...cur.schema, null];
+  enableColResize(c, cur.storageKey || 'json_editor', {
+    fields: padFields,
+    data: cur.items
+  });
 }
 
 function isJsonFieldDisabled(item, s) {
@@ -2416,7 +2452,15 @@ async function showAdmins() {
     <div class="text-muted small mb-2">직접 회원가입한 유저는 "승인 대기" 상태로 등록됩니다. 위에서 승인하세요.</div>
   </div>`;
   container.innerHTML = html;
-  enableColResize(container, 'admins');
+  enableColResize(container, 'admins', {
+    fields: [
+      { name: 'email', type: 'string' },
+      { name: 'role', type: 'string', isEnum: true },
+      { name: 'created_at', type: 'string' },
+      null
+    ],
+    data: admins
+  });
 }
 
 async function addAdmin() {
@@ -2478,7 +2522,17 @@ async function showAuditLog() {
   }
   html += '</tbody></table>';
   container.innerHTML = html;
-  enableColResize(container, 'audit_log');
+  enableColResize(container, 'audit_log', {
+    fields: [
+      { name: 'created_at', type: 'string' },
+      { name: 'action', type: 'string', isEnum: true },
+      { name: 'config_type', type: 'string' },
+      { name: 'row_id', type: 'string' },
+      { name: 'admin_id', type: 'string' },
+      null
+    ],
+    data: auditLogs
+  });
 }
 
 // ══════════════════════════════════════════════
@@ -2588,7 +2642,10 @@ function renderTableView() {
   }
 
   container.innerHTML = html;
-  enableColResize(container, currentTableType ? 'table_' + currentTableType.tableName : null);
+  enableColResize(container, currentTableType ? 'table_' + currentTableType.tableName : null, {
+    fields: currentTableType?.fields,
+    data: rows
+  });
   if (numFields.length > 0 && rows.length > 0) loadStats();
 }
 
@@ -2753,7 +2810,17 @@ async function executeCross() {
       html += '</tbody></table>';
     }
     results.innerHTML = html;
-    enableColResize(results, 'cross_search');
+    // 헤더: [user_id, ...각 (table.field)]. 데이터는 user_id별 details에 분산되어 평면화가 까다로워 fields만 합성.
+    const crossFields = [{ name: 'user_id', type: 'string' }];
+    for (const t of tables) {
+      const tt = tableTypes.find(x => x.tableName === t);
+      const condFields = crossConditions.filter(c => c.table === t);
+      for (const c of condFields) {
+        const meta = tt?.fields?.find(f => f.name === c.field);
+        crossFields.push(meta || { name: `${t}.${c.field}`, type: 'string' });
+      }
+    }
+    enableColResize(results, 'cross_search', { fields: crossFields, data: [] });
     toast(`크로스 검색 완료: ${res.count}명`, 'success');
   } catch (e) { results.innerHTML = ''; toast('검색 실패: ' + e.message, 'error'); }
 }
@@ -2847,7 +2914,15 @@ function renderPlayerCards() {
     html += '</div>';
   }
   results.innerHTML = html;
-  results.querySelectorAll('.table-responsive').forEach((div, i) => enableColResize(div, 'player_' + i));
+  // 각 .table-responsive는 playerData.tables의 한 항목과 1:1. 헤더에서 userId/user_id 필드는 제외되므로 동일 필터 적용.
+  const tableEntries = Object.entries(playerData.tables);
+  results.querySelectorAll('.table-responsive').forEach((div, i) => {
+    const [tableName, rows] = tableEntries[i] || [];
+    const tt = tableTypes.find(t => t.tableName === tableName);
+    const visibleFields = (tt?.fields || []).filter(f => f.name !== 'userId' && f.name !== 'user_id');
+    const arr = Array.isArray(rows) ? rows : [];
+    enableColResize(div, 'player_' + i, { fields: visibleFields, data: arr });
+  });
 }
 
 function startPlayerEdit(el, tableName, rowId, fieldName, fieldType) {
@@ -2884,19 +2959,192 @@ document.addEventListener('keydown', e => {
 // ── 유틸 ──
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
-// ── 컬럼 리사이즈 ──
-function enableColResize(container, storageKey) {
+// ── 컬럼 리사이즈 + 자동 너비 + Wrap 토글 + 컨텍스트 메뉴 ──
+// localStorage 형식 (col_w_<key>):
+//   신규: { widths: { 0: 120, 2: 80 }, wraps: { 0: true } }
+//   레거시: [w1, w2, ...]  → loadColPrefs에서 자동 마이그레이션
+const TYPE_LIMITS = {
+  bool:    { min: 50,  max: 70 },
+  int:     { min: 70,  max: 140 },
+  float:   { min: 70,  max: 140 },
+  long:    { min: 70,  max: 140 },
+  number:  { min: 70,  max: 140 },
+  string:  { min: 100, max: 280 },
+  isJson:  { min: 140, max: 200 },
+  isEnum:  { min: 80,  max: 200 },
+  fk:      { min: 140, max: 280 },
+};
+
+const _measureCanvas = document.createElement('canvas').getContext('2d');
+function measureText(text, font = '11px JetBrains Mono') {
+  _measureCanvas.font = font;
+  return _measureCanvas.measureText(text || '').width;
+}
+
+function autoColWidth(headerText, sampleData, type) {
+  const padding = 24;
+  const charW = 7.2;
+  const headerW = measureText(headerText || '', '11px JetBrains Mono');
+  const dataMaxChars = (sampleData || []).slice(0, 50)
+    .reduce((m, v) => Math.max(m, String(v ?? '').length), 0);
+  const dataW = dataMaxChars * charW;
+  const limits = TYPE_LIMITS[type] || TYPE_LIMITS.string;
+  return Math.max(limits.min, Math.min(limits.max, Math.max(headerW, dataW) + padding));
+}
+
+const WRAP_KEYWORDS = ['description', 'desc', 'comment', 'memo', 'note', 'message', 'reason', 'detail'];
+function shouldAutoWrap(field, sampleData) {
+  const fieldName = (field?.name || field?.key || '').toLowerCase();
+  if (WRAP_KEYWORDS.some(k => fieldName.includes(k))) return true;
+  const sample = (sampleData || []).slice(0, 30).filter(v => v != null);
+  if (sample.length === 0) return false;
+  const avgLen = sample.reduce((s, v) => s + String(v).length, 0) / sample.length;
+  return avgLen >= 60;
+}
+
+function applyWrapMode(table, colIdx, wrap) {
+  const cells = table.querySelectorAll(`tbody td:nth-child(${colIdx + 1})`);
+  cells.forEach(td => {
+    if (wrap) {
+      td.style.whiteSpace = 'normal';
+      td.style.wordBreak = 'break-word';
+      td.style.overflow = 'visible';
+      td.style.textOverflow = '';
+      td.removeAttribute('title');
+    } else {
+      td.style.whiteSpace = 'nowrap';
+      td.style.wordBreak = 'normal';
+      td.style.overflow = 'hidden';
+      td.style.textOverflow = 'ellipsis';
+      td.title = td.textContent.trim();
+    }
+  });
+}
+
+function loadColPrefs(key) {
+  if (!key) return null;
+  const raw = localStorage.getItem('col_w_' + key);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      // 레거시 배열 → object 마이그레이션 (이 자리에서 다시 저장하지는 않음 — 첫 드래그 시 자연 갱신)
+      const widths = {};
+      parsed.forEach((w, i) => { if (w) widths[i] = w; });
+      return { widths, wraps: {} };
+    }
+    return { widths: parsed.widths || {}, wraps: parsed.wraps || {} };
+  } catch { return null; }
+}
+
+function saveColPrefs(key, prefs) {
+  if (!key) return;
+  localStorage.setItem('col_w_' + key, JSON.stringify({
+    widths: prefs.widths || {},
+    wraps: prefs.wraps || {}
+  }));
+}
+
+function fieldTypeKey(field) {
+  if (!field) return 'string';
+  if (field.isJson) return 'isJson';
+  if (field.isEnum) return 'isEnum';
+  if (field.foreignKey) return 'fk';
+  return field.type || 'string';
+}
+
+function fieldDataKey(field) {
+  return field?.name || field?.key;
+}
+
+// 우클릭 컨텍스트 메뉴 — Wrap 토글 / Reset 폭 / Reset 전체
+function showColMenu(event, ctx) {
+  document.querySelectorAll('.col-menu').forEach(m => m.remove());
+  const menu = document.createElement('div');
+  menu.className = 'col-menu';
+  menu.style.top = event.clientY + 'px';
+  menu.style.left = event.clientX + 'px';
+  menu.innerHTML = `
+    <div class="col-menu-item" data-action="wrap">${ctx.wrap ? '[x]' : '[ ]'} Wrap Text</div>
+    <div class="col-menu-divider"></div>
+    <div class="col-menu-item" data-action="reset">Reset This Width</div>
+    <div class="col-menu-item" data-action="reset-all">Reset All Cols</div>
+  `;
+  menu.addEventListener('click', e => {
+    const action = e.target.dataset.action;
+    if (!action) return;
+
+    if (action === 'wrap') {
+      const newWrap = !ctx.wrap;
+      ctx.prefs.wraps[ctx.colIdx] = newWrap;
+      applyWrapMode(ctx.table, ctx.colIdx, newWrap);
+      saveColPrefs(ctx.storageKey, ctx.prefs);
+    } else if (action === 'reset') {
+      delete ctx.prefs.widths[ctx.colIdx];
+      delete ctx.prefs.wraps[ctx.colIdx];
+      saveColPrefs(ctx.storageKey, ctx.prefs);
+      if (typeof toast === 'function') toast('컬럼 리셋됨. 새로고침하면 적용됩니다.', 'info');
+    } else if (action === 'reset-all') {
+      if (ctx.storageKey) localStorage.removeItem('col_w_' + ctx.storageKey);
+      if (typeof toast === 'function') toast('모든 컬럼 리셋됨. 새로고침하면 적용됩니다.', 'info');
+    }
+    menu.remove();
+  });
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    document.addEventListener('click', () => menu.remove(), { once: true });
+  });
+}
+
+function enableColResize(container, storageKey, opts = {}) {
   const table = container.querySelector('table');
   if (!table) return;
   table.style.tableLayout = 'fixed';
   const ths = table.querySelectorAll('thead th');
   if (!ths.length) return;
-  // localStorage에서 저장된 폭 복원
-  const saved = storageKey && localStorage.getItem('col_w_' + storageKey);
-  const widths = saved ? JSON.parse(saved) : null;
+
+  const prefs = loadColPrefs(storageKey) || { widths: {}, wraps: {} };
+  const fields = opts.fields || null;
+  const data = opts.data || [];
+
   ths.forEach((th, i) => {
-    if (widths && widths[i]) th.style.width = widths[i] + 'px';
-    else th.style.width = th.offsetWidth + 'px';
+    const field = fields ? fields[i] : null;
+    const headerText = th.textContent.trim();
+    const dataKey = field ? fieldDataKey(field) : null;
+    const sampleData = (field && dataKey)
+      ? data.map(row => (row && typeof row === 'object') ? row[dataKey] : undefined)
+      : [];
+
+    // 1) 너비 결정 — 저장값(수동) 우선 → 자동 계산 → 균등 분할 폴백
+    if (prefs.widths[i]) {
+      th.style.width = prefs.widths[i] + 'px';
+    } else if (field) {
+      th.style.width = autoColWidth(headerText, sampleData, fieldTypeKey(field)) + 'px';
+    } else {
+      th.style.width = th.offsetWidth + 'px';
+    }
+
+    // 2) wrap 결정 — 저장값 우선 → 자동 감지 → false
+    let wrap;
+    if (prefs.wraps[i] !== undefined) wrap = prefs.wraps[i];
+    else if (field) wrap = shouldAutoWrap(field, sampleData);
+    else wrap = false;
+    applyWrapMode(table, i, wrap);
+
+    // 3) 헤더 ellipsis + tooltip
+    th.style.overflow = 'hidden';
+    th.style.textOverflow = 'ellipsis';
+    th.style.whiteSpace = 'nowrap';
+    th.title = headerText;
+
+    // 4) 우클릭 컨텍스트 메뉴 — wrap은 메뉴 호출 시점의 최신값을 prefs에서 다시 읽음
+    th.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      const currentWrap = (prefs.wraps[i] !== undefined) ? prefs.wraps[i] : wrap;
+      showColMenu(e, { th, table, storageKey, colIdx: i, wrap: currentWrap, prefs });
+    });
+
+    // 5) resize handle (기존 동작 유지 + 저장 형식만 신규 object로)
     const handle = document.createElement('div');
     handle.className = 'th-resize';
     th.appendChild(handle);
@@ -2913,8 +3161,10 @@ function enableColResize(container, storageKey) {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
         if (storageKey) {
-          const ws = [...table.querySelectorAll('thead th')].map(t => t.offsetWidth);
-          localStorage.setItem('col_w_' + storageKey, JSON.stringify(ws));
+          const widths = {};
+          [...table.querySelectorAll('thead th')].forEach((t, k) => { widths[k] = t.offsetWidth; });
+          prefs.widths = widths;
+          saveColPrefs(storageKey, prefs);
         }
       };
       document.addEventListener('mousemove', onMove);

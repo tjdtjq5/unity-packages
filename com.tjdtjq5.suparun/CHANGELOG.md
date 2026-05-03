@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.8.1] - 2026-05-03
+
+### Added — 자동 컬럼 너비 + Wrap 토글 + 우클릭 메뉴
+
+어드민 테이블 컬럼이 데이터 길이/타입에 맞게 자동 조정되고, 긴 텍스트는 자동 wrap. 헤더 우클릭으로 토글/리셋.
+
+- **자동 너비 계산**: 헤더는 canvas measureText로 정확 측정, 데이터는 sample 50행 char count × char width. 타입별 min/max로 clamp (`bool`/`int`/`float`/`string`/`isJson`/`isEnum`/`fk` — 별도 limits 표).
+- **Wrap 자동 감지**: 컬럼명에 description/desc/comment/memo/note/message/reason/detail 포함 OR 데이터 평균 60자+ → 자동 multi-line.
+- **헤더 우클릭 컨텍스트 메뉴**: `[x] Wrap Text` 토글, `Reset This Width`, `Reset All Cols`.
+- **수동 우선 정책**: 사용자 드래그로 조절한 너비는 localStorage에 저장, 자동 계산보다 우선.
+- **localStorage 마이그레이션**: 기존 배열 형식 (`[w1, w2, ...]`) → 신 object 형식 (`{ widths: {0: w0}, wraps: {0: true} }`) 자동 변환. 옛 사용자의 저장된 폭 깨짐 없음.
+- **JSON 매트릭스 모달도 같은 로직 적용**: nested 모달도 storageKey 분리하여 부모와 폭 독립.
+- **신규 헬퍼**: `autoColWidth`, `measureText`, `shouldAutoWrap`, `applyWrapMode`, `loadColPrefs`, `saveColPrefs`, `fieldTypeKey`, `fieldDataKey`, `showColMenu` (어드민 index.html).
+- **`enableColResize` 시그니처 강화**: `(container, storageKey, opts={})` — opts 안 주면 기존 동작 호환.
+- **호출자 7곳 갱신**: Config 평면 / JSON 모달 / Admins / Audit log / Table view / Cross search / Player cards 모두 fields/data 전달.
+
+### Fixed — ActionsTracker가 이전 commit run을 잘못 잡는 버그
+
+git push 직후 GitHub Actions에 새 run이 등록되기 전(5~15초 지연) ActionsTracker가 폴링하면 **이전 commit의 success run**을 보고 즉시 완료 판정 → 사용자에게 "잠시 추적 중" → 즉시 "성공" 표시되는 문제.
+
+- **head_sha 필터링**: `gh run list --limit 1` (latest only) → `gh api repos/{repo}/actions/runs?head_sha={sha}&per_page=1` (정확한 commit). 이전 commit run 잘못 잡는 버그 해결.
+- **새 run 등록 대기**: head_sha에 매칭되는 run이 등록될 때까지 5초 × 12회 = 60초 대기. 등록 실패 시 (Actions 미설정 repo) fallback success.
+- **폴링 주기 단축**: 15초 → 5초 (반응성 ↑).
+- **Workflow 미설정 fallback**: workflow가 60초 동안 안 잡히면 push 성공으로 간주 + Cloud Run URL 조회 시도.
+- **`GitHubPusher.LastPushedSha` 신규 public property**: push 직후 `git rev-parse HEAD` 캡처. 두 push 경로 (일반 + redeploy 빈커밋) 모두 지원.
+- **`ActionsTracker.StartTracking(repo, headSha)` 신규 overload**: 기존 `StartTracking(repo)`도 그대로 동작 (시그니처 호환).
+
 ## [0.8.0] - 2026-05-03
 
 ### Changed (Visual) — Brutalist Terminal redesign

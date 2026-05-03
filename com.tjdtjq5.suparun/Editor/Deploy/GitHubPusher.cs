@@ -8,6 +8,9 @@ namespace Tjdtjq5.SupaRun.Editor
 {
     public static class GitHubPusher
     {
+        /// <summary>마지막 push에 사용된 commit SHA (40자 hex). ActionsTracker가 head_sha 필터링에 사용.</summary>
+        public static string LastPushedSha { get; private set; }
+
         public static void Push(SupaRunSettings settings, List<GeneratedFile> files,
             Action onSuccess, Action<string> onFailed)
         {
@@ -103,6 +106,7 @@ namespace Tjdtjq5.SupaRun.Editor
                         return;
                     }
 
+                    LastPushedSha = CapturePushedSha(tempDir);
                     onSuccess?.Invoke();
                     return;
                 }
@@ -117,6 +121,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 // 6. GitHub Secrets 설정
                 SetSecrets(settings, gh);
 
+                LastPushedSha = CapturePushedSha(tempDir);
                 Debug.Log("[SupaRun:Deploy] Push 완료!");
                 onSuccess?.Invoke();
             }
@@ -173,6 +178,18 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             if (string.IsNullOrEmpty(value)) return;
             PrerequisiteChecker.RunGh($"secret set {name} --repo {repo} --body \"{value}\"");
+        }
+
+        /// <summary>방금 push한 commit의 전체 SHA. 실패 시 null.</summary>
+        static string CapturePushedSha(string tempDir)
+        {
+            var (code, output) = PrerequisiteChecker.Run("git", $"-C \"{tempDir}\" rev-parse HEAD");
+            if (code != 0 || string.IsNullOrWhiteSpace(output))
+            {
+                Debug.LogWarning("[SupaRun:Deploy] commit SHA 캡처 실패 — ActionsTracker는 latest run으로 fallback");
+                return null;
+            }
+            return output.Trim();
         }
     }
 }

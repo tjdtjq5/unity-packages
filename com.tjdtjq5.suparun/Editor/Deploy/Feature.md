@@ -19,7 +19,7 @@
 | `DeployManager.cs` | `static class` | 배포 오케스트레이터 — 코드 생성, 빌드 테스트, 배포, pg_cron 잡 등록 |
 | `ServerCodeGenerator.cs` | `static class` | [Table]/[Config]/[Service] 리플렉션 스캔 → ASP.NET Controller/Migration/DTO/Admin 코드 생성 |
 | `GitHubPusher.cs` | `static class` | gh CLI로 레포 clone → 파일 쓰기 → commit/push + GitHub Secrets 설정 |
-| `ActionsTracker.cs` | `static class` | GitHub Actions 워크플로우 상태 폴링 (15초 간격) + 성공/실패 결과 수집 |
+| `ActionsTracker.cs` | `static class` | GitHub Actions 워크플로우 상태 폴링 (5초 간격, head_sha 필터링) + 성공/실패 결과 수집 |
 | `ServerCacheHealthChecker.cs` | `static class` | 배포 스냅샷 저장, 코드 변경 감지(SHA256), .NET 버전 변경/캐시 만료 경고 |
 | `ServerCacheTypes.cs` | `static class` | 서버 캐시 타입 상수 정의 (NuGet, Docker, Skip) |
 
@@ -48,15 +48,17 @@
 
 ### GitHubPusher
 
-| 메서드 | 설명 |
-|--------|------|
+| 메서드/프로퍼티 | 설명 |
+|----------------|------|
 | `Push(settings, files, onSuccess, onFailed)` | gh CLI로 레포 clone → 파일 교체 → commit/push + GitHub Secrets 자동 설정 |
+| `LastPushedSha` | 마지막 push에 사용된 commit SHA (40자 hex). `ActionsTracker.StartTracking`의 head_sha 필터링에 사용 |
 
 ### ActionsTracker
 
 | 메서드/프로퍼티 | 설명 |
 |----------------|------|
-| `StartTracking(repo)` | GitHub Actions 폴링 시작 (15초 간격, 10분 타임아웃) |
+| `StartTracking(repo)` | (구버전 호환) head_sha 필터 없이 latest run을 폴링. `StartTracking(repo, null)`과 동일 |
+| `StartTracking(repo, headSha)` | GitHub Actions 폴링 시작 (5초 간격, 10분 타임아웃). `headSha`가 있으면 해당 commit의 run만 추적 — push 직후 이전 commit의 success run을 잘못 잡는 버그 방지. 새 run이 60초간 안 잡히면 fallback Success |
 | `Stop()` | 폴링 중단 |
 | `CurrentStatus` | `Status` enum — Idle, Polling, Success, Failed, Timeout |
 | `FailedLog` | 실패 시 마지막 50줄 로그 |

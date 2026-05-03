@@ -80,6 +80,14 @@
 - 페이지 전환 fade 애니메이션
 - 행 진입/삭제/하이라이트 애니메이션
 
+### 컬럼 자동 너비 / Wrap 토글 / 컨텍스트 메뉴
+- **자동 너비**: 헤더 텍스트(canvas measureText) + 데이터 sample(50행 char count) → 타입별 min/max 적용
+- **Wrap 자동 감지**: 컬럼명에 description/desc/comment/memo/note/message/reason/detail 포함 OR 데이터 평균 60자+ → 자동 wrap
+- **사용자 토글**: 헤더 우클릭 → "Wrap Text" / "Reset This Width" / "Reset All Cols"
+- **수동 width 영구 우선**: 사용자 드래그 폭은 localStorage 저장값이 자동 계산보다 우선
+- **저장 형식 (`col_w_<key>`)**: `{ widths: {0:120,2:80}, wraps: {0:true} }` object. 레거시 배열(`[w1,w2,...]`)은 자동 마이그레이션
+- **적용 범위**: Config 평면 테이블 / JSON 모달 (nested 포함) / Admin / Audit log / Table view / Cross search / Player tables 7곳
+
 ## API 엔드포인트 (서버 측에서 제공해야 함)
 
 | 메서드 | 경로 | 설명 |

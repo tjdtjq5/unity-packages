@@ -526,7 +526,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 {
                     var gh = PrerequisiteChecker.CheckGh();
                     var repo = $"{gh.Account}/{settings.githubRepoName}";
-                    ActionsTracker.StartTracking(repo);
+                    ActionsTracker.StartTracking(repo, GitHubPusher.LastPushedSha);
                     _state = DeployState.Tracking;
                     _dashboard.ShowNotification("Push 완료! 빌드 추적 중...",
                         EditorUI.NotificationType.Info);
