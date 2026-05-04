@@ -58,6 +58,26 @@ GameCI 기반 Unity CI/CD 파이프라인 자동 생성
 
 ---
 
+### Codemagic `v0.1.0`
+
+Codemagic 기반 Unity CI/CD 자동화 — `cicd` 후속 (Linux X2 + GameCI Docker, Personal license 호환)
+
+| 기능 | 내용 |
+|------|------|
+| SetupWizard | 7단계 셋업 (Welcome splash → Preflight → Token → App match → License → Keystore → Complete) |
+| GUI walk-through | Codemagic 환경 변수 등록 안내 + 클립보드 복사 + 셀프 체크 (REST API 미공개) |
+| BuildDialog | 빌드 옵션 + yaml 자동 생성 + manifest swap + commit/push + 트리거 |
+| Toast 알림 | 에러 메시지 [Copy] / [X] 버튼으로 즉시 복사 (suparun/cicd 일관) |
+| CodemagicBuildScript | Unity `-batchmode -executeMethod` 진입점 (패키지 asmdef로 cp 회피) |
+
+```json
+"com.tjdtjq5.codemagic": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.codemagic#codemagic/v0.1.0"
+```
+
+> 의존: `editor-toolkit >= 1.3.3`, UniTask
+
+---
+
 ### UGS Manager `v1.3.0`
 
 Unity Gaming Services CLI 래핑 에디터 윈도우 (`Tools > UGS Manager` 또는 `Ctrl+Shift+U`)

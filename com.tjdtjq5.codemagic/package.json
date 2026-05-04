@@ -1,0 +1,20 @@
+{
+  "name": "com.tjdtjq5.codemagic",
+  "version": "0.1.0",
+  "displayName": "Codemagic",
+  "description": "Unity 프로젝트의 Codemagic CI/CD 자동화 — yaml 자동 생성, 라이선스 동기화, 빌드 옵션 UI, 진단 보조.",
+  "unity": "6000.1",
+  "author": {
+    "name": "tjdtjq5"
+  },
+  "dependencies": {
+    "com.tjdtjq5.editor-toolkit": "1.3.3"
+  },
+  "keywords": [
+    "build",
+    "ci",
+    "cd",
+    "codemagic",
+    "pipeline"
+  ]
+}
