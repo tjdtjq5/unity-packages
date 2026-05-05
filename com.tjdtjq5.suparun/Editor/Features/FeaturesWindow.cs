@@ -24,7 +24,7 @@ namespace Tjdtjq5.SupaRun.Editor
         string _notification;
         EditorUI.NotificationType _notificationType;
 
-        [MenuItem("Tools/SupaRun/Features %#f")]
+        [MenuItem("Tjdtjq/SupaRun/Features %#f")]
         public static void Open()
         {
             var wnd = GetWindow<FeaturesWindow>("Features");

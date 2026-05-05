@@ -16,7 +16,7 @@ namespace Tjdtjq5.AddrX.Editor
         bool _showSettings;
         SettingsPanel _settingsPanel;
 
-        [MenuItem("Window/AddrX/Manager %#a")]
+        [MenuItem("Tjdtjq/AddrX/Manager %#a")]
         static void Open()
         {
             var w = GetWindow<AddrXManagerWindow>("AddrX");

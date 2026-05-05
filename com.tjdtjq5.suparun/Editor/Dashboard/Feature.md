@@ -21,7 +21,7 @@
 ```
 Dashboard/
 ├── SupaRunDashboard.cs      # 메인 EditorWindow (Setup/Dashboard/Settings 모드 전환)
-├── CostMenu.cs              # 메뉴: Tools/SupaRun/Cost/{Supabase,Google Cloud,GitHub Actions}
+├── CostMenu.cs              # 메뉴: Tjdtjq/SupaRun/Cost/{Supabase,Google Cloud,GitHub Actions}
 ├── Setup/
 │   ├── SetupWizard.cs       # 5단계 초기 설정 (.NET → Supabase → gh → gcloud → Deploy)
 │   ├── SupabaseSetup.cs     # Supabase 연결 설정 (토큰, 프로젝트 선택, Anon Key, DB 비밀번호, 연결 테스트)
@@ -44,8 +44,8 @@ Dashboard/
 
 | 메서드 | 설명 |
 |--------|------|
-| `Open()` | Dashboard 열기 (메뉴: `Tools/SupaRun/Dashboard`, 단축키 `Ctrl+Shift+Q`) |
-| `OpenAdmin()` | Admin 웹 페이지 열기 (메뉴: `Tools/SupaRun/Admin`, 단축키 `Ctrl+Shift+D`) |
+| `Open()` | Dashboard 열기 (메뉴: `Tjdtjq/SupaRun/Dashboard`, 단축키 `Ctrl+Shift+Q`) |
+| `OpenAdmin()` | Admin 웹 페이지 열기 (메뉴: `Tjdtjq/SupaRun/Admin`, 단축키 `Ctrl+Shift+D`) |
 | `ShowNotification(message, type)` | 상단 알림 바에 메시지 표시 |
 | `OnSetupCompleted()` | Setup 완료 처리 → Dashboard 모드 전환 |
 | `OpenSettings()` | Settings 모드로 전환 |
@@ -56,9 +56,9 @@ Dashboard/
 
 | 메뉴 항목 | 설명 |
 |-----------|------|
-| `Tools/SupaRun/Cost/Supabase` | Supabase 요금 페이지 열기 |
-| `Tools/SupaRun/Cost/Google Cloud` | GCP Billing 페이지 열기 |
-| `Tools/SupaRun/Cost/GitHub Actions` | GitHub Actions Billing 페이지 열기 |
+| `Tjdtjq/SupaRun/Cost/Supabase` | Supabase 요금 페이지 열기 |
+| `Tjdtjq/SupaRun/Cost/Google Cloud` | GCP Billing 페이지 열기 |
+| `Tjdtjq/SupaRun/Cost/GitHub Actions` | GitHub Actions Billing 페이지 열기 |
 
 ### SetupWizard
 

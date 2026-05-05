@@ -33,7 +33,7 @@ namespace Tjdtjq5.Claude
         GUIStyle _titleStyle;
         GUIStyle _mutedCenterStyle;
 
-        [MenuItem("Tools/Claude Code/Manager")]
+        [MenuItem("Tjdtjq/Claude Code/Manager")]
         public static void Open()
         {
             var wnd = GetWindow<ClaudeCodeManagerWindow>("Claude Code Manager");

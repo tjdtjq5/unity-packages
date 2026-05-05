@@ -5,7 +5,7 @@ namespace Tjdtjq5.SupaRun.Editor
 {
     public static class CostMenu
     {
-        [MenuItem("Tools/SupaRun/Cost/Supabase")]
+        [MenuItem("Tjdtjq/SupaRun/Cost/Supabase")]
         static void OpenSupabase()
         {
             var s = SupaRunSettings.Instance;
@@ -18,7 +18,7 @@ namespace Tjdtjq5.SupaRun.Editor
             Application.OpenURL($"https://supabase.com/dashboard/project/{id}/settings/billing/usage");
         }
 
-        [MenuItem("Tools/SupaRun/Cost/Google Cloud")]
+        [MenuItem("Tjdtjq/SupaRun/Cost/Google Cloud")]
         static void OpenGoogleCloud()
         {
             var s = SupaRunSettings.Instance;
@@ -30,7 +30,7 @@ namespace Tjdtjq5.SupaRun.Editor
             Application.OpenURL($"https://console.cloud.google.com/billing?project={s.gcpProjectId}");
         }
 
-        [MenuItem("Tools/SupaRun/Cost/GitHub Actions")]
+        [MenuItem("Tjdtjq/SupaRun/Cost/GitHub Actions")]
         static void OpenGitHubActions()
         {
             var gh = PrerequisiteChecker.CheckGh();

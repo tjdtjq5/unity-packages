@@ -209,7 +209,7 @@ namespace Tjdtjq5.EditorToolkit.Editor.Tools
         List<string> _ignoreNs;
         List<string> _ignoreTypes;
 
-        [MenuItem("Tools/Domain Reload Validator Settings")]
+        [MenuItem("Tjdtjq/Editor Toolkit/Domain Reload Validator Settings")]
         static void Open()
         {
             var wnd = GetWindow<DomainReloadValidatorWindow>();

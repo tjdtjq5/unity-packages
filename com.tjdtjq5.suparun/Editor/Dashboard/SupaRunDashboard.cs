@@ -39,14 +39,14 @@ namespace Tjdtjq5.SupaRun.Editor
         string _notification;
         EditorUI.NotificationType _notificationType;
 
-        [MenuItem("Tools/SupaRun/Dashboard %#q")]
+        [MenuItem("Tjdtjq/SupaRun/Dashboard %#q")]
         public static void Open()
         {
             var wnd = GetWindow<SupaRunDashboard>("SupaRun");
             wnd.minSize = new Vector2(520, 480);
         }
 
-        [MenuItem("Tools/SupaRun/Admin %#d")]
+        [MenuItem("Tjdtjq/SupaRun/Admin %#d")]
         public static void OpenAdmin()
         {
             var settings = SupaRunSettings.Instance;

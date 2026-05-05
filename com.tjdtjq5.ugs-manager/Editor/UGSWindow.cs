@@ -35,7 +35,7 @@ namespace Tjdtjq5.UGSManager
         string _editCodePath;
         string _editDeployPath;
 
-        [MenuItem("Tools/UGS Manager %#u")]
+        [MenuItem("Tjdtjq/UGS Manager %#u")]
         static void Open()
         {
             var wnd = GetWindow<UGSWindow>();

@@ -58,7 +58,7 @@
 
 | 메서드 | 설명 |
 |--------|------|
-| `Open()` | Features 윈도우 열기 (메뉴: `Tools/SupaRun/Features`, 단축키 `Ctrl+Shift+F`) |
+| `Open()` | Features 윈도우 열기 (메뉴: `Tjdtjq/SupaRun/Features`, 단축키 `Ctrl+Shift+F`) |
 
 ## 주의사항
 

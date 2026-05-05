@@ -60,7 +60,7 @@ namespace Tjdtjq5.CICD.Editor
         string _notification;
         EditorUI.NotificationType _notificationType;
 
-        [MenuItem("Tools/Build Automation/Dashboard")]
+        [MenuItem("Tjdtjq/CICD/Build Automation Dashboard")]
         public static void Open()
         {
             var wnd = GetWindow<BuildAutomationWindow>("Build Automation");

@@ -131,7 +131,7 @@ public abstract class UGSTabBase : EditorTabBase
 ```csharp
 public class UGSWindow : EditorWindow
 {
-    [MenuItem("Tools/UGS Manager %#u")]  // Ctrl+Shift+U
+    [MenuItem("Tjdtjq/UGS Manager %#u")]  // Ctrl+Shift+U
     static void Open();
 
     // 탭 목록

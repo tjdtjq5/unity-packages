@@ -29,7 +29,7 @@ namespace Tjdtjq5.Claude
 
         // ── 메뉴 아이템 ──
 
-        [MenuItem("Tools/Claude Code/Settings")]
+        [MenuItem("Tjdtjq/Claude Code/Settings")]
         static void OpenSettings()
         {
             ClaudeCodeSettingsWindow.Open();
