@@ -9,7 +9,7 @@ namespace Tjdtjq5.Codemagic.Editor.Setup
     {
         SetupWizard _wizard;
 
-        [MenuItem("Build/Codemagic/Setup Wizard", priority = 100)]
+        [MenuItem("Tjdtjq/Codemagic/Setup Wizard", priority = 100)]
         public static void Open()
         {
             var w = GetWindow<SetupWizardWindow>("Codemagic Setup");

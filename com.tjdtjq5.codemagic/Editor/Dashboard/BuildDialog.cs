@@ -63,7 +63,7 @@ namespace Tjdtjq5.Codemagic.Editor.Dashboard
 
         // ── 메뉴 등록 ──────────────────────────────────────────────────────
 
-        [MenuItem("Build/Codemagic/Build Dialog", priority = 110)]
+        [MenuItem("Tjdtjq/Codemagic/Build Dialog", priority = 110)]
         public static void Open()
         {
             var win = GetWindow<BuildDialog>("Codemagic Build");

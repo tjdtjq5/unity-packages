@@ -136,7 +136,7 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             catch (Exception)
             {
                 // 동일 메뉴 등록이 있으면 fallback으로 동작.
-                if (EditorApplication.ExecuteMenuItem("Build/Codemagic/Build Dialog"))
+                if (EditorApplication.ExecuteMenuItem("Tjdtjq/Codemagic/Build Dialog"))
                     return;
             }
 
