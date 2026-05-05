@@ -171,7 +171,26 @@ app.Use(async (context, next) =>
                 }
             }
         }
-        catch (Exception adminEx) { Console.WriteLine($"[Admin] 인증 체크 실패: {adminEx.Message}"); }
+        catch (Exception adminEx)
+        {
+            // Exception.ToString()은 message + type + full stack trace 포함 — 정확한 발생 라인 추적용
+            Console.WriteLine($"[Admin] 인증 체크 실패: {adminEx}");
+
+            // Fallback: Dapper reflection 우회 — admin_user에 본인 row + role=admin이면 통과
+            // (DapperGameDB.GetAll/Save가 어떤 이유로 throw해도 admin 사용자는 막히지 않게 안전망)
+            try
+            {
+                using var conn = new Npgsql.NpgsqlConnection(connectionString);
+                await conn.OpenAsync();
+                using var cmd = new Npgsql.NpgsqlCommand(
+                    "SELECT role FROM admin_user WHERE user_id = @uid LIMIT 1", conn);
+                cmd.Parameters.AddWithValue("uid", userId);
+                var role = await cmd.ExecuteScalarAsync() as string;
+                isAdmin = role == "admin";
+                if (isAdmin) Console.WriteLine($"[Admin] Fallback 통과: {userId}");
+            }
+            catch (Exception fbEx) { Console.WriteLine($"[Admin] Fallback 실패: {fbEx.Message}"); }
+        }
 
         if (!isAdmin)
         {

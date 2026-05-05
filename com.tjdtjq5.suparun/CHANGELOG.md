@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.3] - 2026-05-05
+
+### Fixed — DapperGameDB reflection 캐시 thread-safety + 어드민 인증 fallback
+
+Cloud Run 동시 request 환경에서 `DapperGameDB._fieldCache` (Dictionary)가 race condition으로 corrupted 상태가 되면 `IndexOutOfRangeException`이 영구 발생 → 어드민 페이지 403 (인스턴스 재시작 전까지 복구 불가) 문제 해결.
+
+- **`Dictionary` → `ConcurrentDictionary`**: `_fieldCache`를 thread-safe로 교체. `GetOrAdd` 사용. valueFactory가 동시 호출 시 여러 번 실행될 수 있으나 reflection은 idempotent라 결과 안전. Cloud Run 동시 request race 영구 차단.
+- **Admin 미들웨어 fallback (Program.cs.template)**: `db.GetAll<AdminUser>()` 또는 `db.Save()`가 throw해도 admin이 막히지 않게 SQL 직접 호출 fallback. catch 블록에서 `admin_user` 테이블 직접 조회로 `role=admin` 확인 후 통과.
+- **Stack trace 강화**: catch 메시지를 `Exception.Message` → `Exception.ToString()`로 변경. 발생 라인 추적 가능.
+
 ## [0.8.1] - 2026-05-03
 
 ### Added — 자동 컬럼 너비 + Wrap 토글 + 우클릭 메뉴

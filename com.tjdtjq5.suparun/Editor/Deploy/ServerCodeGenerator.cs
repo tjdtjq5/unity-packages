@@ -178,6 +178,7 @@ public interface IGameDB
         {
             return new GeneratedFile("Generated/DapperGameDB.cs",
 @"using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -199,17 +200,11 @@ public class DapperGameDB : IGameDB
     bool IsTransaction => _sharedConn != null;
     IDbConnection GetConn() => _sharedConn ?? new NpgsqlConnection(_cs);
 
-    // Reflection 캐시
-    static readonly Dictionary<Type, System.Reflection.FieldInfo[]> _fieldCache = new();
+    // Reflection 캐시 — Cloud Run 동시 request race 방지 (Dictionary는 thread-safe X → IndexOutOfRange/corrupted state 발생 가능).
+    // GetOrAdd의 valueFactory는 동시 호출 시 여러 번 실행될 수 있으나 reflection은 idempotent라 결과 동일 — 안전.
+    static readonly ConcurrentDictionary<Type, System.Reflection.FieldInfo[]> _fieldCache = new();
     static System.Reflection.FieldInfo[] CachedFields(Type type)
-    {
-        if (!_fieldCache.TryGetValue(type, out var fields))
-        {
-            fields = type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-            _fieldCache[type] = fields;
-        }
-        return fields;
-    }
+        => _fieldCache.GetOrAdd(type, t => t.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance));
 
     static string ToSnakeCase(string name)
     {
