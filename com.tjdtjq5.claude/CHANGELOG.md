@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0] - 2026-06-02
+
+### Changed
+- **모델 설정을 per-launch `--model` 인자로 전환** — 기존엔 `~/.claude/settings.json`의 `model` 키에 기록되어 머신 전역(다른 프로젝트·터미널 포함)의 기본 모델까지 바뀌었으나, 이제 effort와 동일하게 실행하는 세션에만 적용된다. 저장 위치도 EditorPrefs로 이동.
+  - 업그레이드 시 1회 마이그레이션: settings.json의 `model`이 알려진 별칭(sonnet/opus/haiku)이면 EditorPrefs로 이전하고 해당 키를 제거(글로벌 오버라이드 정리). 사용자가 직접 넣은 커스텀 값은 보존.
+
+### Added
+- Effort 드롭다운에 **`xhigh`** 레벨 추가 (CLI 실제 값 `low/medium/high/xhigh/max`와 일치) + **`기본값 (미지정)`** 옵션 (선택 시 `--effort` 생략, CLI 기본값 위임)
+
+### Fixed
+- 추가 인자 파싱을 substring 매칭 → 토큰 단위 longest-match로 교체 (자유 입력 인자가 알려진 옵션을 부분 문자열로 포함할 때의 오파싱 방지)
+- 저장된 모델/effort 값이 목록에 없을 때 조용히 첫 항목으로 표시되던 동작에 경고 로그 추가
+
 ## [1.1.5] - 2026-04-26
 
 ### Fixed

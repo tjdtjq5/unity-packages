@@ -17,7 +17,8 @@ namespace Tjdtjq5.Claude
         // ── 기본 설정 (settings.json) ──
         static readonly string[] ModelOptions = { "기본값 (미지정)", "sonnet", "opus", "haiku" };
         static readonly string[] ModelValues  = { "",               "sonnet", "opus", "haiku" };
-        static readonly string[] EffortOptions = { "low", "medium", "high", "max" };
+        static readonly string[] EffortOptions = { "기본값 (미지정)", "low", "medium", "high", "xhigh", "max" };
+        static readonly string[] EffortValues  = { "",               "low", "medium", "high", "xhigh", "max" };
 
         // ── 드롭다운 인자 목록 ──
         static readonly string[] ArgOptions =
@@ -89,9 +90,19 @@ namespace Tjdtjq5.Claude
         {
             // 기본 설정 로드
             var model = ClaudeCodeSettings.DefaultModel;
-            _modelIdx = Math.Max(0, Array.IndexOf(ModelValues, model));
+            _modelIdx = Array.IndexOf(ModelValues, model);
+            if (_modelIdx < 0)
+            {
+                Debug.LogWarning($"[Claude Code] 알 수 없는 모델 '{model}' → 미지정으로 처리합니다.");
+                _modelIdx = 0;
+            }
             var effort = ClaudeCodeSettings.DefaultEffortLevel;
-            _effortIdx = Math.Max(0, Array.IndexOf(EffortOptions, effort));
+            _effortIdx = Array.IndexOf(EffortValues, effort);
+            if (_effortIdx < 0)
+            {
+                Debug.LogWarning($"[Claude Code] 알 수 없는 effort '{effort}' → 미지정으로 처리합니다.");
+                _effortIdx = 0;
+            }
             _bypassPermissions = ClaudeCodeSettings.BypassPermissions;
 
             ParseArgs(ClaudeCodeSettings.AdditionalArgs);
@@ -157,14 +168,14 @@ namespace Tjdtjq5.Claude
             _modelIdx = EditorGUILayout.Popup("모델", _modelIdx, ModelOptions);
             if (EditorGUI.EndChangeCheck())
                 ClaudeCodeSettings.DefaultModel = ModelValues[_modelIdx];
-            EditorGUILayout.LabelField("~/.claude/settings.json 에 저장", _hintStyle);
+            EditorGUILayout.LabelField("CLI 인자(--model)로 전달", _hintStyle);
 
             GUILayout.Space(2);
 
             EditorGUI.BeginChangeCheck();
             _effortIdx = EditorGUILayout.Popup("Effort", _effortIdx, EffortOptions);
             if (EditorGUI.EndChangeCheck())
-                ClaudeCodeSettings.DefaultEffortLevel = EffortOptions[_effortIdx];
+                ClaudeCodeSettings.DefaultEffortLevel = EffortValues[_effortIdx];
             EditorGUILayout.LabelField("CLI 인자(--effort)로 전달", _hintStyle);
 
             GUILayout.Space(6);
@@ -397,23 +408,39 @@ namespace Tjdtjq5.Claude
             _selectedArgs.Clear();
             if (string.IsNullOrWhiteSpace(raw)) return;
 
-            // 알려진 옵션과 매칭
-            var remaining = raw.Trim();
-            foreach (var opt in ArgOptions)
+            // 토큰 단위로 분할 후, 알려진 옵션(멀티 토큰 포함)을 longest-match로 정확히 매칭.
+            // substring 매칭의 오파싱(자유 입력 인자가 옵션을 부분 문자열로 포함하는 경우)을 방지.
+            var tokens = raw.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            int i = 0;
+            while (i < tokens.Length)
             {
-                if (opt == ArgOptions[0]) continue;
-                if (remaining.Contains(opt))
+                string matched = null;
+                int matchedLen = 0;
+                for (int o = 1; o < ArgOptions.Length; o++) // [0]은 "인자 추가..." 플레이스홀더
                 {
-                    _selectedArgs.Add(opt);
-                    remaining = remaining.Replace(opt, "").Trim();
-                }
-            }
+                    var parts = ArgOptions[o].Split(' ');
+                    if (parts.Length <= matchedLen || i + parts.Length > tokens.Length) continue;
 
-            // 매칭 안 된 잔여 인자도 개별 추가
-            if (!string.IsNullOrWhiteSpace(remaining))
-            {
-                foreach (var part in remaining.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
-                    _selectedArgs.Add(part);
+                    bool ok = true;
+                    for (int k = 0; k < parts.Length; k++)
+                    {
+                        if (tokens[i + k] != parts[k]) { ok = false; break; }
+                    }
+                    if (ok) { matched = ArgOptions[o]; matchedLen = parts.Length; }
+                }
+
+                if (matched != null)
+                {
+                    if (!_selectedArgs.Contains(matched))
+                        _selectedArgs.Add(matched);
+                    i += matchedLen;
+                }
+                else
+                {
+                    // 미매칭 토큰은 개별 보존
+                    _selectedArgs.Add(tokens[i]);
+                    i++;
+                }
             }
         }
 

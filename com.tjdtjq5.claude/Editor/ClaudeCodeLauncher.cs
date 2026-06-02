@@ -295,6 +295,11 @@ namespace Tjdtjq5.Claude
         {
             var sb = new StringBuilder("claude");
 
+            // 모델 (per-launch 인자로 전달, 빈 값이면 CLI 기본값 사용)
+            var model = ClaudeCodeSettings.DefaultModel;
+            if (!string.IsNullOrEmpty(model))
+                sb.Append($" --model {model}");
+
             // Effort 레벨 (별도 인자로 전달)
             var effort = ClaudeCodeSettings.DefaultEffortLevel;
             if (!string.IsNullOrEmpty(effort))

@@ -110,11 +110,40 @@ namespace Tjdtjq5.Claude
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".claude", "settings.json");
 
-        /// <summary>기본 모델. 빈 문자열이면 미지정(Claude 기본값 사용).</summary>
+        /// <summary>기본 모델. 빈 문자열이면 미지정(Claude 기본값 사용).
+        /// CLI 인자(--model)로 전달되므로 EditorPrefs에 저장 (per-launch, 글로벌 오염 없음).</summary>
         public static string DefaultModel
         {
-            get => ReadSettingsKey(SettingsJsonPath, "model", "");
-            set => WriteSettingsKey(SettingsJsonPath, "model", string.IsNullOrEmpty(value) ? null : value);
+            get => EditorPrefs.GetString(Prefix + "Model", "");
+            set => EditorPrefs.SetString(Prefix + "Model", value ?? "");
+        }
+
+        // ── v1.2.0 마이그레이션: 글로벌 settings.json model → per-launch EditorPrefs ──
+        // 구버전은 model을 ~/.claude/settings.json에 기록(머신 전역 오버라이드)했다.
+        // per-launch --model로 전환하면서, 이 도구가 썼을 알려진 별칭만 EditorPrefs로
+        // 이전하고 settings.json 키를 제거한다. 사용자가 직접 넣은 커스텀 값은 보존.
+        [InitializeOnLoadMethod]
+        static void MigrateModelFromGlobalSettings()
+        {
+            const string migratedFlag = Prefix + "ModelMigratedV2";
+            if (EditorPrefs.GetBool(migratedFlag, false)) return;
+
+            try
+            {
+                var global = ReadSettingsKey(SettingsJsonPath, "model", "");
+                if (global == "sonnet" || global == "opus" || global == "haiku")
+                {
+                    if (string.IsNullOrEmpty(EditorPrefs.GetString(Prefix + "Model", "")))
+                        EditorPrefs.SetString(Prefix + "Model", global);
+                    WriteSettingsKey(SettingsJsonPath, "model", null); // 글로벌 키 제거
+                    Debug.Log($"[Claude Code] model '{global}' 글로벌 설정을 per-launch로 이전하고 " +
+                              "~/.claude/settings.json 의 model 키를 제거했습니다.");
+                }
+            }
+            finally
+            {
+                EditorPrefs.SetBool(migratedFlag, true);
+            }
         }
 
         /// <summary>기본 Effort 레벨. CLI 인자(--effort)로 전달되므로 EditorPrefs에 저장.</summary>
