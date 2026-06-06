@@ -61,7 +61,7 @@ namespace Tjdtjq5.AddrX
             var op = Addressables.LoadAssetAsync<T>(key);
             await op.Task;
 
-            var handle = new SafeHandle<T>(op, key);
+            var handle = new AssetHandle<T>(op, key);
 
             if (op.Status == AsyncOperationStatus.Failed)
             {

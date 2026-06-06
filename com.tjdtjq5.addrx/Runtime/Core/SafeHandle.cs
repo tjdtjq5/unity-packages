@@ -7,25 +7,24 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 namespace Tjdtjq5.AddrX
 {
     /// <summary>
-    /// AsyncOperationHandle&lt;T&gt;를 감싸서 자동 Release를 보장하는 래퍼.
+    /// 로드/인스턴스 핸들의 공통 추상 베이스. 자동 Release를 보장한다.
     /// using 블록 또는 BindTo로 수명을 관리한다.
+    /// 구현체: <see cref="AssetHandle{T}"/>(Addressables 로드), <see cref="InstanceHandle{T}"/>(인스턴스/커스텀 해제).
     /// </summary>
-    public sealed class SafeHandle<T> : IDisposable, IAsyncDisposable
+    public abstract class SafeHandle<T> : IDisposable, IAsyncDisposable
     {
-        const string Tag = "SafeHandle";
+        protected const string Tag = "SafeHandle";
 
-        readonly AsyncOperationHandle<T> _handle;
-        bool _released;
+        protected bool _released;
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-        readonly int _trackingId;
-        readonly string _debugKey;
-        readonly string _debugStackTrace;
+        protected readonly int _trackingId;
+        protected readonly string _debugKey;
+        protected readonly string _debugStackTrace;
 #endif
 
-        internal SafeHandle(AsyncOperationHandle<T> handle, object key = null)
+        protected SafeHandle(object key)
         {
-            _handle = handle;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             _debugKey = key?.ToString();
             if (AddrXSettings.Instance.EnableTracking)
@@ -37,47 +36,20 @@ namespace Tjdtjq5.AddrX
 #endif
         }
 
-        /// <summary>로드된 에셋. 해제됨/미완료 시 예외.</summary>
-        public T Value
-        {
-            get
-            {
-                if (_released)
-                    throw new ObjectDisposedException(
-                        nameof(SafeHandle<T>), "핸들이 이미 해제되었습니다.");
-                if (!_handle.IsValid())
-                    throw new InvalidOperationException("핸들이 유효하지 않습니다.");
-                if (_handle.Status != AsyncOperationStatus.Succeeded)
-                    throw new InvalidOperationException(
-                        $"에셋이 아직 로드되지 않았습니다. 상태: {Status}");
-                return _handle.Result;
-            }
-        }
+        /// <summary>로드된 에셋/인스턴스. 해제됨/미완료 시 예외.</summary>
+        public abstract T Value { get; }
 
         /// <summary>핸들 유효 여부 (해제되지 않았고 원본이 유효한 경우 true).</summary>
-        public bool IsValid => !_released && _handle.IsValid();
+        public abstract bool IsValid { get; }
 
-        /// <summary>에셋 로드 완료 및 성공 상태. Value 접근 안전 보장.</summary>
-        public bool IsReady => IsValid && _handle.Status == AsyncOperationStatus.Succeeded;
+        /// <summary>로드 완료 및 성공 상태. Value 접근 안전 보장.</summary>
+        public abstract bool IsReady { get; }
 
         /// <summary>로딩 진행률 (0~1).</summary>
-        public float Progress => _handle.IsValid() ? _handle.PercentComplete : 0f;
+        public abstract float Progress { get; }
 
         /// <summary>현재 로드 상태.</summary>
-        public HandleStatus Status
-        {
-            get
-            {
-                if (_released || !_handle.IsValid()) return HandleStatus.None;
-                return _handle.Status switch
-                {
-                    AsyncOperationStatus.None => HandleStatus.Loading,
-                    AsyncOperationStatus.Succeeded => HandleStatus.Succeeded,
-                    AsyncOperationStatus.Failed => HandleStatus.Failed,
-                    _ => HandleStatus.None
-                };
-            }
-        }
+        public abstract HandleStatus Status { get; }
 
         /// <summary>GO 파괴 시 자동 Dispose. 체이닝 반환.</summary>
         public SafeHandle<T> BindTo(GameObject go)
@@ -93,11 +65,7 @@ namespace Tjdtjq5.AddrX
             if (_released) return;
             _released = true;
 
-            if (_handle.IsValid())
-            {
-                Addressables.Release(_handle);
-                AddrXLog.Verbose(Tag, $"핸들 해제: {typeof(T).Name}");
-            }
+            ReleaseCore();
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (_trackingId > 0)
@@ -113,8 +81,71 @@ namespace Tjdtjq5.AddrX
             return default;
         }
 
+        /// <summary>서브클래스별 실제 해제 로직. Dispose에서 1회만 호출된다.</summary>
+        protected abstract void ReleaseCore();
+    }
+
+    /// <summary>
+    /// Addressables <see cref="AsyncOperationHandle{T}"/>를 감싼 에셋 로드 핸들.
+    /// Dispose 시 Addressables.Release로 핸들을 해제한다.
+    /// </summary>
+    public sealed class AssetHandle<T> : SafeHandle<T>
+    {
+        readonly AsyncOperationHandle<T> _handle;
+
+        internal AssetHandle(AsyncOperationHandle<T> handle, object key = null) : base(key)
+        {
+            _handle = handle;
+        }
+
+        public override T Value
+        {
+            get
+            {
+                if (_released)
+                    throw new ObjectDisposedException(
+                        nameof(AssetHandle<T>), "핸들이 이미 해제되었습니다.");
+                if (!_handle.IsValid())
+                    throw new InvalidOperationException("핸들이 유효하지 않습니다.");
+                if (_handle.Status != AsyncOperationStatus.Succeeded)
+                    throw new InvalidOperationException(
+                        $"에셋이 아직 로드되지 않았습니다. 상태: {Status}");
+                return _handle.Result;
+            }
+        }
+
+        public override bool IsValid => !_released && _handle.IsValid();
+
+        public override bool IsReady => IsValid && _handle.Status == AsyncOperationStatus.Succeeded;
+
+        public override float Progress => _handle.IsValid() ? _handle.PercentComplete : 0f;
+
+        public override HandleStatus Status
+        {
+            get
+            {
+                if (_released || !_handle.IsValid()) return HandleStatus.None;
+                return _handle.Status switch
+                {
+                    AsyncOperationStatus.None => HandleStatus.Loading,
+                    AsyncOperationStatus.Succeeded => HandleStatus.Succeeded,
+                    AsyncOperationStatus.Failed => HandleStatus.Failed,
+                    _ => HandleStatus.None
+                };
+            }
+        }
+
+        protected override void ReleaseCore()
+        {
+            if (_handle.IsValid())
+            {
+                Addressables.Release(_handle);
+                AddrXLog.Verbose(Tag, $"핸들 해제: {typeof(T).Name}");
+            }
+        }
+
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-        ~SafeHandle()
+        ~AssetHandle()
         {
             if (!_released && _handle.IsValid())
             {
