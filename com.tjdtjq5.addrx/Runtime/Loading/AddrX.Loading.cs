@@ -67,7 +67,7 @@ namespace Tjdtjq5.AddrX
             int failCount = 0;
             for (int i = 0; i < count; i++)
             {
-                handles[i] = new SafeHandle<T>(ops[i], keys[i]);
+                handles[i] = new AssetHandle<T>(ops[i], keys[i]);
                 if (ops[i].Status == AsyncOperationStatus.Failed)
                 {
                     AddrXLog.Error(Tag,
@@ -82,30 +82,6 @@ namespace Tjdtjq5.AddrX
                 AddrXLog.Verbose(Tag, $"배치 로드 완료: {count}개 ({typeof(T).Name})");
 
             return handles;
-        }
-
-        /// <summary>Addressable 에셋을 로드하고 인스턴스화한다.</summary>
-        public static async UniTask<SafeHandle<GameObject>> InstantiateAsync(
-            string key, Transform parent = null)
-        {
-            await EnsureInitialized();
-
-            var op = Addressables.InstantiateAsync(key, parent);
-            await op.Task;
-
-            var handle = new SafeHandle<GameObject>(op, key);
-
-            if (op.Status == AsyncOperationStatus.Failed)
-            {
-                AddrXLog.Error(Tag,
-                    $"인스턴스 생성 실패: {key} ({op.OperationException?.Message})");
-            }
-            else
-            {
-                AddrXLog.Verbose(Tag, $"인스턴스 생성 완료: {key}");
-            }
-
-            return handle;
         }
 
         /// <summary>AssetLabelReference로 에셋을 로드한다. Inspector 드롭다운 연동.</summary>
@@ -227,7 +203,7 @@ namespace Tjdtjq5.AddrX
             int failCount = 0;
             for (int i = 0; i < count; i++)
             {
-                handles[i] = new SafeHandle<T>(ops[i], keys[i]);
+                handles[i] = new AssetHandle<T>(ops[i], keys[i]);
                 if (ops[i].Status == AsyncOperationStatus.Failed)
                 {
                     AddrXLog.Error(Tag,

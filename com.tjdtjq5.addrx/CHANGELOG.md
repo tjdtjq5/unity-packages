@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0] - 2026-06-07
+
+### Added — 인스턴스화 확장 (Pool/DI 플러그인 + 인스턴스 핸들)
+
+- **IAddrXInstantiator** — 인스턴스 생성/파괴 전략 확장점 + `AddrX.Instantiator`. 기본 구현은 Object.Instantiate/Destroy. 프로젝트가 풀링·DI 주입(InjectGameObject)을 끼울 수 있다. AddrX 자체는 VContainer/풀링에 무지(범용 패키지 유지).
+- **InstanceHandle<T>** — 값 + 커스텀 release를 감싸는 핸들. `AddrX.InstantiateAsync`가 반환하며 Dispose 시 등록된 Instantiator의 파괴 경로(Pool.Push 또는 Object.Destroy)로 라우팅.
+- **AddrX.InstantiateAsync** — 키/AssetReference, 제네릭 `T`, parent/position/inWorldSpace 오버로드. 프리팹은 키별 캐시 후 Instantiator로 인스턴스화하고 인스턴스에 태그를 부착. `AddrX.Destroy(GameObject)`(태그 기반), `ReleasePrefab(key)`/`ReleaseAllPrefabs()`.
+- **AddrXSceneScope + AddrX.LoadSceneAsync + LoadIntoScopeAsync** — Addressable 씬 로드(`SafeHandle<SceneInstance>`) + 씬 단위 핸들 묶음 로드·일괄 해제 스코프.
+- **AddrX.ExistsAsync(object key)** — 카탈로그 키 존재 확인(로드 없이, 위치 조회 후 즉시 Release).
+
+### Changed
+
+- **SafeHandle<T>** — `sealed` → `abstract` 베이스로 전환. 구현체: `AssetHandle<T>`(Addressables 핸들 래핑 — 기존 로드/Release 동작·미해제 파이널라이저 경고 보존), `InstanceHandle<T>`(인스턴스/커스텀 해제, 파이널라이저 없음). 외부 코드는 `SafeHandle<T>` 타입으로 그대로 사용 — 생성자가 internal이라 외부 영향 없음.
+
 ## [0.2.0] - 2026-05-02
 
 ### Changed (Breaking) — UniTask 마이그레이션
