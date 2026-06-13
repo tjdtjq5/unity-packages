@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.5] - 2026-06-14
+
+### Fixed — LocalGameDB 직렬화를 시스템 표준 Newtonsoft로 통일
+
+LocalGameDB(개발 모드 in-memory fallback)가 `JsonUtility`를 쓰는 바람에, Realtime/REST/서버(모두 Newtonsoft)와 같은 `[Table]`/`[Config]` 타입의 직렬화 규칙이 달랐다. `JsonUtility`는 property·`Dictionary`·`[JsonProperty]`를 처리하지 못해 같은 타입이 경로에 따라 조용히 손실/불일치될 수 있었다.
+
+- `LocalGameDB`의 7개 `JsonUtility.To/FromJson` 호출을 단일 `Serialize/Deserialize` 헬퍼(Newtonsoft `JsonConvert`)로 통일. in-memory 저장이라 마이그레이션 영향 없음.
+- `LocalGameDbTests` 추가 — property/`Dictionary` 보존 라운드트립 검증.
+
 ## [0.8.4] - 2026-06-14
 
 ### Fixed — Auth 생명주기 리팩터 (temporal coupling / 토큰 단일 home / 자원 누수)

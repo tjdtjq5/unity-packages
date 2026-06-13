@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using Newtonsoft.Json;
 using UnityEngine;
 
 namespace Tjdtjq5.SupaRun
@@ -34,6 +35,13 @@ namespace Tjdtjq5.SupaRun
             return fields;
         }
 
+        // ── 직렬화 (시스템 표준 Newtonsoft로 통일) ──
+        // 이전엔 JsonUtility를 썼으나 properties/Dictionary/[JsonProperty]를 처리 못 해,
+        // 같은 [Table] 타입이 Realtime/REST/서버(전부 Newtonsoft) 경로와 불일치(조용한 데이터 손상)했다.
+        // 단일 지점으로 모아 두 경로가 동일 직렬화 규칙을 쓰도록 보장한다.
+        static string Serialize<T>(T entity) => JsonConvert.SerializeObject(entity);
+        static T Deserialize<T>(string json) => JsonConvert.DeserializeObject<T>(json);
+
         // ── Get ──
 
         public UniTask<T> Get<T>(object primaryKey, CancellationToken ct = default)
@@ -43,7 +51,7 @@ namespace Tjdtjq5.SupaRun
 
             if (table.TryGetValue(pk, out var json))
             {
-                var entity = JsonUtility.FromJson<T>(json);
+                var entity = Deserialize<T>(json);
                 Log($"Get<{typeof(T).Name}>(\"{pk}\") → found");
                 return UniTask.FromResult(entity);
             }
@@ -58,7 +66,7 @@ namespace Tjdtjq5.SupaRun
         {
             var table = GetTable(typeof(T).Name);
             var list = table.Values
-                .Select(json => JsonUtility.FromJson<T>(json))
+                .Select(json => Deserialize<T>(json))
                 .ToList();
 
             // [Table] 타입에 대해 성능 경고 (100건 초과 시)
@@ -102,7 +110,7 @@ namespace Tjdtjq5.SupaRun
             ApplyUpdatedAt(entity, type);
 
             // JSON으로 직렬화하여 저장 (값 복사)
-            table[pk] = JsonUtility.ToJson(entity);
+            table[pk] = Serialize(entity);
 
             Log($"Save<{type.Name}>(\"{pk}\") → {(isNew ? "created" : "updated")}");
             return UniTask.CompletedTask;
@@ -129,7 +137,7 @@ namespace Tjdtjq5.SupaRun
                 // 필터 없는 Query는 GetAll과 동일하지만 성능 경고 없이 실행
                 var allTable = GetTable(typeof(T).Name);
                 var allList = allTable.Values
-                    .Select(json => JsonUtility.FromJson<T>(json))
+                    .Select(json => Deserialize<T>(json))
                     .ToList();
                 Log($"Query<{typeof(T).Name}>(no filters) → {allList.Count} rows");
                 return UniTask.FromResult(allList);
@@ -141,7 +149,7 @@ namespace Tjdtjq5.SupaRun
 
             foreach (var json in table.Values)
             {
-                var entity = JsonUtility.FromJson<T>(json);
+                var entity = Deserialize<T>(json);
                 if (MatchesFilters(entity, fields, options.Filters))
                     results.Add(entity);
             }
@@ -235,7 +243,7 @@ namespace Tjdtjq5.SupaRun
 
             foreach (var json in table.Values)
             {
-                var entity = JsonUtility.FromJson<T>(json);
+                var entity = Deserialize<T>(json);
                 if (MatchesFilters(entity, fields, options.Filters))
                     result++;
             }
@@ -268,7 +276,7 @@ namespace Tjdtjq5.SupaRun
 
             foreach (var (pk, json) in table)
             {
-                var entity = JsonUtility.FromJson<T>(json);
+                var entity = Deserialize<T>(json);
                 if (options == null || options.Filters.Count == 0 || MatchesFilters(entity, fields, options.Filters))
                     toRemove.Add(pk);
             }
@@ -365,7 +373,7 @@ namespace Tjdtjq5.SupaRun
                 foreach (var (pk, json) in table)
                 {
                     if (pk == currentPk) continue; // 자기 자신은 제외
-                    var existing = JsonUtility.FromJson<T>(json);
+                    var existing = Deserialize<T>(json);
                     var existingValue = field.GetValue(existing)?.ToString();
                     if (value == existingValue)
                         throw new InvalidOperationException(
