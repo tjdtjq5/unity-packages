@@ -177,6 +177,11 @@ namespace Tjdtjq5.Claude
                 if (pingOk) System.Threading.Thread.Sleep(700);
             }
 
+            // 데몬은 ping에 응답하지만 GUI 메인 창이 닫혀 있으면(⌘W로 창만 닫고 데몬은 잔존하는
+            // 흔한 케이스) new-workspace가 "TabManager not available"로 실패한다 — 워크스페이스를
+            // 붙일 창이 없기 때문. ping이 성공해 위에서 open을 건너뛴 상태이므로, 이 에러에 한해
+            // open -a cmux로 창을 한 번 깨우고 UI 초기화를 기다린 뒤 재시도한다.
+            bool uiWakeAttempted = false;
             for (int attempt = 0; attempt < 6; attempt++)
             {
                 if (TryCmuxNewWorkspace(bin, workDir, title, command, out var workspaceRef, out lastStderr))
@@ -187,6 +192,15 @@ namespace Tjdtjq5.Claude
                     TryFocusWorkspace(bin, workspaceRef);
                     return true;
                 }
+
+                if (!uiWakeAttempted && lastStderr?.Contains("TabManager not available") == true)
+                {
+                    uiWakeAttempted = true;
+                    StartShellProcess("open", "-a cmux", null);
+                    System.Threading.Thread.Sleep(1200);
+                    continue;
+                }
+
                 System.Threading.Thread.Sleep(400);
             }
             if (string.IsNullOrEmpty(lastStderr) && !pingOk)

@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.1] - 2026-06-14
+
+### Fixed
+- macOS cmux 런처에서 데몬은 살아있지만(`ping` 성공) GUI 메인 창이 닫혀 있을 때(⌘W로 창만 닫은 상태) `new-workspace`가 `TabManager not available`로 실패하던 문제 수정 — `ping` 성공 시 `open`을 건너뛰는 가드가 정작 이 상태의 복구를 막고 있었음. 해당 에러에 한해 `open -a cmux`로 창을 한 번 깨우고 UI 초기화 대기 후 재시도하는 복구 분기 추가 (`uiWakeAttempted` 플래그로 1회만 시도해 빈 창 난립 방지)
+
 ## [1.2.0] - 2026-06-02
 
 ### Changed

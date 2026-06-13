@@ -26,7 +26,7 @@ Unity 에디터에서 Claude Code CLI 실행 + git worktree 관리.
 ## 설치
 
 ```json
-"com.tjdtjq5.claude": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.claude#claude/v1.2.0"
+"com.tjdtjq5.claude": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.claude#claude/v1.2.1"
 ```
 
 ## 요구사항
@@ -35,4 +35,4 @@ Unity 에디터에서 Claude Code CLI 실행 + git worktree 관리.
 - `com.tjdtjq5.editor-toolkit` 패키지
 
 ## 상태
-v1.1.4
+v1.2.1
