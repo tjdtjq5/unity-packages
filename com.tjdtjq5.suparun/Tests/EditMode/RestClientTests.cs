@@ -10,14 +10,16 @@ namespace Tjdtjq5.SupaRun.Tests
         const string SupabaseUrl = "https://test.supabase.co";
         const string AnonKey = "test-anon-key";
         MockHttpTransport _transport = null!;
+        StubSessionProvider _session = null!;
 
         [SetUp]
         public void SetUp()
         {
             _transport = new MockHttpTransport();
+            _session = new StubSessionProvider();
         }
 
-        SupabaseRestClient MakeClient() => new SupabaseRestClient(SupabaseUrl, AnonKey, _transport);
+        SupabaseRestClient MakeClient() => new SupabaseRestClient(SupabaseUrl, AnonKey, _transport, sessionProvider: _session);
 
         // ── GetAll ──
 
@@ -120,12 +122,12 @@ namespace Tjdtjq5.SupaRun.Tests
         public async Task Authenticated_Call_No_Hint()
         {
             _transport.Enqueue(200, "[]", success: true);
-            var client = MakeClient();
-            client.Session = new AuthSession
+            _session.CurrentSession = new AuthSession
             {
                 accessToken = "valid-jwt",
                 expiresAt = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600
             };
+            var client = MakeClient();
 
             var resp = await client.GetAll<TestItem>();
 

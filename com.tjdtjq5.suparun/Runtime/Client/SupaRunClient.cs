@@ -20,23 +20,24 @@ namespace Tjdtjq5.SupaRun
     {
         readonly ServerConfig _config;
         readonly HttpExecutor _executor;
-
-        /// <summary>인증 세션. SupabaseAuth가 설정. 그 전까지 null.</summary>
-        public AuthSession? Session { get; internal set; }
+        // 토큰의 단일 home. 매 송신 시 여기서 pull한다 (이전: push로 채워지던 Session 필드).
+        readonly ISessionProvider? _sessionProvider;
 
         /// <summary>토큰 갱신 콜백. 401 시 호출되어 새 세션을 반환. 실패 시 null.</summary>
         public Func<UniTask<AuthSession?>>? OnTokenRefresh { get; set; }
 
-        public SupaRunClient(ServerConfig config, IHttpTransport? transport = null)
+        public SupaRunClient(ServerConfig config, IHttpTransport? transport = null,
+                             ISessionProvider? sessionProvider = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            _sessionProvider = sessionProvider;
 
             // Strategy 조합:
-            // - BearerTokenAuth: Session lazy read (매 송신 시 평가)
+            // - BearerTokenAuth: ISessionProvider에서 토큰 lazy pull (매 송신 시 평가)
             // - ExponentialBackoffRetry: 5xx/Timeout 시 1s/2s/4s 백오프, 최대 3회
             // - CallbackAuthRefresher: OnTokenRefresh 프로퍼티를 lazy read (closure)
             var t = transport ?? new UnityHttpTransport();
-            var auth = new BearerTokenAuth(() => Session);
+            var auth = new BearerTokenAuth(() => _sessionProvider?.CurrentSession);
             var retry = new ExponentialBackoffRetry(maxAttempts: 3, baseDelayMs: 1000);
             var refresher = new CallbackAuthRefresher(async () =>
                 OnTokenRefresh != null ? await OnTokenRefresh() : null);

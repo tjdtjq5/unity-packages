@@ -11,13 +11,15 @@ using UnityEngine;
 namespace Tjdtjq5.SupaRun
 {
     /// <summary>Supabase Auth 클라이언트. 게스트 자동 로그인 + 토큰 관리 + OAuth/플랫폼 인증.</summary>
-    public class SupaRunAuth
+    /// <remarks>토큰의 단일 home(<see cref="ISessionProvider"/>). HTTP 클라이언트가 여기서 pull한다.</remarks>
+    public class SupaRunAuth : ISessionProvider, IDisposable
     {
         readonly string _supabaseUrl;
         readonly string _anonKey;
         // 게임 서버 호출용 클라이언트. P1-3 리팩터로 정적 SupaRun.Client 의존 제거.
+        // 생성 순환(client↔auth)을 끊기 위해 ctor가 아닌 AttachServerClient로 late-bind한다.
         // null이면 DeleteAccount/CheckBan/플랫폼 인증 같은 서버 의존 기능은 동작하지 않음.
-        readonly IServerClient? _serverClient;
+        IServerClient? _serverClient;
         // 세션 토큰 저장소. P2-2 리팩터로 정적 SecureStorage 의존 제거.
         // null이면 기본 SecureSessionStorage 사용 (prefix 없음).
         readonly ISessionStorage _storage;
@@ -30,6 +32,8 @@ namespace Tjdtjq5.SupaRun
         const string PREF_IS_GUEST = "SupaRun_IsGuest";
 
         public AuthSession? Session { get; private set; }
+        /// <summary>ISessionProvider — 토큰의 단일 home. 클라이언트가 요청 시 여기서 pull한다.</summary>
+        public AuthSession? CurrentSession => Session;
         public bool IsLoggedIn => Session != null && !string.IsNullOrEmpty(Session.accessToken);
         public string? UserId => Session?.userId;
         public bool IsGuest => Session?.isGuest ?? true;
@@ -45,47 +49,38 @@ namespace Tjdtjq5.SupaRun
         OAuthHandler _oauthHandler;
 
         public SupaRunAuth(string supabaseUrl, string anonKey, string? cloudRunUrl = null,
-                           IServerClient? serverClient = null,
                            ISessionStorage? storage = null,
                            IAuthApi? authApi = null)
         {
             _supabaseUrl = supabaseUrl?.TrimEnd('/');
             _anonKey = anonKey;
             _oauthHandler = new OAuthHandler(supabaseUrl, cloudRunUrl);
-            _serverClient = serverClient;
             _storage = storage ?? new SecureSessionStorage();
             _authApi = authApi ?? new SupabaseAuthApi(supabaseUrl, anonKey);
         }
 
-        // 다중 호출자가 같은 비동기 작업을 await하는 캐싱 — UniTaskCompletionSource 사용.
-        // UniTaskCompletionSource는 Task와 달리 struct 기반이지만, .Task 프로퍼티가 다중 await를 안전 지원.
-        UniTaskCompletionSource? _loginUcs;
+        // 생성 순환(client↔auth)을 끊기 위해 서버 의존 client는 ctor가 아닌 late-bind.
+        // (DeleteAccount/CheckBan/플랫폼 인증 같은 선택 기능에만 쓰임 — null 허용)
+        internal void AttachServerClient(IServerClient? client) => _serverClient = client;
 
-        /// <summary>자동 로그인. 중복 호출 방지.</summary>
-        public UniTask EnsureLoggedIn()
+        bool _disposed;
+        /// <summary>OAuthHandler의 deep-link 구독 + HttpListener를 해제. SupaRunRuntime.Dispose가 호출한다.</summary>
+        public void Dispose()
         {
-            if (_loginUcs != null) return _loginUcs.Task;
-            _loginUcs = new UniTaskCompletionSource();
-            DoEnsureLoggedInImpl(_loginUcs).Forget();
-            return _loginUcs.Task;
+            if (_disposed) return;
+            _disposed = true;
+            _oauthHandler.Dispose();
         }
 
-        async UniTaskVoid DoEnsureLoggedInImpl(UniTaskCompletionSource ucs)
-        {
-            try
-            {
-                await DoEnsureLoggedIn();
-                ucs.TrySetResult();
-            }
-            catch (Exception ex)
-            {
-                ucs.TrySetException(ex);
-            }
-        }
+        // 동시 호출 dedup은 SingleFlight가 담당한다 (ucs를 로컬에 캡처 → 동기 어댑터에서도 NRE 없음).
+        readonly SingleFlight _loginFlight = new();
+        readonly SingleFlight<AuthSession?> _refreshFlight = new();
+
+        /// <summary>자동 로그인. 동시 호출 dedup.</summary>
+        public UniTask EnsureLoggedIn() => _loginFlight.Run(DoEnsureLoggedIn);
 
         async UniTask DoEnsureLoggedIn()
         {
-            try
             {
                 // 1. 저장된 세션 복원 + 서버 검증
                 var saved = LoadSession();
@@ -159,10 +154,6 @@ namespace Tjdtjq5.SupaRun
                         "Supabase > Auth > Settings > Anonymous Sign-ins이 활성화되어 있어야 합니다.");
                 }
             }
-            finally
-            {
-                _loginUcs = null;
-            }
         }
 
         // ── Supabase API ──
@@ -188,8 +179,11 @@ namespace Tjdtjq5.SupaRun
             return result != null;
         }
 
-        /// <summary>현재 세션의 토큰을 갱신. 성공 시 새 세션 반환 + OnSessionChanged 발행.</summary>
-        public async UniTask<AuthSession?> TryRefreshToken()
+        /// <summary>현재 세션의 토큰을 갱신. 성공 시 새 세션 반환 + OnSessionChanged 발행.
+        /// 동시 호출(여러 401 동시 발생)은 dedup되어 refresh POST는 1회만 나간다.</summary>
+        public UniTask<AuthSession?> TryRefreshToken() => _refreshFlight.Run(DoRefreshToken);
+
+        async UniTask<AuthSession?> DoRefreshToken()
         {
             if (Session == null || string.IsNullOrEmpty(Session.refreshToken))
                 return null;

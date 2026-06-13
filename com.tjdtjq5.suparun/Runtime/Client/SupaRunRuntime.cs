@@ -57,8 +57,8 @@ namespace Tjdtjq5.SupaRun
         /// <summary>현재 로그인되어 있는지 여부.</summary>
         public bool IsLoggedIn => _auth?.IsLoggedIn ?? false;
 
-        /// <summary>현재 인증 세션. null 가능.</summary>
-        public AuthSession? CurrentSession => _auth?.Session ?? _client?.Session;
+        /// <summary>현재 인증 세션. null 가능. 토큰의 단일 home인 Auth에서 읽는다.</summary>
+        public AuthSession? CurrentSession => _auth?.CurrentSession;
 
         /// <summary>현재 로그인된 플레이어 ID. null 가능.</summary>
         public string? PlayerId => CurrentSession?.userId;
@@ -80,37 +80,44 @@ namespace Tjdtjq5.SupaRun
             // Transport: 옵션 우선, 없으면 단일 UnityHttpTransport (P2-1g 패턴)
             _transport = options.Transport ?? new UnityHttpTransport();
 
-            // Cloud Run client (cloudRunUrl 있을 때만)
-            if (!string.IsNullOrEmpty(cloudRunUrl))
-            {
-                var config = new ServerConfig { cloudRunUrl = cloudRunUrl, supabaseUrl = supabaseUrl, supabaseAnonKey = anonKey };
-                _client = new SupaRunClient(config, _transport);
-            }
-
             // Session storage: 옵션 우선, 없으면 SecureSessionStorage + MPPM 자동 prefix (P2-2)
             _sessionStorage = options.SessionStorage ?? new SecureSessionStorage(SupaRun.GetMppmInstanceId());
 
-            // Auth + REST + Realtime 초기화 (Supabase 설정 있을 때만)
+            // Auth를 먼저 생성한다 — Auth가 토큰의 단일 home(ISessionProvider).
+            // HTTP 클라이언트가 ctor로 Auth를 주입받아 요청 시 토큰을 pull하므로, client↔auth 생성 순환을
+            // 끊기 위해 Auth는 server client 없이 먼저 만들고 아래에서 AttachServerClient로 late-bind한다.
             // 로그인 자체는 Login()을 명시적으로 호출해야 시작됨.
             if (!string.IsNullOrEmpty(supabaseUrl) && !string.IsNullOrEmpty(anonKey))
             {
-                // P1-3: SupaRunAuth가 정적 SupaRun.Client에 의존하지 않도록 IServerClient(_client)를 주입.
-                // P2-2: ISessionStorage 주입.
-                // P3: IAuthApi 주입 (Auth HTTP 추상화 — UnityWebRequest 직접 사용 제거).
+                // P3: IAuthApi 주입 (Auth HTTP 추상화 — UnityWebRequest 직접 사용 제거). P2-2: ISessionStorage 주입.
                 var authApi = options.AuthApi ?? new SupabaseAuthApi(supabaseUrl, anonKey, _transport);
-                _auth = new SupaRunAuth(supabaseUrl, anonKey, cloudRunUrl, _client, _sessionStorage, authApi);
-                _auth.OnSessionChanged += OnAuthSessionChanged;
+                _auth = new SupaRunAuth(supabaseUrl, anonKey, cloudRunUrl, _sessionStorage, authApi);
+            }
 
-                // 토큰 갱신 콜백 연결 (401 시 SupaRunClient → SupaRunAuth.TryRefreshToken)
+            // Cloud Run client (cloudRunUrl 있을 때만) — Auth(ISessionProvider)에서 토큰을 pull.
+            if (!string.IsNullOrEmpty(cloudRunUrl))
+            {
+                var config = new ServerConfig { cloudRunUrl = cloudRunUrl, supabaseUrl = supabaseUrl, supabaseAnonKey = anonKey };
+                _client = new SupaRunClient(config, _transport, _auth);
+            }
+
+            // REST/Realtime + 토큰 갱신 배선 (Auth 있을 때만).
+            if (_auth != null)
+            {
+                // 서버 의존 기능(DeleteAccount/CheckBan/플랫폼 인증)용 client를 late-bind (생성 순환 회피).
+                _auth.AttachServerClient(_client);
+
+                // 401 → SupaRunAuth.TryRefreshToken (single-flight). 갱신 후 클라이언트는 새 토큰을 pull.
                 if (_client != null)
                     _client.OnTokenRefresh = async () => await _auth.TryRefreshToken();
 
-                // [Config] PostgREST 클라이언트 — 동일한 refresher를 주입해 401 시 자동 갱신+재시도.
+                // [Config] PostgREST 클라이언트 — 동일 refresher 주입 + Auth(ISessionProvider)에서 토큰 pull.
                 var restRefresher = new CallbackAuthRefresher(async () => await _auth.TryRefreshToken());
-                _restClient = new SupabaseRestClient(supabaseUrl, anonKey, _transport, restRefresher);
+                _restClient = new SupabaseRestClient(supabaseUrl, anonKey, _transport, restRefresher, _auth);
 
-                // Realtime 초기화: 옵션 우선, 없으면 기본 (WebSocket 연결은 첫 채널 Subscribe 시)
+                // Realtime: 옵션 우선, 없으면 기본. 소켓은 pull 불가라 세션 변경 시 push(OnAuthSessionChanged).
                 _realtime = options.Realtime ?? new Supabase.SupabaseRealtime(supabaseUrl, anonKey);
+                _auth.OnSessionChanged += OnAuthSessionChanged;
             }
 
             _localDB = LocalGameDB.Instance;
@@ -283,13 +290,11 @@ namespace Tjdtjq5.SupaRun
 
         // ── 내부 ──
 
-        /// <summary>SupaRunAuth.OnSessionChanged 핸들러 — client/restClient/realtime에 토큰 전파.</summary>
+        /// <summary>SupaRunAuth.OnSessionChanged 핸들러 — Realtime 소켓에만 토큰 push.
+        /// HTTP/REST 클라이언트는 ISessionProvider로 Auth에서 직접 pull하므로 push 대상이 아니다.</summary>
         internal void OnAuthSessionChanged(AuthSession session)
         {
-            if (_client != null) _client.Session = session;
-            // [Config] REST 클라이언트도 유저 JWT 사용 → RLS authenticated 정책 통과
-            if (_restClient != null) _restClient.Session = session;
-            // Realtime에 액세스 토큰 전달
+            // 소켓은 열린 연결이라 pull 불가 — 세션 변경 시 명시적으로 토큰을 push한다.
             if (_realtime != null && session != null)
                 _realtime.SetAccessToken(session.accessToken);
         }
@@ -301,9 +306,12 @@ namespace Tjdtjq5.SupaRun
             if (_disposed) return;
             _disposed = true;
 
-            // 이벤트 핸들러 해제 (생성자에서 등록한 것)
+            // 이벤트 핸들러 해제 (생성자에서 등록한 것) + OAuthHandler deep-link/HttpListener 정리
             if (_auth != null)
+            {
                 _auth.OnSessionChanged -= OnAuthSessionChanged;
+                _auth.Dispose();
+            }
 
             // Realtime WebSocket 연결 해제
             _realtime?.Disconnect();

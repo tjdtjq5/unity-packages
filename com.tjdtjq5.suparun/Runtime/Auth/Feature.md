@@ -8,17 +8,24 @@
 | 대상 | 경로 | 용도 |
 |------|------|------|
 | Models | `../Models/` | AuthSession, AuthTokenResponse, BanStatus |
-| Client | `../Client/` | `IServerClient` 인터페이스 (생성자 주입). 정적 `SupaRun.Client`에 의존하지 않음. |
+| Client | `../Client/` | `IServerClient` (late-bind via `AttachServerClient`). 역으로 SupaRunAuth는 `ISessionProvider`로 Client에 토큰을 제공(pull). |
 
 > **P1-3 (2026-04-08)**: `SupaRunAuth → SupaRun.Client` 정적 의존을 `IServerClient` 인터페이스 주입으로 대체. 의존성 사이클 끊김.
 >
 > **P2-2 (2026-04-09)**: `SecureStorage` 정적 클래스를 `ISessionStorage` 인터페이스 + 인스턴스 구현체로 분리. MPPM Virtual Player 자동 키 prefix 분리 (인스턴스마다 별도 게스트 계정).
+>
+> **Auth 생명주기 리팩터 (2026-06-14)**: 3건 동시 수정.
+> 1. **temporal coupling 버그 제거** — `EnsureLoggedIn`/`TryRefreshToken`의 dedup을 `SingleFlight`로 추출. 이전엔 launch 후 `_loginUcs` *필드*를 다시 읽어, 동기 어댑터(테스트 mock)에서 NRE → EditMode 테스트 5건 실패. 이제 ucs를 로컬에 캡처 → sync/async 모두 안전, 동시 refresh도 dedup.
+> 2. **토큰 단일 home (`ISessionProvider`)** — HTTP/REST 클라이언트가 `_client.Session` 미러 대신 `SupaRunAuth.CurrentSession`에서 요청 시 pull. Realtime 소켓만 `OnSessionChanged`로 push(소켓은 pull 불가 — 유일 반응자 = 진짜 seam).
+> 3. **`SupaRunAuth : IDisposable`** — `OAuthHandler` deep-link 구독/HttpListener를 `SupaRunRuntime.Dispose → _auth.Dispose()`로 정리(이전엔 재생성마다 누수). 생성 순환은 Auth를 먼저 만들고 `AttachServerClient`로 client를 late-bind해 해소.
 
 ## 구조
 
 ```
 Auth/
-├── SupaRunAuth.cs               # 인증 메인 클래스 (게스트/OAuth/플랫폼/토큰 관리). 이전 이름: SupabaseAuth (P1-2)
+├── SupaRunAuth.cs               # 인증 메인 클래스 (게스트/OAuth/플랫폼/토큰 관리). ISessionProvider + IDisposable. 이전 이름: SupabaseAuth (P1-2)
+├── ISessionProvider.cs           # 토큰의 단일 home. HTTP 클라이언트가 요청 시 pull (SupaRunAuth가 구현)
+├── SingleFlight.cs               # 동시 호출 dedup 프리미티브 (login/refresh 공용). ucs 로컬 캡처로 동기 완료에도 NRE 없음
 ├── ISessionStorage.cs            # P2-2: 세션 저장소 추상화 (KV API, 6 메서드)
 ├── SecureSessionStorage.cs       # P2-2: 플랫폼 보안 저장소 구현체 (iOS Keychain / Android KeyStore / PC PlayerPrefs) + key prefix
 ├── MemorySessionStorage.cs       # P2-2: 메모리 Dictionary 구현체 (테스트/임시용)
@@ -34,19 +41,22 @@ Auth/
 
 ## API
 
-### SupaRunAuth
+### SupaRunAuth : ISessionProvider, IDisposable
 
 | 메서드/프로퍼티 | 설명 |
 |----------------|------|
-| `EnsureLoggedIn()` | 자동 로그인. 저장된 세션 복원 -> 만료 시 갱신 -> 실패 시 익명 로그인. |
+| `EnsureLoggedIn()` | 자동 로그인. 저장된 세션 복원 -> 만료 시 갱신 -> 실패 시 익명 로그인. 동시 호출 dedup (`SingleFlight`). |
 | `SignIn(AuthProvider)` | 소셜/플랫폼 로그인. Guest/GPGS/GameCenter/OAuth 분기. |
 | `LinkProvider(AuthProvider)` | 게스트 계정에 소셜 계정 연결 (Supabase Identity Link API). |
 | `SignOut()` | 로그아웃 후 게스트로 자동 재생성. |
 | `DeleteAccount()` | 계정 삭제 (서버 service_role로 Supabase 유저 삭제). |
 | `CheckBan()` | 밴 체크 (서버에서 확인). |
-| `TryRefreshToken()` | 수동 토큰 갱신. |
+| `TryRefreshToken()` | 토큰 갱신. 동시 호출(여러 401 동시 발생) dedup → refresh POST 1회. |
 | `ClearSession()` | 세션 클리어 (로컬 저장소 포함). |
+| `AttachServerClient(IServerClient?)` | 서버 의존 client late-bind (생성 순환 회피, internal). |
+| `Dispose()` | OAuthHandler deep-link 구독/HttpListener 정리. `SupaRunRuntime.Dispose`가 호출. |
 | `Session` | 현재 AuthSession (읽기 전용). |
+| `CurrentSession` | `ISessionProvider` 구현 — 토큰의 단일 home. `Session`과 동일 값. 클라이언트가 요청 시 pull. |
 | `IsLoggedIn` | 로그인 여부. |
 | `UserId` | 현재 유저 ID. |
 | `IsGuest` | 게스트 여부. |
@@ -102,7 +112,9 @@ Guest, Google, Apple, Facebook, Discord, Twitter, Kakao, Twitch, Spotify, Slack,
 
 ## 주의사항
 
-- `EnsureLoggedIn()`은 중복 호출 방지 (내부 `_loginTask`). 여러 곳에서 호출해도 안전하다.
+- `EnsureLoggedIn()`/`TryRefreshToken()`은 `SingleFlight`로 동시 호출 dedup. 여러 곳에서 호출해도 안전하며, 동기 어댑터(테스트 mock)에서도 NRE 없이 동작한다.
+- 토큰은 `SupaRunAuth.CurrentSession`이 단일 home. HTTP/REST 클라이언트는 `ISessionProvider`로 요청 시 pull하고, Realtime 소켓만 `OnSessionChanged`로 push받는다(소켓은 pull 불가).
+- `SupaRunAuth`는 `IDisposable`. `OAuthHandler`(deep-link 구독 + HttpListener)를 정리하므로 `SupaRunRuntime.Dispose`에서 `_auth.Dispose()`가 호출되어야 한다.
 - PC OAuth는 localhost에 임시 HTTP 서버를 열어 fragment 토큰을 수신한다 (2단계: HTML->JS->fetch).
 - 모바일 OAuth는 딥링크(`{bundleId}://auth`)로 토큰을 수신한다. Supabase > Auth > Settings에서 Site URL에 딥링크 스킴을 등록해야 한다.
 - `GPGSAuthHandler`는 Reflection으로 GPGS SDK를 감지하므로 SDK 미설치 시에도 컴파일 가능하다.

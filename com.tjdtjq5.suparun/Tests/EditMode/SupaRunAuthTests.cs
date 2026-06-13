@@ -101,9 +101,12 @@ namespace Tjdtjq5.SupaRun.Tests
 
             var auth = MakeAuth(new MemorySessionStorage(), mockApi);
 
-            // 동시 호출 — 중복 방지
-            var t1 = auth.EnsureLoggedIn();
-            var t2 = auth.EnsureLoggedIn();
+            // gate로 첫 호출을 in-flight 상태로 묶어 두 번째 호출이 dedup되는지 검증.
+            // (동기 mock으로는 "진행 중" 윈도우가 없어 동시성 dedup을 표현할 수 없음)
+            var gate = mockApi.Gate();
+            var t1 = auth.EnsureLoggedIn();   // signup PostAsync 진입 후 gate에서 대기 (in-flight)
+            var t2 = auth.EnsureLoggedIn();   // 진행 중 작업에 합류 — 두 번째 PostAsync 없음
+            gate.TrySetResult();              // 해제
             await UniTask.WhenAll(t1, t2);
 
             Assert.AreEqual(1, mockApi.CallCount);
@@ -141,6 +144,38 @@ namespace Tjdtjq5.SupaRun.Tests
 
             Assert.IsNotNull(received);
             Assert.AreEqual("jwt", received!.accessToken);
+        }
+
+        [Test]
+        public async Task TryRefreshToken_Concurrent_Dedups()
+        {
+            var jwt = FakeJwt("u");
+            var mockApi = new MockAuthApi();
+            // 1) 최초 로그인 (refresh token 보유)
+            mockApi.Enqueue($@"{{
+                ""access_token"": ""{jwt}"",
+                ""refresh_token"": ""refresh-1"",
+                ""expires_in"": 3600,
+                ""user"": {{ ""id"": ""u"" }}
+            }}");
+            var auth = MakeAuth(new MemorySessionStorage(), mockApi);
+            await auth.EnsureLoggedIn();
+            Assert.AreEqual(1, mockApi.CallCount);   // login 1회
+
+            // 2) refresh 응답 1개 + gate로 동시 호출을 in-flight로 묶기
+            mockApi.Enqueue($@"{{
+                ""access_token"": ""{jwt}"",
+                ""refresh_token"": ""refresh-2"",
+                ""expires_in"": 3600,
+                ""user"": {{ ""id"": ""u"" }}
+            }}");
+            var gate = mockApi.Gate();
+            var r1 = auth.TryRefreshToken();   // refresh PostAsync 진입 후 gate 대기
+            var r2 = auth.TryRefreshToken();   // dedup — 두 번째 refresh POST 없음
+            gate.TrySetResult();
+            await UniTask.WhenAll(r1, r2);
+
+            Assert.AreEqual(2, mockApi.CallCount);   // login 1 + refresh 1 (dedup 안 됐으면 3)
         }
 
         // ── 헬퍼 ──

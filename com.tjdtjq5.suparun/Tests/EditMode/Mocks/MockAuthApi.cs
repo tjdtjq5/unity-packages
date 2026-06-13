@@ -27,11 +27,18 @@ namespace Tjdtjq5.SupaRun.Tests
         /// </summary>
         public void EnqueueGet(string? response) => _getResponses.Enqueue(response);
 
-        public UniTask<string?> PostAsync(string endpoint, string jsonBody, CancellationToken ct = default)
+        // null이면 PostAsync 즉시 완료. 세팅 시 PostAsync가 이 gate가 풀릴 때까지 in-flight로 대기
+        // (동기 mock으로는 만들 수 없는 "진행 중" 윈도우를 만들어 동시 호출 dedup을 검증).
+        UniTaskCompletionSource? _gate;
+
+        /// <summary>이후 PostAsync들을 in-flight 상태로 묶어두는 gate를 설치하고 반환. TrySetResult()로 해제.</summary>
+        public UniTaskCompletionSource Gate() => _gate = new UniTaskCompletionSource();
+
+        public async UniTask<string?> PostAsync(string endpoint, string jsonBody, CancellationToken ct = default)
         {
             _requests.Add((endpoint, jsonBody));
-            var response = _responses.Count > 0 ? _responses.Dequeue() : null;
-            return UniTask.FromResult(response);
+            if (_gate != null) await _gate.Task;
+            return _responses.Count > 0 ? _responses.Dequeue() : null;
         }
 
         public UniTask<string?> GetAuthenticatedAsync(string endpoint, string accessToken, CancellationToken ct = default)

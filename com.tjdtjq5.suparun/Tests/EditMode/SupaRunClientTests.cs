@@ -9,15 +9,17 @@ namespace Tjdtjq5.SupaRun.Tests
     {
         const string CloudRunUrl = "https://api.example.com";
         MockHttpTransport _transport = null!;
+        StubSessionProvider _session = null!;
 
         [SetUp]
         public void SetUp()
         {
             _transport = new MockHttpTransport();
+            _session = new StubSessionProvider();
         }
 
         SupaRunClient MakeClient() => new SupaRunClient(
-            new ServerConfig { cloudRunUrl = CloudRunUrl }, _transport);
+            new ServerConfig { cloudRunUrl = CloudRunUrl }, _transport, _session);
 
         // ── GetAsync ──
 
@@ -104,6 +106,35 @@ namespace Tjdtjq5.SupaRun.Tests
             await client.GetAsync<TestPayload>("api/test");
 
             Assert.IsNull(_transport.LastRequest.Body);
+        }
+
+        // ── 토큰 pull (ISessionProvider) ──
+
+        [Test]
+        public async Task Request_Pulls_Bearer_From_SessionProvider()
+        {
+            _transport.Enqueue(200, "{}", success: true);
+            _session.CurrentSession = new AuthSession
+            {
+                accessToken = "pulled-jwt",
+                expiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600
+            };
+            var client = MakeClient();
+
+            await client.GetAsync<TestPayload>("api/test");
+
+            Assert.That(_transport.LastRequest.Headers["Authorization"], Does.Contain("pulled-jwt"));
+        }
+
+        [Test]
+        public async Task No_Session_Sends_No_Bearer()
+        {
+            _transport.Enqueue(200, "{}", success: true);
+            var client = MakeClient();   // provider.CurrentSession == null
+
+            await client.GetAsync<TestPayload>("api/test");
+
+            Assert.IsFalse(_transport.LastRequest.Headers.ContainsKey("Authorization"));
         }
 
         // ── 테스트 모델 ──

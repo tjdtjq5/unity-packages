@@ -15,22 +15,20 @@ namespace Tjdtjq5.SupaRun
     {
         readonly string _restUrl; // https://xxx.supabase.co/rest/v1
         readonly HttpExecutor _executor;
-
-        /// <summary>
-        /// 현재 인증 세션. SupaRun.Auth.OnSessionChanged에서 주입된다.
-        /// 세션이 있으면 Authorization Bearer에 유저 JWT를 사용해
-        /// `authenticated` role이 필요한 RLS 정책을 통과한다.
-        /// </summary>
-        public AuthSession? Session { get; set; }
+        // 토큰의 단일 home. 세션이 있으면 Authorization Bearer에 유저 JWT를 써서 RLS authenticated 정책을 통과한다.
+        // 매 송신 시 여기서 pull한다 (이전: OnSessionChanged push로 채워지던 Session 필드).
+        readonly ISessionProvider? _sessionProvider;
 
         public SupabaseRestClient(string supabaseUrl, string anonKey, IHttpTransport? transport = null,
-                                  IAuthRefresher? authRefresher = null)
+                                  IAuthRefresher? authRefresher = null,
+                                  ISessionProvider? sessionProvider = null)
         {
             _restUrl = supabaseUrl?.TrimEnd('/') + "/rest/v1";
+            _sessionProvider = sessionProvider;
 
             // Strategy 조합: apikey + Bearer(JWT or anon), 재시도 없음, 401 시 authRefresher로 1회 갱신 재시도
             var t = transport ?? new UnityHttpTransport();
-            var auth = new BearerJwtOrAnonAuth(() => Session, anonKey);
+            var auth = new BearerJwtOrAnonAuth(() => _sessionProvider?.CurrentSession, anonKey);
             _executor = new HttpExecutor(t, auth, new NoRetry(), authRefresher);
         }
 
@@ -77,7 +75,7 @@ namespace Tjdtjq5.SupaRun
             // anonymous 호출 사전 경고: silent failure(success=true, count=0) 진단용
             // RLS authenticated 정책이 걸린 테이블이면 빈 결과가 반환된다.
             // (P0-4, P2-4 보존)
-            bool isAnonymous = string.IsNullOrEmpty(Session?.accessToken);
+            bool isAnonymous = string.IsNullOrEmpty(_sessionProvider?.CurrentSession?.accessToken);
             string? anonHint = null;
             if (isAnonymous)
             {

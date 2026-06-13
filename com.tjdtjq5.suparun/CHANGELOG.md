@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.4] - 2026-06-14
+
+### Fixed — Auth 생명주기 리팩터 (temporal coupling / 토큰 단일 home / 자원 누수)
+
+EditMode 테스트 5건 실패의 단일 근본 원인 + 관련 설계 부채 3건을 한 번에 정리.
+
+- **`SingleFlight` dedup 추출**: `EnsureLoggedIn`이 async 작업 launch 후 `_loginUcs` *필드*를 다시 읽어, 동기 `IAuthApi` 어댑터(테스트 mock)에서 `finally`가 필드를 먼저 null로 비워 `NullReferenceException`이 나던 문제 해결. ucs를 로컬에 캡처해 sync/async 모두 안전. 같은 프리미티브를 `TryRefreshToken`에도 적용해 동시 401 시 refresh POST 중복도 제거.
+- **토큰 단일 home (`ISessionProvider`)**: `SupaRunClient`/`SupabaseRestClient`가 push로 받던 `Session` 미러 필드를 제거하고, 요청 시 `SupaRunAuth.CurrentSession`에서 pull. Realtime 소켓만 `OnSessionChanged`로 push(소켓은 pull 불가). 토큰 staleness 구조적 제거. 생성 순환은 `AttachServerClient` late-bind로 해소.
+- **`SupaRunAuth : IDisposable`**: `OAuthHandler`의 `Application.deepLinkActivated` 구독 + `HttpListener`를 `SupaRunRuntime.Dispose → _auth.Dispose()`로 정리(이전엔 재생성마다 누수).
+
 ## [0.8.3] - 2026-05-05
 
 ### Fixed — DapperGameDB reflection 캐시 thread-safety + 어드민 인증 fallback
