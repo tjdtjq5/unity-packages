@@ -499,32 +499,18 @@ namespace Tjdtjq5.SupaRun.Editor
 
         bool IsProviderConfigured(string provider)
         {
-            if (string.IsNullOrEmpty(_authConfigJson)) return false;
-
             var prefix = AuthProviderGuide.GetApiFieldPrefix(provider);
             if (prefix == null) return false;
 
-            // enabled 확인
-            var enabledKey = $"\"{prefix}_enabled\"";
-            var idx = _authConfigJson.IndexOf(enabledKey, System.StringComparison.Ordinal);
-            if (idx < 0) return false;
-            var colonIdx = _authConfigJson.IndexOf(':', idx + enabledKey.Length);
-            if (colonIdx < 0) return false;
-            var afterColon = _authConfigJson.Substring(colonIdx + 1, System.Math.Min(10, _authConfigJson.Length - colonIdx - 1)).Trim();
-            if (!afterColon.StartsWith("true")) return false;
+            if (!AuthConfigParser.IsFieldTrue(_authConfigJson, $"{prefix}_enabled")) return false;
 
             // Guest는 enabled만으로 완료
             if (provider == "Guest") return true;
 
             // OAuth는 client_id도 필요
             if (!AuthProviderGuide.RequiresClientCredentials(provider)) return true;
-            var cidKey = $"\"{prefix}_client_id\"";
-            var cidIdx = _authConfigJson.IndexOf(cidKey, System.StringComparison.Ordinal);
-            if (cidIdx < 0) return false;
-            var cidColon = _authConfigJson.IndexOf(':', cidIdx + cidKey.Length);
-            if (cidColon < 0) return false;
-            var cidAfter = _authConfigJson.Substring(cidColon + 1, System.Math.Min(10, _authConfigJson.Length - cidColon - 1)).Trim();
-            return !cidAfter.StartsWith("\"\"") && !cidAfter.StartsWith("null");
+            return AuthConfigParser.GetStringFieldState(_authConfigJson, $"{prefix}_client_id")
+                == AuthConfigParser.FieldState.Set;
         }
 
         // ── 설정 완료 화면 ──
@@ -538,21 +524,8 @@ namespace Tjdtjq5.SupaRun.Editor
 
             // nonce skip 확인
             var prefix = AuthProviderGuide.GetApiFieldPrefix(providerKey);
-            if (prefix != null && _authConfigJson != null)
-            {
-                var nonceKey = $"\"{prefix}_skip_nonce_check\"";
-                if (_authConfigJson.IndexOf(nonceKey, System.StringComparison.Ordinal) >= 0)
-                {
-                    var nIdx = _authConfigJson.IndexOf(nonceKey, System.StringComparison.Ordinal);
-                    var nColon = _authConfigJson.IndexOf(':', nIdx + nonceKey.Length);
-                    if (nColon >= 0)
-                    {
-                        var nAfter = _authConfigJson.Substring(nColon + 1, System.Math.Min(10, _authConfigJson.Length - nColon - 1)).Trim();
-                        if (nAfter.StartsWith("true"))
-                            EditorUI.DrawDescription("✓ nonce skip 활성화됨", EditorUI.COL_SUCCESS);
-                    }
-                }
-            }
+            if (prefix != null && AuthConfigParser.IsFieldTrue(_authConfigJson, $"{prefix}_skip_nonce_check"))
+                EditorUI.DrawDescription("✓ nonce skip 활성화됨", EditorUI.COL_SUCCESS);
 
             GUILayout.Space(4);
             if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
@@ -858,35 +831,21 @@ namespace Tjdtjq5.SupaRun.Editor
             var prefix = AuthProviderGuide.GetApiFieldPrefix(provider);
             if (prefix == null) return null; // GPGS, GameCenter
 
-            var enabledKey = $"{prefix}_enabled";
-
-            // JSON에서 해당 키 검색
-            var idx = _authConfigJson.IndexOf($"\"{enabledKey}\"", System.StringComparison.Ordinal);
-            if (idx < 0) return null;
-
-            // 값 추출
-            var colonIdx = _authConfigJson.IndexOf(':', idx + enabledKey.Length + 2);
-            if (colonIdx < 0) return null;
-            var afterColon = _authConfigJson.Substring(colonIdx + 1, System.Math.Min(10, _authConfigJson.Length - colonIdx - 1)).Trim();
-            var enabled = afterColon.StartsWith("true");
-
-            if (!enabled) return "[Supabase 미활성화]";
+            // enabled 키가 config에 없으면(or malformed) 표시 안 함 — 원본 동작 보존
+            if (AuthConfigParser.GetStringFieldState(_authConfigJson, $"{prefix}_enabled") == AuthConfigParser.FieldState.Missing)
+                return null;
+            if (!AuthConfigParser.IsFieldTrue(_authConfigJson, $"{prefix}_enabled"))
+                return "[Supabase 미활성화]";
 
             // Client ID 확인 (Guest 제외)
             if (provider == "Guest") return "[Supabase 활성화됨]";
 
-            var clientIdKey = $"{prefix}_client_id";
-            var cidIdx = _authConfigJson.IndexOf($"\"{clientIdKey}\"", System.StringComparison.Ordinal);
-            if (cidIdx < 0) return "[활성화됨, Client ID 미확인]";
-
-            var cidColon = _authConfigJson.IndexOf(':', cidIdx + clientIdKey.Length + 2);
-            if (cidColon < 0) return "[활성화됨]";
-            var cidAfter = _authConfigJson.Substring(cidColon + 1, System.Math.Min(20, _authConfigJson.Length - cidColon - 1)).Trim();
-
-            if (cidAfter.StartsWith("\"\"") || cidAfter.StartsWith("null"))
-                return "[활성화됨, Client ID 미설정]";
-
-            return "[설정 완료]";
+            switch (AuthConfigParser.GetStringFieldState(_authConfigJson, $"{prefix}_client_id"))
+            {
+                case AuthConfigParser.FieldState.Missing: return "[활성화됨, Client ID 미확인]";
+                case AuthConfigParser.FieldState.Empty: return "[활성화됨, Client ID 미설정]";
+                default: return "[설정 완료]";
+            }
         }
 
         async UniTaskVoid FetchSettingsProjects()

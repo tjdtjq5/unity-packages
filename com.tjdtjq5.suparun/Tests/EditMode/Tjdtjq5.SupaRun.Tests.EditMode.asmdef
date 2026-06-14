@@ -3,6 +3,7 @@
     "rootNamespace": "Tjdtjq5.SupaRun.Tests",
     "references": [
         "Tjdtjq5.SupaRun.Runtime",
+        "Tjdtjq5.SupaRun.Editor",
         "UniTask"
     ],
     "includePlatforms": [

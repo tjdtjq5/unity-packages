@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.7] - 2026-06-14
+
+### Changed — Auth 설정 JSON 파싱을 AuthConfigParser로 추출 (Humble Object)
+
+`SettingsView`가 provider 설정 상태를 읽을 때 동일한 손수 `IndexOf/Substring` JSON 파싱을 3곳(`IsProviderConfigured`, `GetProviderSupabaseStatus`, nonce-skip 표시)에서 중복 구현했다. 이를 테스트 가능한 순수 파서로 통합.
+
+- `AuthConfigParser`(Editor/Auth) 신규 — `IsFieldTrue(json, field)` + `GetStringFieldState(json, field)`(Missing/Empty/Set). 3개 중복 파싱 통합. 동작 보존(enabled 키 부재→null vs `false`→"[미활성화]" 구분).
+- `AuthConfigParserTests` 신규. 이를 위해 EditMode 테스트 asmdef에 `Tjdtjq5.SupaRun.Editor` 참조 추가 → Editor 코드 단위 테스트 인프라 확보.
+
 ## [0.8.6] - 2026-06-14
 
 ### Changed — 속성 스캔을 AttributeRegistry로 통합
