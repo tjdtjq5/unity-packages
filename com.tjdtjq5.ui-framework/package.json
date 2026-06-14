@@ -1,6 +1,6 @@
 {
   "name": "com.tjdtjq5.ui-framework",
-  "version": "3.5.0",
+  "version": "4.0.0",
   "displayName": "UI Toolkit",
   "description": "범용 UI 도구 모음 — Components(ButtonClickEffect/NumberCounter/UIShake/UIFlyEffect/UITutorialMask/UIStateBinder/SafeAreaFitter/RecycleScrollView) + Screen 시스템(Page/Modal/Sheet, v3.1+). LitMotion 기반.",
   "unity": "6000.1",

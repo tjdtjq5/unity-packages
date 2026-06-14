@@ -90,7 +90,7 @@ com.tjdtjq5.ui-framework/
 ## API (외부 피처가 참조 가능)
 
 ### Components (단순 UI 컴포넌트)
-- UIStateBinder.SetState<TEnum>(value) — 상태 전환 (GC-free) → Components/UIStateBinder.cs
+- UIStateBinder.SetState<TEnum>(value) / SetState(string) — Enter/Exit 양방향 상태 전환, 8 features(Objects/Animator/Visual/Text/Sprite/Alpha/Event/Tween) → Components/UIStateBinder.cs
 - UIFlyEffect.Play(sprite, from, target, onComplete) — 베지어 플라이 → Components/UIFlyEffect.cs
 - ButtonClickEffect — 버튼 스케일 펀치 (AddComponent만으로 사용) → Components/ButtonClickEffect.cs
 - NumberCounter.SetValue(float) / SetValueImmediate(float) — 숫자 트윈 → Components/NumberCounter.cs
@@ -143,6 +143,7 @@ com.tjdtjq5.ui-framework/
 - Tjdtjq5/UIFramework/Transition/Slide — anchoredPosition 슬라이드 (4방향)
 
 ## 주의사항
+- v4.0.0 breaking change — UIStateBinder 전면 교체 (Enter/Exit 양방향 + Text/Sprite/Alpha feature 신규, Exclusive 제거, DOTween→LitMotion scale 트윈). 의존성 변경 없음
 - v3.5.0 — Unity-UI-Extensions Tier 1 흡수 (Accordion/FlowLayoutGroup/Tooltip/SegmentedControl, BSD-3). 의존성 변경 없음
 - v3.4.0 — Default 자산 추가 (ModalBackdrop 1개 + Transitions 8개) + Screens 하위 Feature.md 5개. 의존성 변경 없음
 - v3.3.0 — Modal 시스템 추가 (backdrop strategy, 다중 stacking, popAll). Screen 시스템 (Page/Modal/Sheet) 완성. 의존성 변경 없음

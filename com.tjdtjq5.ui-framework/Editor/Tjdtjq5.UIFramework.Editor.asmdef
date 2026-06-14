@@ -3,7 +3,8 @@
     "rootNamespace": "Tjdtjq5.UIFramework.Editor",
     "references": [
         "Tjdtjq5.UIFramework.Runtime",
-        "LitMotion"
+        "LitMotion",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [
         "Editor"
