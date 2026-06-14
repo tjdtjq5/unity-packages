@@ -759,14 +759,15 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
 
             sb.AppendLine($"CREATE TABLE IF NOT EXISTS {tableName} (");
 
-            var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
+            var info = AttributeRegistry.Get(type);
+            var fields = info.Fields;
             var lines = new List<string>();
 
             foreach (var f in fields)
             {
                 var col = f.Name.ToLower();
-                var sqlType = GetSqlType(f);
-                var constraints = GetConstraints(f);
+                var sqlType = GetSqlType(f, info);
+                var constraints = GetConstraints(f, info);
                 lines.Add($"    {col} {sqlType}{constraints}");
             }
 
@@ -780,8 +781,8 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             foreach (var f in fields)
             {
                 var col = f.Name.ToLower();
-                var sqlType = GetSqlType(f);
-                var defClause = GetDefaultClause(f);
+                var sqlType = GetSqlType(f, info);
+                var defClause = GetDefaultClause(f, info);
                 sb.AppendLine($"  ALTER TABLE {tableName} ADD COLUMN IF NOT EXISTS {col} {sqlType}{defClause};");
             }
             sb.AppendLine($"END $$;");
@@ -793,7 +794,7 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             foreach (var f in fields)
             {
                 var col = f.Name.ToLower();
-                var literal = GetDefaultLiteral(f);
+                var literal = GetDefaultLiteral(f, info);
                 if (literal == null) continue;
                 nullFixLines.Add($"  UPDATE {tableName} SET {col} = {literal} WHERE {col} IS NULL;");
             }
@@ -832,11 +833,11 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             return t.Name;
         }
 
-        static string GetSqlType(FieldInfo f)
+        static string GetSqlType(FieldInfo f, TypeAttributeInfo info)
         {
-            var maxLen = f.GetCustomAttribute<MaxLengthAttribute>();
+            var maxLen = info.GetMaxLength(f);
             if (f.FieldType == typeof(string))
-                return maxLen != null ? $"VARCHAR({maxLen.Length})" : "TEXT";
+                return maxLen != null ? $"VARCHAR({maxLen.Value})" : "TEXT";
             if (f.FieldType == typeof(int)) return "INTEGER";
             if (f.FieldType == typeof(long)) return "BIGINT";
             if (f.FieldType == typeof(float)) return "REAL";
@@ -845,13 +846,13 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             return "TEXT";
         }
 
-        static string GetConstraints(FieldInfo f)
+        static string GetConstraints(FieldInfo f, TypeAttributeInfo info)
         {
             var parts = new List<string>();
-            if (f.GetCustomAttribute<PrimaryKeyAttribute>() != null) parts.Add(" PRIMARY KEY");
-            if (f.GetCustomAttribute<NotNullAttribute>() != null) parts.Add(" NOT NULL");
-            if (f.GetCustomAttribute<UniqueAttribute>() != null) parts.Add(" UNIQUE");
-            var defClause = GetDefaultClause(f);
+            if (info.IsPrimaryKey(f)) parts.Add(" PRIMARY KEY");
+            if (info.IsNotNull(f)) parts.Add(" NOT NULL");
+            if (info.IsUnique(f)) parts.Add(" UNIQUE");
+            var defClause = GetDefaultClause(f, info);
             if (!string.IsNullOrEmpty(defClause)) parts.Add(defClause);
             return string.Join("", parts);
         }
@@ -861,17 +862,17 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
         /// 예: public float lateral_extend = 1f; → " DEFAULT 1"
         /// string은 NULL 허용 (skip). 알 수 없는 타입도 skip.
         /// </summary>
-        static string GetDefaultClause(FieldInfo f)
+        static string GetDefaultClause(FieldInfo f, TypeAttributeInfo info)
         {
-            var literal = GetDefaultLiteral(f);
+            var literal = GetDefaultLiteral(f, info);
             return literal != null ? $" DEFAULT {literal}" : string.Empty;
         }
 
         /// <summary>SQL DEFAULT 리터럴만 반환 (절 prefix 없이). 없으면 null.</summary>
-        static string GetDefaultLiteral(FieldInfo f)
+        static string GetDefaultLiteral(FieldInfo f, TypeAttributeInfo info)
         {
-            var def = f.GetCustomAttribute<DefaultAttribute>();
-            if (def != null) return def.Value?.ToString();
+            // [Default] attribute가 있으면 그 값(null이어도) 우선 — 원본과 동일하게 initializer fallback 안 함.
+            if (info.HasDefault(f)) return info.GetDefault(f)?.ToString();
             return GetSqlDefaultFromInitializer(f);
         }
 

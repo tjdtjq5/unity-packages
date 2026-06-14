@@ -23,17 +23,8 @@ namespace Tjdtjq5.SupaRun
 
         public static void Reset() => _instance = new LocalGameDB();
 
-        // ── Reflection 캐시 ──
-        static readonly Dictionary<Type, FieldInfo[]> _fieldCache = new();
-        static FieldInfo[] CachedFields(Type type)
-        {
-            if (!_fieldCache.TryGetValue(type, out var fields))
-            {
-                fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
-                _fieldCache[type] = fields;
-            }
-            return fields;
-        }
+        // ── Reflection 캐시 (속성 분류와 함께 AttributeRegistry로 통합) ──
+        static FieldInfo[] CachedFields(Type type) => AttributeRegistry.Get(type).Fields;
 
         // ── 직렬화 (시스템 표준 Newtonsoft로 통일) ──
         // 이전엔 JsonUtility를 썼으나 properties/Dictionary/[JsonProperty]를 처리 못 해,
@@ -323,23 +314,20 @@ namespace Tjdtjq5.SupaRun
 
         static string GetPrimaryKey<T>(T entity, Type type)
         {
-            foreach (var field in CachedFields(type))
-            {
-                if (field.GetCustomAttribute<PrimaryKeyAttribute>() != null)
-                    return field.GetValue(entity)?.ToString() ?? "";
-            }
-            throw new InvalidOperationException(
-                $"[PrimaryKey] attribute not found on {type.Name}. " +
-                "Add [PrimaryKey] to a field.");
+            var pk = AttributeRegistry.Get(type).PrimaryKey;
+            if (pk == null)
+                throw new InvalidOperationException(
+                    $"[PrimaryKey] attribute not found on {type.Name}. " +
+                    "Add [PrimaryKey] to a field.");
+            return pk.GetValue(entity)?.ToString() ?? "";
         }
 
         // ── 어트리뷰트 검증 ──
 
         static void ValidateNotNull<T>(T entity, Type type)
         {
-            foreach (var field in CachedFields(type))
+            foreach (var field in AttributeRegistry.Get(type).NotNull)
             {
-                if (field.GetCustomAttribute<NotNullAttribute>() == null) continue;
                 var value = field.GetValue(entity);
                 if (value == null || (value is string s && string.IsNullOrEmpty(s)))
                     throw new InvalidOperationException(
@@ -349,13 +337,11 @@ namespace Tjdtjq5.SupaRun
 
         static void ValidateMaxLength<T>(T entity, Type type)
         {
-            foreach (var field in CachedFields(type))
+            foreach (var (field, length) in AttributeRegistry.Get(type).MaxLength)
             {
-                var attr = field.GetCustomAttribute<MaxLengthAttribute>();
-                if (attr == null) continue;
-                if (field.GetValue(entity) is string s && s.Length > attr.Length)
+                if (field.GetValue(entity) is string s && s.Length > length)
                     throw new InvalidOperationException(
-                        $"[MaxLength({attr.Length})] violation: {type.Name}.{field.Name} " +
+                        $"[MaxLength({length})] violation: {type.Name}.{field.Name} " +
                         $"length is {s.Length}");
             }
         }
@@ -364,9 +350,8 @@ namespace Tjdtjq5.SupaRun
         {
             var table = GetTable(type.Name);
 
-            foreach (var field in CachedFields(type))
+            foreach (var field in AttributeRegistry.Get(type).Unique)
             {
-                if (field.GetCustomAttribute<UniqueAttribute>() == null) continue;
                 var value = field.GetValue(entity)?.ToString();
                 if (string.IsNullOrEmpty(value)) continue;
 
@@ -387,11 +372,8 @@ namespace Tjdtjq5.SupaRun
 
         static void ApplyDefaults<T>(T entity, Type type)
         {
-            foreach (var field in CachedFields(type))
+            foreach (var (field, attrValue) in AttributeRegistry.Get(type).Default)
             {
-                var attr = field.GetCustomAttribute<DefaultAttribute>();
-                if (attr == null) continue;
-
                 var value = field.GetValue(entity);
                 bool isDefault = value == null
                     || (value is int i && i == 0)
@@ -401,7 +383,7 @@ namespace Tjdtjq5.SupaRun
 
                 if (isDefault)
                 {
-                    var defaultValue = Convert.ChangeType(attr.Value, field.FieldType);
+                    var defaultValue = Convert.ChangeType(attrValue, field.FieldType);
                     field.SetValue(entity, defaultValue);
                 }
             }
@@ -411,20 +393,14 @@ namespace Tjdtjq5.SupaRun
         {
             if (!isNew) return;
 
-            foreach (var field in CachedFields(type))
-            {
-                if (field.GetCustomAttribute<CreatedAtAttribute>() == null) continue;
+            foreach (var field in AttributeRegistry.Get(type).CreatedAt)
                 SetTimeField(entity, field);
-            }
         }
 
         static void ApplyUpdatedAt<T>(T entity, Type type)
         {
-            foreach (var field in CachedFields(type))
-            {
-                if (field.GetCustomAttribute<UpdatedAtAttribute>() == null) continue;
+            foreach (var field in AttributeRegistry.Get(type).UpdatedAt)
                 SetTimeField(entity, field);
-            }
         }
 
         static void SetTimeField<T>(T entity, FieldInfo field)

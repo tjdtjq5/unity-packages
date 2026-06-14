@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.6] - 2026-06-14
+
+### Changed — 속성 스캔을 AttributeRegistry로 통합
+
+`[PrimaryKey]/[NotNull]/[Unique]/[MaxLength]/[Default]/[CreatedAt]/[UpdatedAt]` 분류를 `LocalGameDB`(런타임 검증)와 `ServerCodeGenerator`(마이그레이션 제약)가 각자 필드를 순회하며 `GetCustomAttribute`를 반복하던 것을, 타입당 한 번 스캔해 캐시하는 `AttributeRegistry.Get(type)` 단일 계약으로 통합.
+
+- `AttributeRegistry` + `TypeAttributeInfo` 신규(Runtime/Attributes). `ConcurrentDictionary` 캐시.
+- `LocalGameDB`: 7개 스캔 메서드 + `_fieldCache`를 레지스트리로 대체(매 Save 반복 reflection 제거).
+- `ServerCodeGenerator`: 마이그레이션 제약/타입/기본값 스캔을 레지스트리 경유로 변경(동작 byte-동일).
+- `AttributeRegistryTests`: 레지스트리 분류가 직접 reflection과 동일함을 검증(두 소비자가 의존하는 동등성 보증).
+- 소스 제너레이터(DefGenerator)는 별도 컴파일(Roslyn)이라 통합 대상에서 제외.
+
 ## [0.8.5] - 2026-06-14
 
 ### Fixed — LocalGameDB 직렬화를 시스템 표준 Newtonsoft로 통일
