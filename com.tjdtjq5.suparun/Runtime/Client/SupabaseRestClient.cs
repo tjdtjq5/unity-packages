@@ -67,6 +67,10 @@ namespace Tjdtjq5.SupaRun
         {
             var table = ToSnakeCase(typeof(T).Name);
             var url = $"{_restUrl}/{table}";
+            // [Config] 타입은 sort_order 자동 정렬 (어드민 드래그 순서 = 게임 표시 순서)
+            // sort_order 컬럼은 ServerCodeGenerator가 마이그레이션에 자동 추가함
+            if (typeof(T).IsDefined(typeof(ConfigAttribute), inherit: true))
+                url += "?order=sort_order.asc";
             return await Fetch<List<T>>(url);
         }
 

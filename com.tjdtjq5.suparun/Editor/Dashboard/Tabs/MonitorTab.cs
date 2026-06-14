@@ -48,7 +48,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
             // 첫 진입 시 자동 로드
             if (_state == FetchState.Idle)
-                FetchLogs(settings);
+                _ = FetchLogs(settings);
 
             DrawToolbar(settings);
             GUILayout.Space(4);
@@ -93,7 +93,7 @@ namespace Tjdtjq5.SupaRun.Editor
                         _logs.Clear();
                         _expanded.Clear();
                         _limit = 50;
-                        FetchLogs(settings);
+                        _ = FetchLogs(settings);
                     }
                 }
             }
@@ -112,7 +112,7 @@ namespace Tjdtjq5.SupaRun.Editor
                     _logs.Clear();
                     _expanded.Clear();
                     _limit = 50;
-                    FetchLogs(SupaRunSettings.Instance);
+                    _ = FetchLogs(SupaRunSettings.Instance);
                 }
             }
             GUILayout.Space(2);
@@ -173,7 +173,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (_hasMore && EditorUI.DrawMiniButton("더 불러오기"))
                 {
                     _limit += 50;
-                    FetchLogs(SupaRunSettings.Instance);
+                    _ = FetchLogs(SupaRunSettings.Instance);
                 }
             }
         }

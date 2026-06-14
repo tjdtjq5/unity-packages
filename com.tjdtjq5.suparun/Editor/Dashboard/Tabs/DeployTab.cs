@@ -56,7 +56,7 @@ namespace Tjdtjq5.SupaRun.Editor
                     _state = DeployState.BuildSuccess;
                     _dashboard.ShowNotification("서버 배포 완료!",
                         EditorUI.NotificationType.Success);
-                    DeployManager.RegisterCronJobs();
+                    _ = DeployManager.RegisterCronJobs();
                     break;
 
                 case ActionsTracker.Status.Failed:

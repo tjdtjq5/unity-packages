@@ -48,7 +48,7 @@ namespace Tjdtjq5.SupaRun.Editor
             }
 
             if (_state == FetchState.Idle)
-                FetchAll(settings);
+                _ = FetchAll(settings);
 
             // 툴바
             EditorGUILayout.BeginHorizontal();
@@ -58,7 +58,7 @@ namespace Tjdtjq5.SupaRun.Editor
             using (new EditorGUI.DisabledGroupScope(_state == FetchState.Loading))
             {
                 if (GUILayout.Button("\u21bb", EditorStyles.miniButton, GUILayout.Width(24), GUILayout.Height(18)))
-                    FetchAll(settings);
+                    _ = FetchAll(settings);
             }
             EditorGUILayout.EndHorizontal();
 

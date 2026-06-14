@@ -369,7 +369,7 @@ code, kbd, pre, samp, .text-mono, .font-mono { font-family: var(--mono); font-si
   border-bottom-color: var(--line);
 }
 .table thead th {
-  background: rgba(0,0,0,0.5);
+  background: var(--bg-2);
   border-bottom: 1px solid var(--line);
   border-top: none;
   font-family: var(--mono);
@@ -383,6 +383,11 @@ code, kbd, pre, samp, .text-mono, .font-mono { font-family: var(--mono); font-si
   position: sticky;
   top: 0;
   z-index: 10;
+}
+/* ── 메인 Config 시트: 컨테이너에 viewport-fit 높이 부여 → 가로 스크롤바 항상 노출 + thead sticky 정상 작동 ── */
+#table-container {
+  max-height: calc(100vh - 240px);
+  overflow: auto;
 }
 .table tbody td {
   padding: 8px 12px;
@@ -1397,6 +1402,7 @@ code { color: var(--green); background: var(--bg); padding: 1px 4px; border-radi
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script>
 // ── Chart.js global defaults (Brutalist Terminal 톤) ──
 if (window.Chart) {
@@ -1835,8 +1841,13 @@ function renderTable(filter = '') {
     return;
   }
 
+  // sortable: sort_order 마커가 있고 검색 필터가 없을 때만 (필터 시 드래그 불가)
+  const sortable = !filter && fields.some(f => f.isSortOrder);
+
   let html = '<table class="table table-vcenter card-table table-hover table-striped"><thead><tr>';
+  if (sortable) html += '<th class="drag-col" style="width:32px"></th>';
   for (const f of fields) {
+    if (f.isHidden) continue;
     let icon = '';
     if (f.isPrimaryKey) icon = '<i class="ti ti-key text-yellow me-1" title="Primary Key"></i>';
     else if (f.isRequired) icon = '<span class="text-red me-1" title="필수">*</span>';
@@ -1849,7 +1860,11 @@ function renderTable(filter = '') {
     const sid = escHtml(String(row.id??''));
     const delay = Math.min(ri * 20, 400);
     html += `<tr data-id="${sid}" style="animation-delay:${delay}ms">`;
-    for (const f of fields) html += `<td data-field="${f.name}">` + renderCell(row, f) + '</td>';
+    if (sortable) html += '<td class="drag-handle" style="cursor:grab;width:32px;color:#6c757d;text-align:center" title="드래그로 순서 변경"><i class="ti ti-grip-vertical"></i></td>';
+    for (const f of fields) {
+      if (f.isHidden) continue;
+      html += `<td data-field="${f.name}">` + renderCell(row, f) + '</td>';
+    }
     html += `<td><div class="btn-list flex-nowrap">
       <button class="btn btn-ghost-primary btn-icon btn-sm" onclick="copyRow('${sid}')" title="복사"><i class="ti ti-copy"></i></button>
       <button class="btn btn-ghost-danger btn-icon btn-sm" onclick="requestDelete('${sid}')" title="삭제"><i class="ti ti-trash"></i></button>
@@ -1860,9 +1875,47 @@ function renderTable(filter = '') {
     html = `<div class="empty-state"><i class="ti ti-search"></i><h3>검색 결과 없음</h3><p>"${escHtml(filter)}"에 대한 결과가 없습니다.</p></div>`;
   }
   container.innerHTML = html;
+  // 자동 너비 계산: DOM 순서가 [drag(옵션), ...visibleFields, action]이므로
+  // 양 끝에 null 패딩을 두어 drag/action 컬럼은 인라인 width(32px/80px) 그대로 유지되게 한다.
+  const visibleFields = currentType ? currentType.fields.filter(f => !f.isHidden) : [];
+  const padFields = sortable
+    ? [null, ...visibleFields, null]
+    : [...visibleFields, null];
   enableColResize(container, currentType ? 'config_' + currentType.tableName : null, {
-    fields: currentType?.fields,
+    fields: padFields,
     data: filtered
+  });
+  if (sortable) initRowSorting(container.querySelector('tbody'), currentType.tableName);
+}
+
+// ── 드래그 정렬 — Config 테이블 row sort_order 변경 ──
+function initRowSorting(tbody, tableName) {
+  if (!tbody || typeof Sortable === 'undefined') return;
+  Sortable.create(tbody, {
+    handle: '.drag-handle',
+    animation: 150,
+    ghostClass: 'sortable-ghost',
+    // forceFallback + fallbackOnBody: drag preview를 body에 fixed로 부착해
+    // 컨테이너 overflow와 무관하게 마우스만 따라가게 한다 (테이블 밖으로 늘어지는 현상 방지)
+    forceFallback: true,
+    fallbackOnBody: true,
+    fallbackTolerance: 4,
+    onEnd: async () => {
+      const items = [...tbody.children].map((tr, idx) => ({
+        id: tr.dataset.id,
+        sort_order: idx
+      }));
+      try {
+        await api(`/_reorder/${tableName}`, 'POST', { items });
+        toast('순서가 저장되었습니다', 'success');
+        // 로컬 캐시도 같은 순서로 재정렬 (다음 검색 필터 등에서 일관성 유지)
+        const reordered = items.map(i => currentData.find(r => r.id === i.id)).filter(Boolean);
+        currentData = reordered;
+      } catch (e) {
+        toast('순서 저장 실패 — 다시 로드합니다', 'error');
+        if (currentType) selectType(currentType.tableName);
+      }
+    }
   });
 }
 
@@ -2237,7 +2290,7 @@ function renderJsonEditorRows(items) {
   const schema = cur.schema;
 
   let html = '<table class="table table-vcenter table-hover mb-0" style="table-layout:fixed"><thead><tr>';
-  html += '<th style="width:40px">#</th>';
+  html += '<th style="width:40px"></th>';
   schema.forEach(s => {
     const w = s.isJson ? '120px' : (JE_COL_WIDTHS[s.type] || JE_COL_WIDTHS.string);
     html += `<th style="min-width:${w};white-space:nowrap">${escHtml(s.key)}</th>`;
@@ -2246,7 +2299,7 @@ function renderJsonEditorRows(items) {
 
   items.forEach((item, i) => {
     html += '<tr>';
-    html += `<td class="text-muted">${i+1}</td>`;
+    html += `<td class="je-drag-handle text-muted" style="cursor:grab;text-align:center" title="드래그로 순서 변경"><i class="ti ti-grip-vertical"></i></td>`;
     schema.forEach(s => {
       const val = item[s.key] ?? '';
       const eid = `je_${i}_${s.key}`;
@@ -2282,12 +2335,34 @@ function renderJsonEditorRows(items) {
 
   html += '</tbody></table>';
   c.innerHTML = html;
-  // JSON 모달은 헤더가 [# col, ...schema, action col]. fields 배열을 인덱스 정렬해 전달.
+  // JSON 모달은 헤더가 [drag col, ...schema, action col]. fields 배열을 인덱스 정렬해 전달.
   const padFields = [null, ...cur.schema, null];
   enableColResize(c, cur.storageKey || 'json_editor', {
     fields: padFields,
     data: cur.items
   });
+  // 드래그로 순서 변경 — in-memory swap (저장은 모달 "저장" 버튼이 처리)
+  const tbody = c.querySelector('tbody');
+  if (tbody && typeof Sortable !== 'undefined') {
+    Sortable.create(tbody, {
+      handle: '.je-drag-handle',
+      animation: 150,
+      ghostClass: 'sortable-ghost',
+      forceFallback: true,
+      fallbackOnBody: true,
+      fallbackTolerance: 4,
+      onEnd: (evt) => {
+        if (evt.oldIndex === evt.newIndex) return;
+        // 사용자가 input에 입력 중이던 값을 먼저 cur.items에 반영
+        const live = collectJsonEditorRows();
+        const [moved] = live.splice(evt.oldIndex, 1);
+        live.splice(evt.newIndex, 0, moved);
+        cur.items = live;
+        cur.origItems = live.map(it => ({...it}));
+        renderJsonEditorRows(live);
+      }
+    });
+  }
 }
 
 function isJsonFieldDisabled(item, s) {

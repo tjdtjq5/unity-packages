@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.0] - 2026-06-15
+
+### Added — 어드민 컬럼 숨김 + Config 자동 정렬
+
+- **`[AdminHidden]` attribute**(Runtime/Attributes) — 어드민 페이지 컬럼 렌더링에서 필드를 숨긴다. 데이터는 정상 fetch/저장되고 시각적으로만 제외(응답 자체에서 빼는 `[Hidden]`과 구분). `ServerCodeGenerator`/`DeployManager`가 어드민 컬럼 생성 시 참조.
+- **`[Config]` 타입 sort_order 자동 정렬** — `LocalGameDB.GetAll`이 `[Config]` 타입에 `sort_order` 필드가 있으면 자동 정렬(게임 표시 순서). 필드 없으면 입력 순서 fallback.
+
+### Fixed — Windows CLI 경로 탐색 (PickExecutableLine)
+
+- `ToolPathFinder`가 `where` 출력의 첫 줄만 쓰던 것을, 확장자 없는 unix-style line 대신 `.cmd`/`.exe`/`.bat`을 우선 선택하도록 개선(`PickExecutableLine`). Windows에서 확장자 없는 line을 직접 실행 시 `Win32Exception`("올바른 Win32 응용 프로그램이 아닙니다")이 나던 문제 해결. `ToolPathFinderTests` 5개 통과 확인.
+
+### Changed
+
+- 어드민 대시보드 / 배포 / 스캐폴드 UI 및 서버 템플릿 개선 (Dashboard 탭, SupabaseSetup, ServerCodeGenerator, AdminTemplate index.html 등).
+
 ## [0.8.9] - 2026-06-14
 
 ### Changed — GcpSetupUI.GetPhase 순수화 + 테스트 (Humble Object)

@@ -83,7 +83,7 @@ namespace Tjdtjq5.SupaRun.Editor
                     Debug.Log($"[SupaRun:Deploy] 배포 목록 업데이트: {endpoints.Count}개 엔드포인트");
 
                     // autoconfirm 보장 (어드민 회원가입 즉시 로그인용)
-                    EnsureAutoConfirm(settings);
+                    _ = EnsureAutoConfirm(settings);
 
                     onSuccess?.Invoke();
                 },
@@ -381,6 +381,8 @@ namespace Tjdtjq5.SupaRun.Editor
                 content, @"[ \t]*\[VisibleIf\(.+?\)\]", "");
             content = System.Text.RegularExpressions.Regex.Replace(
                 content, @"[ \t]*\[HiddenIf\(.+?\)\]", "");
+            content = System.Text.RegularExpressions.Regex.Replace(
+                content, @"[ \t]*\[AdminHidden\]", "");
 
             // 3) #if UNITY 전처리기 블록 제거
             content = StripUnityPreprocessorBlocks(content);

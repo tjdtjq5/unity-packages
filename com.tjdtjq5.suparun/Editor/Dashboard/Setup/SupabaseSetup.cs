@@ -108,7 +108,7 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 GUILayout.Space(4);
                 if (EditorUI.DrawColorButton("프로젝트 목록 조회", SupaRunDashboard.COL_SUPABASE, 28))
-                    FetchProjects();
+                    _ = FetchProjects();
             }
 
             if (_loadingProjects)
@@ -245,7 +245,7 @@ namespace Tjdtjq5.SupaRun.Editor
                         {
                             _selectedProjectIndex = i;
                             // Anon Key도 조회
-                            FetchAnonKey(projects[i].id);
+                            _ = FetchAnonKey(projects[i].id);
                             break;
                         }
                     }
@@ -268,7 +268,7 @@ namespace Tjdtjq5.SupaRun.Editor
             settings.Save();
 
             // Anon Key 자동 조회
-            FetchAnonKey(project.id);
+            _ = FetchAnonKey(project.id);
 
             // Auth URL 동기화 캐시 초기화
             AuthUrlSyncManager.InvalidateCache();
@@ -288,7 +288,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 _anonKeyState = AnonKeyState.Done;
 
                 // 익명 로그인 + Auth URL 자동 설정
-                RunAutoAuthSetup(projectRef);
+                _ = RunAutoAuthSetup(projectRef);
             }
             else
             {
@@ -335,7 +335,7 @@ namespace Tjdtjq5.SupaRun.Editor
                     using (new EditorGUI.DisabledGroupScope(!canTest))
                     {
                         if (EditorUI.DrawColorButton("연결 테스트", SupaRunDashboard.COL_SUPABASE, 28))
-                            RunConnectionTest(settings);
+                            _ = RunConnectionTest(settings);
                     }
                     if (!canTest)
                         EditorUI.DrawDescription("프로젝트를 선택하고 Anon Key가 조회되면 테스트할 수 있습니다.", EditorUI.COL_WARN);
@@ -351,7 +351,7 @@ namespace Tjdtjq5.SupaRun.Editor
                     EditorUI.DrawDescription("✓ Supabase 연결 성공!", EditorUI.COL_SUCCESS);
                     GUILayout.Space(4);
                     if (EditorUI.DrawColorButton("다시 테스트", SupaRunDashboard.COL_SUPABASE))
-                        RunConnectionTest(settings);
+                        _ = RunConnectionTest(settings);
                     break;
 
                 case TestState.Failed:
@@ -360,7 +360,7 @@ namespace Tjdtjq5.SupaRun.Editor
                     EditorUI.DrawDescription($"✗ {_testError}", EditorUI.COL_ERROR);
                     GUILayout.Space(4);
                     if (EditorUI.DrawColorButton("다시 테스트", EditorUI.COL_ERROR))
-                        RunConnectionTest(settings);
+                        _ = RunConnectionTest(settings);
                     break;
             }
         }

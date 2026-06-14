@@ -10,6 +10,14 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Supabase");
 builder.Services.AddScoped<IGameDB>(_ => new DapperGameDB(connectionString));
 
+// Admin reorder/raw SQL용 NpgsqlConnection (request scope, 자동 dispose)
+builder.Services.AddScoped<Npgsql.NpgsqlConnection>(_ =>
+{
+    var conn = new Npgsql.NpgsqlConnection(connectionString);
+    conn.Open();
+    return conn;
+});
+
 // Controllers (public fields 직렬화 활성화)
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.IncludeFields = true);

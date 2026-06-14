@@ -51,7 +51,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 return;
             }
 
-            SyncToSupabase(settings, current);
+            _ = SyncToSupabase(settings, current);
         }
 
         /// <summary>수동 동기화 트리거.</summary>
@@ -65,7 +65,7 @@ namespace Tjdtjq5.SupaRun.Editor
             }
 
             var current = GetCurrentValues(settings);
-            SyncToSupabase(settings, current);
+            _ = SyncToSupabase(settings, current);
         }
 
         static async UniTaskVoid SyncToSupabase(SupaRunSettings settings, (string bundleId, string cloudRunUrl, string supabaseUrl) current)

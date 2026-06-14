@@ -68,6 +68,8 @@ namespace Tjdtjq5.SupaRun.Editor
             _mode = SupaRunSettings.Instance.setupCompleted ? Mode.Dashboard : Mode.Setup;
 
             // CLI 캐시 워밍업 (백그라운드 — 설정 진입 시 지연 방지)
+            // InvalidateCache로 옛 false 박힘 제거 → WarmCacheAsync가 새로 검사. UI 멈춤 X (Task.Run).
+            PrerequisiteChecker.InvalidateCache();
             PrerequisiteChecker.WarmCacheAsync();
 
             // Auth URL 변경 감지 + 자동 동기화

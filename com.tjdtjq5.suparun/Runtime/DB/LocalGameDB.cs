@@ -60,6 +60,23 @@ namespace Tjdtjq5.SupaRun
                 .Select(json => Deserialize<T>(json))
                 .ToList();
 
+            // [Config] 타입은 sort_order 필드가 있으면 자동 정렬 (게임 표시 순서)
+            // 사용자 Config 클래스에 sort_order 필드가 없으면 입력 순서대로 fallback
+            if (typeof(T).IsDefined(typeof(ConfigAttribute), inherit: true))
+            {
+                var sortField = System.Array.Find(CachedFields(typeof(T)),
+                    f => f.Name.Equals("sort_order", System.StringComparison.OrdinalIgnoreCase));
+                if (sortField != null)
+                {
+                    list.Sort((a, b) =>
+                    {
+                        var va = sortField.GetValue(a) as System.IComparable;
+                        var vb = sortField.GetValue(b) as System.IComparable;
+                        return va?.CompareTo(vb) ?? 0;
+                    });
+                }
+            }
+
             // [Table] 타입에 대해 성능 경고 (100건 초과 시)
             if (list.Count > 100 && IsTableType<T>())
             {

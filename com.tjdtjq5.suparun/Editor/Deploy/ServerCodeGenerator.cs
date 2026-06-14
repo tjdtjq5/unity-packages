@@ -756,6 +756,7 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
         {
             var sb = new StringBuilder();
             var tableName = ToSnakeCase(type.Name);
+            bool isConfig = type.GetCustomAttribute<ConfigAttribute>() != null;
 
             sb.AppendLine($"CREATE TABLE IF NOT EXISTS {tableName} (");
 
@@ -771,6 +772,10 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
                 lines.Add($"    {col} {sqlType}{constraints}");
             }
 
+            // [Config] 타입은 sort_order 컬럼 자동 추가 (어드민 드래그 정렬용)
+            if (isConfig && !fields.Any(f => f.Name == "sort_order"))
+                lines.Add("    sort_order INTEGER NOT NULL DEFAULT 0");
+
             sb.AppendLine(string.Join(",\n", lines));
             sb.AppendLine(");");
 
@@ -785,6 +790,8 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
                 var defClause = GetDefaultClause(f, info);
                 sb.AppendLine($"  ALTER TABLE {tableName} ADD COLUMN IF NOT EXISTS {col} {sqlType}{defClause};");
             }
+            if (isConfig && !fields.Any(f => f.Name == "sort_order"))
+                sb.AppendLine($"  ALTER TABLE {tableName} ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;");
             sb.AppendLine($"END $$;");
 
             // 기존 NULL row를 default 값으로 채움 (멱등 — NULL 없으면 0건 영향).
@@ -806,14 +813,26 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
                 sb.AppendLine($"END $$;");
             }
 
-            // [Config] 타입은 공개 읽기 RLS 정책 추가 (Supabase REST 직접 조회용)
-            if (type.GetCustomAttribute<ConfigAttribute>() != null)
+            // [Config] 타입은 공개 읽기 RLS 정책 + sort_order 인덱스 + backfill 추가
+            if (isConfig)
             {
                 sb.AppendLine();
                 sb.AppendLine($"ALTER TABLE {tableName} ENABLE ROW LEVEL SECURITY;");
                 sb.AppendLine($"DO $$ BEGIN");
                 sb.AppendLine($"  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = '{tableName}' AND policyname = 'public_read') THEN");
                 sb.AppendLine($"    CREATE POLICY public_read ON {tableName} FOR SELECT USING (true);");
+                sb.AppendLine($"  END IF;");
+                sb.AppendLine($"END $$;");
+
+                // sort_order 정렬 인덱스
+                sb.AppendLine();
+                sb.AppendLine($"CREATE INDEX IF NOT EXISTS idx_{tableName}_sort ON {tableName}(sort_order);");
+
+                // sort_order backfill — 모두 0이면 ctid(입력 순)로 부여 (멱등 — 1회만 동작)
+                sb.AppendLine($"DO $$ BEGIN");
+                sb.AppendLine($"  IF (SELECT COUNT(*) FROM {tableName} WHERE sort_order != 0) = 0 THEN");
+                sb.AppendLine($"    WITH ordered AS (SELECT ctid, ROW_NUMBER() OVER (ORDER BY ctid) - 1 AS rn FROM {tableName})");
+                sb.AppendLine($"    UPDATE {tableName} SET sort_order = ordered.rn FROM ordered WHERE {tableName}.ctid = ordered.ctid;");
                 sb.AppendLine($"  END IF;");
                 sb.AppendLine($"END $$;");
             }
@@ -1113,13 +1132,15 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             sb.AppendLine("using System.Text.Json;");
             sb.AppendLine("using System.Threading.Tasks;");
             sb.AppendLine("using Microsoft.AspNetCore.Mvc;");
+            sb.AppendLine("using Dapper;");
             sb.AppendLine("");
             sb.AppendLine("[ApiController]");
             sb.AppendLine("[Route(\"admin/api/config\")]");
             sb.AppendLine("public class AdminController : ControllerBase");
             sb.AppendLine("{");
             sb.AppendLine("    readonly IGameDB _db;");
-            sb.AppendLine("    public AdminController(IGameDB db) => _db = db;");
+            sb.AppendLine("    readonly Npgsql.NpgsqlConnection _conn;  // _reorder의 raw UPDATE 트랜잭션용");
+            sb.AppendLine("    public AdminController(IGameDB db, Npgsql.NpgsqlConnection conn) { _db = db; _conn = conn; }");
             sb.AppendLine("");
             sb.AppendLine("    static readonly JsonSerializerOptions _jsonOpts = new() { IncludeFields = true };");
             sb.AppendLine("    static readonly JsonSerializerOptions _jsonPretty = new() { IncludeFields = true, WriteIndented = true };");
@@ -1147,8 +1168,10 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             // DB operation delegates (Reflection 제거 — 타입별 직접 호출)
             sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, Task<object>>> _getAll = new()");
             sb.AppendLine("    {");
+            // sort_order 정렬은 SQL 측에서 처리됨. Config 클래스에 sort_order 필드가 없어도
+            // DapperGameDB는 SELECT * 결과를 deserialize 시 모르는 컬럼은 무시한다.
             foreach (var t in configTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async db => await db.GetAll<{t.Name}>(),");
+                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async db => await db.Query<{t.Name}>(new QueryOptions().OrderByAsc(\"sort_order\")),");
             sb.AppendLine("    };");
             sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, string, Task<object>>> _getOne = new()");
             sb.AppendLine("    {");
@@ -1303,6 +1326,41 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             sb.AppendLine("        catch (Exception ex)");
             sb.AppendLine("        {");
             sb.AppendLine("            await ServerLogger.LogError(_db, ex.InnerException?.Message ?? ex.Message, stack: ex.InnerException?.StackTrace ?? ex.StackTrace, endpoint: $\"admin/batch/{typeName}\", serviceName: \"AdminController\");");
+            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
+            sb.AppendLine("        }");
+            sb.AppendLine("    }");
+            sb.AppendLine("");
+
+            // ── POST _reorder/{typeName} ──
+            // body: { "items": [ { "id": "...", "sort_order": 0 }, ... ] }
+            // raw UPDATE 트랜잭션으로 일괄 sort_order 변경 (Config 클래스에 sort_order 필드 없어도 동작)
+            sb.AppendLine("    [HttpPost(\"_reorder/{typeName}\")]");
+            sb.AppendLine("    public async Task<IActionResult> Reorder(string typeName, [FromBody] JsonElement body)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (!_getAll.ContainsKey(typeName))");
+            sb.AppendLine("            return NotFound(new { error = $\"Unknown config type: {typeName}\" });");
+            sb.AppendLine("        try");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (!body.TryGetProperty(\"items\", out var items) || items.ValueKind != JsonValueKind.Array)");
+            sb.AppendLine("                return BadRequest(new { error = \"items array required\" });");
+            sb.AppendLine("            using var tx = await _conn.BeginTransactionAsync();");
+            sb.AppendLine("            int count = 0;");
+            sb.AppendLine("            foreach (var item in items.EnumerateArray())");
+            sb.AppendLine("            {");
+            sb.AppendLine("                var rowId = item.GetProperty(\"id\").GetString();");
+            sb.AppendLine("                var sortOrder = item.GetProperty(\"sort_order\").GetInt32();");
+            sb.AppendLine("                // typeName은 _getAll 화이트리스트로 검증 완료 (SQL injection 안전)");
+            sb.AppendLine("                await _conn.ExecuteAsync($\"UPDATE {typeName} SET sort_order = @order WHERE id = @id\",");
+            sb.AppendLine("                    new { order = sortOrder, id = rowId }, tx);");
+            sb.AppendLine("                count++;");
+            sb.AppendLine("            }");
+            sb.AppendLine("            await tx.CommitAsync();");
+            sb.AppendLine("            await Audit(\"reorder\", typeName, null, null, items);");
+            sb.AppendLine("            return Ok(new { reordered = count });");
+            sb.AppendLine("        }");
+            sb.AppendLine("        catch (Exception ex)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            await ServerLogger.LogError(_db, ex.InnerException?.Message ?? ex.Message, stack: ex.InnerException?.StackTrace ?? ex.StackTrace, endpoint: $\"admin/_reorder/{typeName}\", serviceName: \"AdminController\");");
             sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
@@ -1629,6 +1687,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
                 parts.Add($"\"hiddenIf\":{{{hJson}}}");
             }
 
+            // AdminHidden — 어드민 컬럼 렌더링 시각적 숨김 (데이터는 유지)
+            if (member.GetCustomAttribute<AdminHiddenAttribute>() != null)
+                parts.Add("\"isHidden\":true");
+
             return "{" + string.Join(",", parts) + "}";
         }
 
@@ -1636,7 +1698,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
         static string BuildFieldsJson(Type type)
         {
             var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
-            return string.Join(",", fields.Select(f => BuildMemberJson(f, f.FieldType)));
+            var fieldJsons = fields.Select(f => BuildMemberJson(f, f.FieldType)).ToList();
+
+            // [Config] 타입은 sort_order 메타 자동 주입 (어드민 드래그 정렬 마커)
+            // 사용자 클래스에 sort_order 필드를 명시한 경우는 그쪽이 우선
+            bool isConfig = type.GetCustomAttribute<ConfigAttribute>() != null;
+            if (isConfig && !fields.Any(f => f.Name == "sort_order"))
+                fieldJsons.Add("{\"name\":\"sort_order\",\"type\":\"number\",\"isHidden\":true,\"isSortOrder\":true}");
+
+            return string.Join(",", fieldJsons);
         }
 
         /// <summary>[Json(typeof(T))]의 T 클래스에서 프로퍼티/필드 메타데이터를 생성한다.</summary>

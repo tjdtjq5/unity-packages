@@ -23,9 +23,9 @@ namespace Tjdtjq5.SupaRun.Editor
                 : runProcess("/bin/sh", $"-lc \"command -v {toolName}\"");
             if (code == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                var first = output.Split('\n', '\r')[0].Trim();
-                if (!string.IsNullOrEmpty(first) && fileExists(first))
-                    return first;
+                var picked = PickExecutableLine(output, fileExists, isWindows);
+                if (!string.IsNullOrEmpty(picked))
+                    return picked;
             }
 
             // 2. 알려진 설치 경로 fallback
@@ -34,6 +34,37 @@ namespace Tjdtjq5.SupaRun.Editor
                     if (fileExists(p)) return p;
 
             return null;
+        }
+
+        /// <summary>
+        /// `where` / `command -v` 출력에서 실제 실행 가능한 line을 선택.
+        /// Windows 한정 — `where`는 확장자 없는 unix-style shell script line과 `.cmd` line을 모두 출력하는데,
+        /// 확장자 없는 line을 Process.Start FileName으로 직접 실행하면 Win32Exception("올바른 Win32 응용 프로그램이 아닙니다") 발생.
+        /// → `.cmd`/`.exe`/`.bat` 확장자 line 우선. 없으면 첫 유효 line(macOS/Linux는 보통 단일 line이라 동일 동작).
+        /// </summary>
+        static string PickExecutableLine(string whereOutput, Func<string, bool> fileExists, bool isWindows)
+        {
+            if (string.IsNullOrWhiteSpace(whereOutput)) return null;
+            string fallback = null;
+            foreach (var line in whereOutput.Split('\n', '\r'))
+            {
+                var trimmed = line.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
+                if (!fileExists(trimmed)) continue;
+                if (fallback == null) fallback = trimmed;
+                if (isWindows)
+                {
+                    if (trimmed.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase)
+                        || trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                        || trimmed.EndsWith(".bat", StringComparison.OrdinalIgnoreCase))
+                        return trimmed;
+                }
+                else
+                {
+                    return trimmed;
+                }
+            }
+            return fallback;
         }
     }
 }

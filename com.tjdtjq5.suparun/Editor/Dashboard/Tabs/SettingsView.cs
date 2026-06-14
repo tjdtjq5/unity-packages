@@ -212,7 +212,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (hasToken && _settingsProjects == null && !_settingsLoadingProjects)
                 {
                     if (EditorUI.DrawColorButton("프로젝트 조회", SupaRunDashboard.COL_SUPABASE))
-                        FetchSettingsProjects();
+                        _ = FetchSettingsProjects();
                 }
                 EditorUI.EndRow();
 
@@ -233,7 +233,7 @@ namespace Tjdtjq5.SupaRun.Editor
                         var p = _settingsProjects[_settingsProjectIndex];
                         settings.supabaseUrl = $"https://{p.id}.supabase.co";
                         settings.Save();
-                        FetchAnonKey(settings);
+                        _ = FetchAnonKey(settings);
                         AuthUrlSyncManager.InvalidateCache();
                     }
                 }
@@ -284,7 +284,7 @@ namespace Tjdtjq5.SupaRun.Editor
             GUILayout.Space(4);
             EditorUI.BeginRow();
             if (EditorUI.DrawColorButton("연결 테스트", SupaRunDashboard.COL_SUPABASE))
-                RunConnectionTest(settings);
+                _ = RunConnectionTest(settings);
             EditorUI.FlexSpace();
             if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
             {
@@ -337,7 +337,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 // Auth config 조회 (Access Token이 있으면 펼칠 때 한번만)
                 var hasToken = !string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAccessToken);
                 if (hasToken && !_authConfigLoaded && !_authConfigLoading)
-                    FetchAuthConfig(settings);
+                    _ = FetchAuthConfig(settings);
 
                 // OAuth URL 설정
                 if (settings.enabledAuthProviders.Count > 0)
@@ -394,7 +394,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 // 제거 처리
                 if (toRemove != null)
                 {
-                    DisableProviderOnSupabase(settings, toRemove);
+                    _ = DisableProviderOnSupabase(settings, toRemove);
                     settings.enabledAuthProviders.Remove(toRemove);
                     _providerExpanded.Remove(toRemove);
                     settings.Save();
@@ -417,7 +417,7 @@ namespace Tjdtjq5.SupaRun.Editor
                         {
                             settings.enabledAuthProviders.Add(p);
                             settings.Save();
-                            EnableProviderOnSupabase(settings, p);
+                            _ = EnableProviderOnSupabase(settings, p);
                             _showProviderDropdown = false;
                         }
                     }
@@ -580,7 +580,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 using (new EditorGUI.DisabledGroupScope(!canApply))
                 {
                     if (EditorUI.DrawColorButton("Supabase에 적용", SupaRunDashboard.COL_SUPABASE, 28))
-                        ApplyProviderToSupabase(settings, providerKey);
+                        _ = ApplyProviderToSupabase(settings, providerKey);
                 }
                 if (!canApply)
                     EditorUI.DrawDescription("  Client ID와 Secret을 입력하세요.", EditorUI.COL_MUTED);
@@ -631,7 +631,7 @@ namespace Tjdtjq5.SupaRun.Editor
                     using (new EditorGUI.DisabledGroupScope(!canApply || state == "applying"))
                     {
                         if (EditorUI.DrawColorButton("Supabase에 적용", SupaRunDashboard.COL_SUPABASE, 28))
-                            ApplyProviderToSupabase(settings, providerKey);
+                            _ = ApplyProviderToSupabase(settings, providerKey);
                     }
                 }
 
