@@ -8,14 +8,16 @@ namespace Tjdtjq5.SupaRun.Editor
     /// <summary>GCP 설정 UI. Setup Step 2와 Settings에서 공용.</summary>
     public static class GcpSetupUI
     {
-        enum Phase { NoCli, NotLoggedIn, NoProject, NoApi, Complete }
+        internal enum Phase { NoCli, NotLoggedIn, NoProject, NoApi, Complete }
 
-        static Phase GetPhase(PrerequisiteChecker.ToolStatus gcloud, SupaRunSettings s)
+        /// <summary>GCP 설정 진행 단계 판정 (순수 함수 — 단위 테스트 대상). SupaRunSettings 의존을 끊어 원시값만 받는다.</summary>
+        internal static Phase GetPhase(PrerequisiteChecker.ToolStatus gcloud,
+                                       string projectId, bool apiEnabled, string serviceAccountEmail)
         {
             if (!gcloud.Installed) return Phase.NoCli;
             if (!gcloud.LoggedIn) return Phase.NotLoggedIn;
-            if (string.IsNullOrEmpty(s.gcpProjectId)) return Phase.NoProject;
-            if (!s.gcpCloudRunApiEnabled || string.IsNullOrEmpty(s.gcpServiceAccountEmail))
+            if (string.IsNullOrEmpty(projectId)) return Phase.NoProject;
+            if (!apiEnabled || string.IsNullOrEmpty(serviceAccountEmail))
                 return Phase.NoApi;
             return Phase.Complete;
         }
@@ -23,7 +25,7 @@ namespace Tjdtjq5.SupaRun.Editor
         public static void Draw(SupaRunDashboard dashboard, SupaRunSettings settings)
         {
             var gcloud = PrerequisiteChecker.CheckGcloud();
-            var phase = GetPhase(gcloud, settings);
+            var phase = GetPhase(gcloud, settings.gcpProjectId, settings.gcpCloudRunApiEnabled, settings.gcpServiceAccountEmail);
 
             // 완료된 단계 요약 (항상)
             if (phase > Phase.NoCli)

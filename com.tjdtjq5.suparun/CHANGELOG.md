@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.9] - 2026-06-14
+
+### Changed — GcpSetupUI.GetPhase 순수화 + 테스트 (Humble Object)
+
+GCP 설정 진행 단계 판정 `GetPhase`(5단계 분기)가 `SupaRunSettings`에 의존해 테스트가 번거로웠다. 원시값 시그니처로 바꿔 완전 순수 함수로 만들고 테스트 추가.
+
+- `GcpSetupUI.GetPhase(ToolStatus, projectId, apiEnabled, serviceAccountEmail)` — SupaRunSettings 의존 제거, `internal`로 노출.
+- `GcpSetupPhaseTests` 6개(NoCli/NotLoggedIn/NoProject/NoApi/Complete). Editor 어셈블리에 `InternalsVisibleTo` 추가.
+- (#9 setup-UI 테스트 가능화의 일부. SetupWizard 단계 판정은 자명한 1:1 매핑이라 추출 생략. fetch+wiring을 mock하는 IToolChecker seam은 ROI/리스크로 보류.)
+
 ## [0.8.8] - 2026-06-14
 
 ### Changed — CLI 경로 탐색을 ToolPathFinder로 통합
