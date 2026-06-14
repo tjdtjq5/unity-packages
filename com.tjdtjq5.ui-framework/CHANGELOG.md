@@ -1,5 +1,31 @@
 # Changelog
 
+## [4.0.0] - 2026-06-14
+
+### Breaking Changes
+- **UIStateBinder 전면 교체** — 소비 프로젝트에서 발전시킨 버전으로 승격. public API 비호환:
+  - `BindingFeatures` 재정의: `Exclusive` 제거 + `Tween`(scale·color) → scale 전용으로 축소. `Text`/`Sprite`/`Alpha` feature 신규
+  - **Enter/Exit 양방향 바인딩** 도입 — 각 feature가 진입·이탈 배열을 분리 보유
+  - `AnimatorParamType`: `Int`/`Float` 제거 → `Play`(클립 직접 재생) 추가
+  - `_initialState` / `_exclusivePool` SerializeField 제거
+  - `SetDefaultState()` / `ResetToInitial()` API 추가
+  - 기존 씬/프리팹의 UIStateBinder 직렬화 데이터는 재설정 필요
+
+### Added
+- Text(`TMP_Text`) / Sprite(`Image`) / Alpha(`CanvasGroup`) 독립 feature
+- Enter/Exit 양방향 — 상태 이탈 시 별도 연출 가능 (`exit*` 배열)
+- Animator `Play` 파라미터 타입 (`Animator.Play` 직접 호출)
+- 커스텀 에디터: 드래그앤드롭 리오더 + all-exit 합산 프리뷰(씬 스냅샷 자동 복원)
+
+### Changed
+- Tween: DOTweenAnimation(Pro 컴포넌트) 의존 제거 → **LitMotion scale 트윈** 내장 (`TweenConfig`: duration/ease/delay/useUnscaledTime). v3 트윈 철학(zero-alloc) 유지
+- 네임스페이스 동일: `Tjdtjq5.UIFramework`
+
+### Migration Notes
+- 기존 UIStateBinder를 쓰던 prefab/scene은 BindingFeatures 재설정 필요
+- `Exclusive` 사용처 → `Objects`의 activate/deactivate 조합으로 대체
+- color 트윈이 필요하면 Visual feature 즉시 적용 + 별도 처리 (이번 버전 Tween은 scale 전용)
+
 ## [3.5.0] - 2026-05-02
 
 ### Added

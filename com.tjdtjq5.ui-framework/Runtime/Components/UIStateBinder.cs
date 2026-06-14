@@ -1,278 +1,437 @@
 using System;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using LitMotion;
 using LitMotion.Extensions;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 namespace Tjdtjq5.UIFramework
 {
     /// <summary>
     /// string 키 기반 상태 UI 바인딩.
-    /// 상태 전환 시 Exclusive 오브젝트 자동 전환, 오브젝트 활성화/비활성화,
-    /// 다중 Animator 파라미터, 다중 Visual(Graphic) 타겟, Tween 전환,
-    /// 이벤트(onEnter/onExit) 호출.
+    /// 상태 전환 시 현재 상태의 Exit 바인딩 → 새 상태의 Enter 바인딩 순서로 적용.
     /// </summary>
     public class UIStateBinder : MonoBehaviour
     {
-        [SerializeField] private string _initialState;
-        [SerializeField] private GameObject[] _exclusivePool;
-        [SerializeField] private StateBinding[] _bindings;
+        [SerializeField]
+        private StateBinding[] _bindings;
 
         private Dictionary<string, StateBinding> _bindingMap;
         private string _currentState;
-        private readonly List<MotionHandle> _activeHandles = new();
+        private bool _animatorReady;
+        private string _pendingAnimatorState;
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStatics() { }
+        // LitMotion scale 트윈 핸들 (상태 전환 시 이전 트윈 취소용)
+        private readonly List<MotionHandle> _activeHandles = new();
 
         private void Awake()
         {
-            // Domain Reload 비활성화 시 인스턴스 상태 리셋
-            _bindingMap = null;
-            _currentState = null;
-            _activeHandles.Clear();
             EnsureInitialized();
         }
 
         private void EnsureInitialized()
         {
-            if (_bindingMap != null) return;
+            if (_bindingMap != null)
+            {
+                return;
+            }
 
             _bindingMap = new Dictionary<string, StateBinding>();
-            if (_bindings == null) return;
 
-            foreach (var binding in _bindings)
+            if (_bindings == null)
+            {
+                return;
+            }
+
+            foreach (StateBinding binding in _bindings)
             {
                 if (!string.IsNullOrEmpty(binding.stateName))
+                {
                     _bindingMap[binding.stateName] = binding;
+                }
             }
         }
 
         private void Start()
         {
-            if (!string.IsNullOrEmpty(_initialState))
-                SetState(_initialState);
+            // Animator는 첫 Update() 이후 내부 StateMachine이 초기화되므로
+            // 1프레임 지연 후 준비 완료 처리
+            DelayedAnimatorReadyAsync(this.destroyCancellationToken).Forget();
+        }
+
+        private async UniTask DelayedAnimatorReadyAsync(System.Threading.CancellationToken ct)
+        {
+            await UniTask.Yield(cancellationToken: ct); // 1프레임 대기 (Animator 초기화 완료)
+            _animatorReady = true;
+
+            if (_currentState == null)
+            {
+                SetDefaultState();
+            }
+            else if (_pendingAnimatorState != null)
+            {
+                // Animator 준비 전에 SetState가 호출된 경우 Animator 바인딩만 재적용
+                if (_bindingMap.TryGetValue(_pendingAnimatorState, out StateBinding binding))
+                    ApplyAnimatorBindings(binding.animatorBindings);
+                _pendingAnimatorState = null;
+            }
         }
 
         /// <summary>
-        /// enum 기반 상태 전환 편의 메서드. Enum.ToString() boxing 회피를 위해 캐시 사용.
+        /// enum 기반 상태 전환 편의 메서드.
         /// </summary>
         public void SetState<TEnum>(TEnum state) where TEnum : Enum
         {
-            SetState(EnumNameCache<TEnum>.GetName(state));
+            SetState(state.ToString());
         }
 
         /// <summary>
         /// string 키 기반 상태 전환.
+        /// 현재 상태 Exit → 새 상태 Enter.
         /// </summary>
         public void SetState(string stateName)
         {
             EnsureInitialized();
-            if (stateName == _currentState) return;
-
-            if (!_bindingMap.TryGetValue(stateName, out var binding))
+            if (stateName == _currentState)
             {
-                Debug.LogWarning($"[UIStateBinder] '{stateName}' 상태를 찾을 수 없습니다: {gameObject.name}", this);
                 return;
             }
 
-            // onExit (이전 상태)
-            if (_currentState != null && _bindingMap.TryGetValue(_currentState, out var prev))
+            if (!_bindingMap.TryGetValue(stateName, out StateBinding binding))
             {
-                if ((prev.features & BindingFeatures.Event) != 0)
-                    prev.onExit?.Invoke();
+                // 미등록 상태 요청 시 현재 상태를 Exit하여 이전 시각 잔존 방지 (풀링 재사용 안전)
+                if (_currentState != null)
+                {
+                    ApplyExitBinding();
+                    _currentState = null;
+                }
+
+                Debug.LogWarning($"[UIStateBinder] '{stateName}' not found on {gameObject.name}. " +
+                                 $"Available: [{string.Join(", ", _bindingMap.Keys)}]");
+                return;
             }
 
+            // 첫 상태 전환 시 모든 Exit 바인딩 합산 적용 (Default 상태 초기화)
+            if (_currentState == null)
+                ApplyAllExitBindings();
+            else
+                ApplyExitBinding();
+
             _currentState = stateName;
-            KillActiveHandles();
-            ApplyBinding(binding);
+            // 새 상태의 Enter 바인딩 적용
+            ApplyEnterBinding(binding);
         }
 
         public string CurrentState => _currentState;
 
         /// <summary>
-        /// Exclusive Pool에 등록된 오브젝트 목록 (Editor에서 참조).
+        /// 현재 상태를 해제하고 Initial State로 복원.
         /// </summary>
-        public GameObject[] ExclusivePool => _exclusivePool;
-
-        private void ApplyBinding(StateBinding binding)
+        public void ResetToInitial()
         {
-            var f = binding.features;
-            bool useTween = (f & BindingFeatures.Tween) != 0 && binding.tweenConfig != null;
-
-            if ((f & BindingFeatures.Exclusive) != 0) ApplyExclusive(binding);
-            if ((f & BindingFeatures.Objects) != 0) ApplyObjects(binding);
-            if ((f & BindingFeatures.Animator) != 0) ApplyAnimator(binding);
-            if ((f & BindingFeatures.Visual) != 0) ApplyVisual(binding, useTween);
-            if (useTween && binding.targetScale != Vector3.one) ApplyScaleTween(binding);
-            if ((f & BindingFeatures.Event) != 0) ApplyEvent(binding, useTween);
+            EnsureInitialized();
+            if (_bindings == null || _bindings.Length == 0) return;
+            ApplyExitBinding();
+            _currentState = _bindings[0].stateName;
+            ApplyEnterBinding(_bindings[0]);
         }
 
-        private void ApplyExclusive(StateBinding binding)
+        // ═══════════════════════════════════════════════════════════════
+        // Exit 바인딩 — 현재 상태를 빠져나갈 때
+        // ═══════════════════════════════════════════════════════════════
+
+        private void ApplyExitBinding()
         {
-            // pool 전체 끄고 → exclusiveShow만 켬 (항상 즉시)
-            if (_exclusivePool == null) return;
-
-            foreach (var go in _exclusivePool)
-                if (go != null) go.SetActive(false);
-
-            if (binding.exclusiveShow != null)
-                foreach (var go in binding.exclusiveShow)
-                    if (go != null) go.SetActive(true);
+            if (string.IsNullOrEmpty(_currentState)) return;
+            if (!_bindingMap.TryGetValue(_currentState, out StateBinding current)) return;
+            ApplyExitBindingFor(current);
         }
 
-        private static void ApplyObjects(StateBinding binding)
+        private void ApplyExitBindingFor(StateBinding binding)
         {
-            if (binding.activateObjects != null)
-                foreach (var go in binding.activateObjects)
-                    if (go != null) go.SetActive(true);
+            BindingFeatures f = binding.features;
 
-            if (binding.deactivateObjects != null)
-                foreach (var go in binding.deactivateObjects)
-                    if (go != null) go.SetActive(false);
-        }
-
-        private static void ApplyAnimator(StateBinding binding)
-        {
-            if (binding.animatorTargets is { Length: > 0 })
+            if ((f & BindingFeatures.Objects) != 0)
             {
-                foreach (var at in binding.animatorTargets)
-                    SetAnimatorParameter(at);
-                return;
+                ApplyGameObjects(binding.exitActivateObjects, true);
+                ApplyGameObjects(binding.exitDeactivateObjects, false);
             }
 
-            if (binding.animator != null && !string.IsNullOrEmpty(binding.animatorTrigger))
-                binding.animator.SetTrigger(binding.animatorTrigger);
+            if ((f & BindingFeatures.Visual) != 0)
+                ApplyVisualBindings(binding.exitVisualBindings);
+
+            if ((f & BindingFeatures.Text) != 0)
+                ApplyTextBindings(binding.exitTextBindings);
+
+            if ((f & BindingFeatures.Sprite) != 0)
+                ApplySpriteBindings(binding.exitSpriteBindings);
+
+            if ((f & BindingFeatures.Alpha) != 0)
+                ApplyAlphaBindings(binding.exitAlphaBindings);
+
+            if ((f & BindingFeatures.Animator) != 0)
+            {
+                if (binding.exitAnimatorBindings != null && binding.exitAnimatorBindings.Length > 0)
+                    ApplyAnimatorBindings(binding.exitAnimatorBindings);
+                else
+                    RevertAnimatorBindings(binding.animatorBindings);
+            }
+
+            if ((f & BindingFeatures.Event) != 0)
+                FireEvents(binding.onExitEvents);
+
+            if ((f & BindingFeatures.Tween) != 0)
+                ApplyScaleTween(binding.exitTargetScale, binding.tweenConfig);
         }
 
-        private static void SetAnimatorParameter(AnimatorTarget at)
+        /// <summary>
+        /// 모든 상태의 Exit 바인딩을 합산 적용하여 Default 상태로 전환.
+        /// 어떤 상태도 활성화되지 않은 초기 상태를 만든다.
+        /// </summary>
+        public void SetDefaultState()
         {
-            if (at.animator == null || string.IsNullOrEmpty(at.parameterName)) return;
+            EnsureInitialized();
+            _currentState = null;
+            ApplyAllExitBindings();
+        }
 
-            switch (at.paramType)
+        private void ApplyAllExitBindings()
+        {
+            if (_bindings == null) return;
+            foreach (StateBinding binding in _bindings)
             {
-                case AnimatorParamType.Trigger:
-                    at.animator.SetTrigger(at.parameterName);
-                    break;
-                case AnimatorParamType.Bool:
-                    at.animator.SetBool(at.parameterName, at.floatValue > 0.5f);
-                    break;
-                case AnimatorParamType.Int:
-                    at.animator.SetInteger(at.parameterName, (int)at.floatValue);
-                    break;
-                case AnimatorParamType.Float:
-                    at.animator.SetFloat(at.parameterName, at.floatValue);
-                    break;
+                if (binding != null)
+                    ApplyExitBindingFor(binding);
             }
         }
 
-        private void ApplyVisual(StateBinding binding, bool useTween)
+        // ═══════════════════════════════════════════════════════════════
+        // Enter 바인딩 — 새 상태에 진입할 때
+        // ═══════════════════════════════════════════════════════════════
+
+        private void ApplyEnterBinding(StateBinding binding)
         {
-            if (useTween) ApplyVisualTween(binding);
-            else ApplyVisualImmediate(binding);
+            BindingFeatures f = binding.features;
+
+            // Objects Enter
+            if ((f & BindingFeatures.Objects) != 0)
+            {
+                ApplyGameObjects(binding.activateObjects, true);
+                ApplyGameObjects(binding.deactivateObjects, false);
+            }
+
+            // Visual Enter
+            if ((f & BindingFeatures.Visual) != 0)
+            {
+                if (binding.visualBindings != null && binding.visualBindings.Length > 0)
+                {
+                    ApplyVisualBindings(binding.visualBindings);
+                }
+                else if (binding.targetImage != null)
+                {
+                    binding.targetImage.color = binding.imageColor;
+                }
+            }
+
+            // Text Enter
+            if ((f & BindingFeatures.Text) != 0)
+            {
+                ApplyTextBindings(binding.textBindings);
+            }
+
+            // Sprite Enter
+            if ((f & BindingFeatures.Sprite) != 0)
+            {
+                ApplySpriteBindings(binding.spriteBindings);
+            }
+
+            // Alpha Enter
+            if ((f & BindingFeatures.Alpha) != 0)
+            {
+                ApplyAlphaBindings(binding.alphaBindings);
+            }
+
+            // Animator Enter
+            if ((f & BindingFeatures.Animator) != 0)
+            {
+                if (_animatorReady)
+                {
+                    ApplyAnimatorBindings(binding.animatorBindings);
+                }
+                else
+                {
+                    // Animator 미초기화 상태 — 준비 완료 후 재적용
+                    _pendingAnimatorState = binding.stateName;
+                }
+            }
+
+            // Event Enter
+            if ((f & BindingFeatures.Event) != 0)
+            {
+                if (binding.onEnterEvents != null && binding.onEnterEvents.Length > 0)
+                {
+                    FireEvents(binding.onEnterEvents);
+                }
+                else
+                {
+                    binding.onEnter?.Invoke();
+                }
+            }
+
+            // Tween Enter (LitMotion scale)
+            if ((f & BindingFeatures.Tween) != 0)
+            {
+                ApplyScaleTween(binding.targetScale, binding.tweenConfig);
+            }
         }
 
-        private void ApplyScaleTween(StateBinding binding)
+        // ═══════════════════════════════════════════════════════════════
+        // 공통 적용 헬퍼
+        // ═══════════════════════════════════════════════════════════════
+
+        private static void ApplyGameObjects(GameObject[] objects, bool active)
         {
-            var cfg = binding.tweenConfig;
-            var handle = LMotion.Create(transform.localScale, binding.targetScale, cfg.duration)
+            if (objects == null) return;
+            foreach (GameObject go in objects)
+            {
+                if (go != null)
+                    go.SetActive(active);
+            }
+        }
+
+        private static void ApplyVisualBindings(VisualBinding[] bindings)
+        {
+            if (bindings == null) return;
+            foreach (VisualBinding vb in bindings)
+            {
+                if (vb != null && vb.target != null)
+                    vb.target.color = vb.color;
+            }
+        }
+
+        private static void ApplyTextBindings(TextBinding[] bindings)
+        {
+            if (bindings == null) return;
+            foreach (TextBinding tb in bindings)
+            {
+                if (tb != null && tb.target != null)
+                    tb.target.text = tb.text;
+            }
+        }
+
+        private static void ApplySpriteBindings(SpriteBinding[] bindings)
+        {
+            if (bindings == null) return;
+            foreach (SpriteBinding sb in bindings)
+            {
+                if (sb != null && sb.target != null)
+                    sb.target.sprite = sb.sprite;
+            }
+        }
+
+        private static void ApplyAlphaBindings(AlphaBinding[] bindings)
+        {
+            if (bindings == null) return;
+            foreach (AlphaBinding ab in bindings)
+            {
+                if (ab != null && ab.target != null)
+                    ab.target.alpha = ab.alpha;
+            }
+        }
+
+        private static void ApplyAnimatorBindings(AnimatorBinding[] bindings)
+        {
+            if (bindings == null) return;
+            foreach (AnimatorBinding ab in bindings)
+            {
+                if (ab == null || ab.animator == null) continue;
+
+                // Legacy: trigger 필드에 값이 있고 paramName이 비었으면 마이그레이션
+                string name = !string.IsNullOrEmpty(ab.paramName) ? ab.paramName : ab.trigger;
+                if (string.IsNullOrEmpty(name)) continue;
+
+                switch (ab.paramType)
+                {
+                    case AnimatorParamType.Trigger:
+                        ab.animator.SetTrigger(name);
+                        break;
+                    case AnimatorParamType.Bool:
+                        ab.animator.SetBool(name, ab.boolValue);
+                        break;
+                    case AnimatorParamType.Play:
+                        ab.animator.Play(name, -1, 0f);
+                        ab.animator.Update(0f);
+                        break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Enter 바인딩의 역방향 적용: Bool은 반전, Trigger는 ResetTrigger, Play는 무시.
+        /// exitAnimatorBindings가 비었을 때 자동 Exit 용도.
+        /// </summary>
+        private static void RevertAnimatorBindings(AnimatorBinding[] bindings)
+        {
+            if (bindings == null) return;
+            foreach (AnimatorBinding ab in bindings)
+            {
+                if (ab == null || ab.animator == null) continue;
+
+                string name = !string.IsNullOrEmpty(ab.paramName) ? ab.paramName : ab.trigger;
+                if (string.IsNullOrEmpty(name)) continue;
+
+                switch (ab.paramType)
+                {
+                    case AnimatorParamType.Trigger:
+                        ab.animator.ResetTrigger(name);
+                        break;
+                    case AnimatorParamType.Bool:
+                        ab.animator.SetBool(name, !ab.boolValue);
+                        break;
+                    // Play는 역방향 없음 — exitAnimatorBindings에서 별도 Play로 처리
+                }
+            }
+        }
+
+        private static void FireEvents(UnityEvent[] events)
+        {
+            if (events == null) return;
+            foreach (UnityEvent evt in events)
+            {
+                evt?.Invoke();
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // Tween (LitMotion scale)
+        // ═══════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// localScale을 targetScale로 LitMotion 트윈. 진행 중이던 트윈은 취소 후 재시작.
+        /// </summary>
+        private void ApplyScaleTween(Vector3 targetScale, TweenConfig cfg)
+        {
+            if (cfg == null) return;
+
+            KillActiveHandles();
+
+            MotionHandle handle = LMotion.Create(transform.localScale, targetScale, cfg.duration)
                 .WithEase(cfg.ease)
                 .WithDelay(cfg.delay)
-                .WithScheduler(GetScheduler(cfg.useUnscaledTime))
+                .WithScheduler(cfg.useUnscaledTime
+                    ? MotionScheduler.UpdateIgnoreTimeScale
+                    : MotionScheduler.Update)
                 .BindToLocalScale(transform);
             _activeHandles.Add(handle);
         }
 
-        // Tween 시: 완료 시점에 onEnter 호출 (모든 트윈이 동일 cfg 사용 가정).
-        // 즉시 모드: 바로 호출.
-        private void ApplyEvent(StateBinding binding, bool useTween)
-        {
-            if (!useTween || _activeHandles.Count == 0)
-            {
-                binding.onEnter?.Invoke();
-                return;
-            }
-
-            var cfg = binding.tweenConfig;
-            var callbackHandle = LMotion.Create(0f, 1f, cfg.duration)
-                .WithDelay(cfg.delay)
-                .WithScheduler(GetScheduler(cfg.useUnscaledTime))
-                .WithOnComplete(() => binding.onEnter?.Invoke())
-                .Bind(_ => { });
-            _activeHandles.Add(callbackHandle);
-        }
-
-        private void ApplyVisualImmediate(StateBinding binding)
-        {
-            if (binding.visualTargets is { Length: > 0 })
-            {
-                foreach (var vt in binding.visualTargets)
-                {
-                    if (vt.target == null) continue;
-
-                    var c = vt.color;
-                    if (vt.alpha >= 0f) c.a = vt.alpha;
-                    vt.target.color = c;
-
-                    if (vt.sprite != null && vt.target is Image img)
-                        img.sprite = vt.sprite;
-                }
-            }
-            else if (binding.targetImage != null)
-            {
-                binding.targetImage.color = binding.imageColor;
-            }
-        }
-
-        private void ApplyVisualTween(StateBinding binding)
-        {
-            var cfg = binding.tweenConfig;
-            var scheduler = GetScheduler(cfg.useUnscaledTime);
-
-            if (binding.visualTargets is { Length: > 0 })
-            {
-                foreach (var vt in binding.visualTargets)
-                {
-                    if (vt.target == null) continue;
-
-                    // Sprite는 즉시 교체 (Tween 불가)
-                    if (vt.sprite != null && vt.target is Image img)
-                        img.sprite = vt.sprite;
-
-                    var c = vt.color;
-                    if (vt.alpha >= 0f) c.a = vt.alpha;
-
-                    var handle = LMotion.Create(vt.target.color, c, cfg.duration)
-                        .WithEase(cfg.ease)
-                        .WithDelay(cfg.delay)
-                        .WithScheduler(scheduler)
-                        .BindToColor(vt.target);
-                    _activeHandles.Add(handle);
-                }
-            }
-            else if (binding.targetImage != null)
-            {
-                var handle = LMotion.Create(binding.targetImage.color, binding.imageColor, cfg.duration)
-                    .WithEase(cfg.ease)
-                    .WithDelay(cfg.delay)
-                    .WithScheduler(scheduler)
-                    .BindToColor(binding.targetImage);
-                _activeHandles.Add(handle);
-            }
-        }
-
-        private static IMotionScheduler GetScheduler(bool useUnscaledTime)
-        {
-            return useUnscaledTime
-                ? MotionScheduler.UpdateIgnoreTimeScale
-                : MotionScheduler.Update;
-        }
-
         private void KillActiveHandles()
         {
-            foreach (var handle in _activeHandles)
+            foreach (MotionHandle handle in _activeHandles)
                 handle.TryCancel();
             _activeHandles.Clear();
         }
@@ -282,29 +441,78 @@ namespace Tjdtjq5.UIFramework
             KillActiveHandles();
         }
 
-        // ─── Enums ─────────────────────────────────────────
+        // ═══════════════════════════════════════════════════════════════
+        // 타입 정의
+        // ═══════════════════════════════════════════════════════════════
 
         [Flags]
         public enum BindingFeatures
         {
-            Objects   = 1 << 0,
-            Animator  = 1 << 1,
-            Visual    = 1 << 2,
-            Event     = 1 << 3,
-            Exclusive = 1 << 4,
-            Tween     = 1 << 5,
+            Objects = 1 << 0,
+            Animator = 1 << 1,
+            Visual = 1 << 2,
+            Event = 1 << 3,
+            Text = 1 << 4,
+            Sprite = 1 << 5,
+            Alpha = 1 << 6,
+            Tween = 1 << 7,
         }
 
         public enum AnimatorParamType
         {
             Trigger,
             Bool,
-            Int,
-            Float,
+            Play,
         }
 
-        // ─── Serializable Classes ──────────────────────────
+        [Serializable]
+        public class AnimatorBinding
+        {
+            public Animator animator;
+            public string paramName;
+            public AnimatorParamType paramType = AnimatorParamType.Trigger;
+            public bool boolValue = true;
 
+            // Legacy
+            [HideInInspector]
+            [FormerlySerializedAs("trigger")]
+            public string trigger;
+        }
+
+        [Serializable]
+        public class VisualBinding
+        {
+            [FormerlySerializedAs("targetImage")]
+            public Graphic target;
+
+            public Color color = Color.white;
+        }
+
+        [Serializable]
+        public class TextBinding
+        {
+            public TMP_Text target;
+            public string text;
+        }
+
+        [Serializable]
+        public class SpriteBinding
+        {
+            public Image target;
+            public Sprite sprite;
+        }
+
+        [Serializable]
+        public class AlphaBinding
+        {
+            public CanvasGroup target;
+            [Range(0f, 1f)]
+            public float alpha = 1f;
+        }
+
+        /// <summary>
+        /// LitMotion scale 트윈 설정.
+        /// </summary>
         [Serializable]
         public class TweenConfig
         {
@@ -315,71 +523,61 @@ namespace Tjdtjq5.UIFramework
         }
 
         [Serializable]
-        public class VisualTarget
-        {
-            public Graphic target;
-            public Color color = Color.white;
-            public Sprite sprite;
-            public float alpha = -1f;
-        }
-
-        [Serializable]
-        public class AnimatorTarget
-        {
-            public Animator animator;
-            public string parameterName;
-            public AnimatorParamType paramType = AnimatorParamType.Trigger;
-            public float floatValue;
-        }
-
-        /// <summary>
-        /// Enum.ToString() GC alloc 회피용 캐시.
-        /// </summary>
-        private static class EnumNameCache<TEnum> where TEnum : Enum
-        {
-            private static readonly Dictionary<TEnum, string> Cache = new();
-
-            public static string GetName(TEnum value)
-            {
-                if (!Cache.TryGetValue(value, out var name))
-                {
-                    name = value.ToString();
-                    Cache[value] = name;
-                }
-                return name;
-            }
-        }
-
-        [Serializable]
         public class StateBinding
         {
             public string stateName;
-            public BindingFeatures features = BindingFeatures.Objects;
+            public BindingFeatures features;
 
-            // Exclusive
-            public GameObject[] exclusiveShow;
-
-            // Objects (기존 호환)
+            // ── Objects ──
             public GameObject[] activateObjects;
             public GameObject[] deactivateObjects;
+            public GameObject[] exitActivateObjects;
+            public GameObject[] exitDeactivateObjects;
 
-            // Animator — 새 배열 우선, 비어있으면 레거시 사용
-            public AnimatorTarget[] animatorTargets;
-            public Animator animator;
-            public string animatorTrigger;
+            // ── Animator ──
+            public AnimatorBinding[] animatorBindings;
+            public AnimatorBinding[] exitAnimatorBindings;
 
-            // Visual — 새 배열 우선, 비어있으면 레거시 사용
-            public VisualTarget[] visualTargets;
-            public Image targetImage;
-            public Color imageColor = Color.white;
+            // ── Visual ──
+            public VisualBinding[] visualBindings;
+            public VisualBinding[] exitVisualBindings;
 
-            // Tween
+            // ── Event ──
+            public UnityEvent[] onEnterEvents;
+            public UnityEvent[] onExitEvents;
+
+            // ── Text ──
+            public TextBinding[] textBindings;
+            public TextBinding[] exitTextBindings;
+
+            // ── Sprite ──
+            public SpriteBinding[] spriteBindings;
+            public SpriteBinding[] exitSpriteBindings;
+
+            // ── Alpha ──
+            public AlphaBinding[] alphaBindings;
+            public AlphaBinding[] exitAlphaBindings;
+
+            // ── Tween (LitMotion scale) ──
             public TweenConfig tweenConfig;
             public Vector3 targetScale = Vector3.one;
+            public Vector3 exitTargetScale = Vector3.one;
 
-            // Event
+            // Legacy 단일 필드 (하위 호환 — 마이그레이션 후 미사용)
+            [HideInInspector]
+            public Animator animator;
+
+            [HideInInspector]
+            public string animatorTrigger;
+
+            [HideInInspector]
+            public Image targetImage;
+
+            [HideInInspector]
+            public Color imageColor = Color.white;
+
+            [HideInInspector]
             public UnityEvent onEnter;
-            public UnityEvent onExit;
         }
     }
 }
