@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.8] - 2026-06-14
+
+### Changed — CLI 경로 탐색을 ToolPathFinder로 통합
+
+`PrerequisiteChecker`의 `FindDotnet`/`FindGcloud`/`FindGh`가 동일한 경로탐색 알고리즘(PATH `where`/`command -v` → 알려진 설치 경로 fallback)을 ~160 LOC 3중 중복했다. 이를 단일 `ToolPathFinder.Find`로 통합.
+
+- `ToolPathFinder`(Editor/Scaffold) 신규 — `runProcess`/`fileExists`를 주입받아 실제 Process/파일시스템 없이 단위 테스트 가능. tool별 knownPaths만 `PrerequisiteChecker`에 데이터로 남김(`DotnetKnownPaths`/`GcloudKnownPaths`/`GhKnownPaths`).
+- `ToolPathFinderTests` 신규(PATH hit / knownPaths fallback / 미발견 null / where vs command-v).
+- 동작 보존(캐시 필드 `??=`로 동일). 부분 단계 — `IToolChecker` seam(setup UI 전체 mock 테스트)은 후속.
+
 ## [0.8.7] - 2026-06-14
 
 ### Changed — Auth 설정 JSON 파싱을 AuthConfigParser로 추출 (Humble Object)
