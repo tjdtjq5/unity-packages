@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>재화 변동 이력. 지급/차감 시마다 기록.</summary>
-[Table]
+[UserData]
 public class CurrencyLog
 {
     [PrimaryKey] public string id;

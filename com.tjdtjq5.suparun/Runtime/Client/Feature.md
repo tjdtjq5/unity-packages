@@ -11,7 +11,7 @@
 | DB | `../DB/` | LocalGameDB (개발 모드 fallback) |
 | Auth | `../Auth/` | `SupaRunAuth` (인증, 토큰 관리). SupaRun이 생성 시 `IServerClient(_client)`를 주입. |
 | Supabase | `../Supabase/` | SupabaseRealtime (실시간 채널) |
-| Attributes | `../Attributes/` | ConfigAttribute (Config/Table 분기 판단) |
+| Attributes | `../Attributes/` | SpecDataAttribute (Config/Table 분기 판단) |
 | Config | `../Config/` | SupaRunRuntimeConfig (빌드 시 설정 로드) |
 
 ## 구조
@@ -20,7 +20,7 @@
 Client/
 ├── SupaRun.cs              # 정적 API 진입점 (partial class, Get/GetAll/Auth/Realtime/Client)
 ├── SupaRunClient.cs         # UnityWebRequest HTTP 클라이언트 (자동 재시도 + 토큰 갱신). IServerClient 구현체.
-├── SupabaseRestClient.cs    # Supabase PostgREST 직접 조회 ([Config] 타입 전용, internal)
+├── SupabaseRestClient.cs    # Supabase PostgREST 직접 조회 ([SpecData] 타입 전용, internal)
 └── IServerClient.cs         # 서버 HTTP 추상화 — SupaRunAuth 등 내부 컴포넌트가 정적 SupaRun.Client 의존 회피용
 ```
 
@@ -39,7 +39,7 @@ Client/
 | 메서드/프로퍼티 | 설명 |
 |----------------|------|
 | `Initialize(ServerConfig)` | 수동 초기화. 앱 시작 시 한 번 호출. |
-| `Get<T>(object id)` | 단건 조회. [Config]->PostgREST, [Table]->Cloud Run, 미배포->LocalGameDB |
+| `Get<T>(object id)` | 단건 조회. [SpecData]->PostgREST, [UserData]->Cloud Run, 미배포->LocalGameDB |
 | `GetAll<T>()` | 전체 조회. 라우팅 동일. |
 | `Auth` | SupabaseAuth 인스턴스 (자동 초기화) |
 | `Realtime` | SupabaseRealtime 인스턴스 (자동 초기화) |
@@ -72,4 +72,4 @@ Client/
 - `SupaRun`은 `partial class`이므로 Source Generator가 Service 프록시 메서드를 추가한다.
 - 자동 초기화 시 에디터는 `ProjectSettings/SupaRunProjectSettings.json`, 빌드는 `Resources/SupaRunConfig.json`에서 설정을 읽는다. 마이그레이션 직전 상태에서는 레거시 `UserSettings/SupaRunSettings.json`을 fallback으로 시도.
 - `SupaRunClient`는 5xx/Timeout 에러 시 지수 백오프 재시도 (1s, 2s, 4s), 401 시 토큰 자동 갱신 후 1회 재시도한다.
-- `SupabaseRestClient`는 `[Config]` 어트리뷰트가 붙은 타입만 사용하며, Supabase REST API에 `anonKey`로 직접 쿼리한다. 401 시 `SupaRunRuntime`에서 주입된 `CallbackAuthRefresher`로 `SupaRunAuth.TryRefreshToken`을 호출해 1회 재시도한다.
+- `SupabaseRestClient`는 `[SpecData]` 어트리뷰트가 붙은 타입만 사용하며, Supabase REST API에 `anonKey`로 직접 쿼리한다. 401 시 `SupaRunRuntime`에서 주입된 `CallbackAuthRefresher`로 `SupaRunAuth.TryRefreshToken`을 호출해 1회 재시도한다.

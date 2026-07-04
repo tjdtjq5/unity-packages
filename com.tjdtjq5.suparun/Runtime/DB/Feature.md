@@ -71,6 +71,6 @@ DB/
 - `[Default]` 값이 기본값(0, null, "")이면 지정된 기본값을 자동 적용한다.
 - `[CreatedAt]`은 신규 레코드에만, `[UpdatedAt]`은 매 Save 시 자동 갱신된다. 지원 타입: long, double, DateTime, string.
 - `[PrimaryKey]` 어트리뷰트가 없는 타입을 Save하면 `InvalidOperationException`이 발생한다.
-- `GetAll<T>()`이 100건 초과 시 `[Table]` 타입에 대해 성능 경고 로그를 출력한다 (Query 사용 권장).
+- `GetAll<T>()`이 100건 초과 시 `[UserData]` 타입에 대해 성능 경고 로그를 출력한다 (Query 사용 권장).
 - `Transaction`은 스냅샷 기반 롤백으로, 실패 시 전체 상태를 복원한다.
 - 프로덕션 환경에서는 서버의 `DapperGameDB`(PostgreSQL)가 동일 인터페이스를 구현한다.

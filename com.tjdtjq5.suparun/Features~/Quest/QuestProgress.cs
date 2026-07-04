@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>퀘스트 진행 상태. playerId + questId 조합.</summary>
-[Table]
+[UserData]
 public class QuestProgress
 {
     [PrimaryKey] public string id;

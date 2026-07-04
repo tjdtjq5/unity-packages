@@ -8,7 +8,7 @@ ASP.NET + Supabase + Cloud Run 자동 배포.
 manifest.json에 추가:
 
 ```json
-"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.8.1"
+"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.10.0"
 ```
 
 ### 의존성
@@ -38,7 +38,7 @@ var result = await ServerAPI.CurrencyService.GetBalance(playerId);
 ## 주요 기능
 
 - **명시적 로그인**: `SupaRun.Login()` — 게스트 자동 생성 또는 기존 세션 복원
-- **데이터 API**: `SupaRun.Get<T>()`, `SupaRun.GetAll<T>()` — `[Config]` 타입은 PostgREST, `[Table]` 타입은 Cloud Run, 미배포는 LocalGameDB
+- **데이터 API**: `SupaRun.Get<T>()`, `SupaRun.GetAll<T>()` — `[SpecData]` 타입은 PostgREST, `[UserData]` 타입은 Cloud Run, 미배포는 LocalGameDB
 - **Source Generator**: `[Service]` 클래스 → `ServerAPI.{Service}.{Method}` 정적 프록시 자동 생성
 - **Auth**: Google/Apple/GameCenter/GPGS 플랫폼 로그인
 - **세션 저장소**: 플랫폼별 보안 저장 (Android KeyStore, iOS Keychain, PC PlayerPrefs). MPPM Virtual Player 자동 분리.

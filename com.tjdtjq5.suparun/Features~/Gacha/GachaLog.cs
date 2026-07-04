@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>가챠 뽑기 이력.</summary>
-[Table]
+[UserData]
 public class GachaLog
 {
     [PrimaryKey] public string id;

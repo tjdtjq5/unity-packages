@@ -9,7 +9,7 @@ using Microsoft.CodeAnalysis.Text;
 namespace Tjdtjq5.SupaRun.SourceGen
 {
     /// <summary>
-    /// [Config] 클래스에서 PascalCase Def 클래스를 자동 생성하는 Source Generator.
+    /// [SpecData] 클래스에서 PascalCase Def 클래스를 자동 생성하는 Source Generator.
     /// snake_case → PascalCase, [Json(typeof(T))] → 파싱된 타입, [EnumType(typeof(E))] → enum 타입.
     /// </summary>
     [Generator]
@@ -19,7 +19,7 @@ namespace Tjdtjq5.SupaRun.SourceGen
         {
             var configClasses = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    "Tjdtjq5.SupaRun.ConfigAttribute",
+                    "Tjdtjq5.SupaRun.SpecDataAttribute",
                     predicate: (node, _) => node is ClassDeclarationSyntax,
                     transform: (ctx, _) => GetDefInfo(ctx))
                 .Where(info => info != null);

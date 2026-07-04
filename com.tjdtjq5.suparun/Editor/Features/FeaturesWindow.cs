@@ -234,7 +234,7 @@ namespace Tjdtjq5.SupaRun.Editor
             EditorUI.BeginBody();
             EditorUI.DrawDescription(
                 "폴더와 feature.json이 자동 생성됩니다.\n" +
-                "생성 후 [Table], [Service] 클래스를 직접 작성하세요.");
+                "생성 후 [UserData], [Service] 클래스를 직접 작성하세요.");
             GUILayout.Space(8);
 
             _customId = EditorUI.DrawTextField("ID (영문, 폴더명)", _customId, "예: daily-mission");

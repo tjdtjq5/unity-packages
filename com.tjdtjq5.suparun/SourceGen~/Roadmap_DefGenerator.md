@@ -4,7 +4,7 @@
 wip
 
 ## 용도
-[Config] 클래스에서 PascalCase Def 클래스를 자동 생성하는 Source Generator 확장. 수동 ServerDefs 매핑 코드를 완전히 제거.
+[SpecData] 클래스에서 PascalCase Def 클래스를 자동 생성하는 Source Generator 확장. 수동 ServerDefs 매핑 코드를 완전히 제거.
 
 ## 의존성
 - InGameCore DataRegistry 범용화 (Pillar 1) — id convention 기반 등록 필요
@@ -12,7 +12,7 @@ wip
 ## 포함 기능
 
 ### Source Generator (DefGenerator.cs)
-- **Def 클래스 자동 생성** — `[Config] EnemyConfig` → `EnemyDef.g.cs` 생성
+- **Def 클래스 자동 생성** — `[SpecData] EnemyConfig` → `EnemyDef.g.cs` 생성
   - snake_case 필드 → PascalCase 프로퍼티 (`max_hp` → `MaxHp { get; set; }`)
   - `[PrimaryKey]` 필드 → `string Id { get; set; }` 프로퍼티 추가 (DataRegistry convention)
   - 기본 타입 (int, float, string, bool) 그대로 매핑
@@ -40,11 +40,11 @@ wip
 SourceGen~/
 ├── TableQueryGenerator.cs    # 기존 (변경 없음)
 ├── ServiceGenerator.cs       # 기존 (변경 없음)
-├── DefGenerator.cs           # 신규 — [Config] → Def 클래스 생성
+├── DefGenerator.cs           # 신규 — [SpecData] → Def 클래스 생성
 └── Feature.md                # 업데이트
 
 Runtime/Attributes/
-├── ConfigAttribute.cs        # 기존 (변경 없음)
+├── SpecDataAttribute.cs        # 기존 (변경 없음)
 ├── JsonAttribute.cs          # 수정 — Type 프로퍼티 추가
 └── EnumTypeAttribute.cs      # 신규 — enum 변환 마킹
 ```
@@ -53,7 +53,7 @@ Runtime/Attributes/
 
 ### 입력 (Config)
 ```csharp
-[Config]
+[SpecData]
 public class EnemyConfig
 {
     [PrimaryKey] public string id;

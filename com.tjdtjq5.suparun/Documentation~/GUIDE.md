@@ -7,7 +7,7 @@ SupaRun 패키지를 사용하면 서버 코드를 Unity 안에서 작성하고,
 
 ---
 
-## 1. 데이터 정의: [Table]
+## 1. 데이터 정의: [UserData]
 
 게임 플레이 중 변하는 데이터 (플레이어, 아이템, 길드 등)
 
@@ -16,7 +16,7 @@ SupaRun 패키지를 사용하면 서버 코드를 Unity 안에서 작성하고,
 ```csharp
 using Tjdtjq5.SupaRun;
 
-[Table]
+[UserData]
 public class Player
 {
     [PrimaryKey] public string id;
@@ -29,7 +29,7 @@ public class Player
 ### 필드 어트리뷰트
 
 ```csharp
-[Table]
+[UserData]
 public class Player
 {
     // ── 필수 ──
@@ -96,14 +96,14 @@ foreach (var p in topPlayers.data)
 중간 테이블을 직접 정의합니다:
 
 ```csharp
-[Table]
+[UserData]
 public class Guild
 {
     [PrimaryKey] public string id;
     public string name;
 }
 
-[Table]
+[UserData]
 public class GuildMember
 {
     [PrimaryKey] public string id;
@@ -116,7 +116,7 @@ public class GuildMember
 
 ---
 
-## 2. 설정 데이터: [Config]
+## 2. 설정 데이터: [SpecData]
 
 게임 기획 시 정하는 고정 데이터 (상점 가격, 레벨 테이블, 스킬 스펙 등)
 클라이언트에서 **읽기만** 가능.
@@ -126,7 +126,7 @@ public class GuildMember
 ```csharp
 using Tjdtjq5.SupaRun;
 
-[Config]
+[SpecData]
 public class ShopItem
 {
     [PrimaryKey] public string id;
@@ -136,7 +136,7 @@ public class ShopItem
     public string description;
 }
 
-[Config]
+[SpecData]
 public class LevelTable
 {
     [PrimaryKey] public int level;
@@ -164,9 +164,9 @@ var expensive = await ServerAPI.QueryShopItems(q => q
 );
 ```
 
-### [Table] vs [Config] 차이
+### [UserData] vs [SpecData] 차이
 
-| | [Table] | [Config] |
+| | [UserData] | [SpecData] |
 |---|---|---|
 | 용도 | 플레이어 데이터 (변동) | 게임 설정 (고정) |
 | 예시 | Player, Item, GuildMember | ShopItem, LevelTable |
@@ -303,7 +303,7 @@ else
 ### 개발 중 (서버 없이)
 
 ```
-1. [Table], [Config] 클래스 작성
+1. [UserData], [SpecData] 클래스 작성
 2. [Service] 클래스 작성
 3. Unity Play 클릭
 4. ServerAPI.XXX.Method() 호출
@@ -390,8 +390,8 @@ else
 
 | 어트리뷰트 | 대상 | 설명 |
 |-----------|:----:|------|
-| `[Table]` | class | 게임 데이터 테이블 (플레이어 데이터 등) |
-| `[Config]` | class | 설정 데이터 (상점 가격, 레벨 테이블 등) |
+| `[UserData]` | class | 게임 데이터 테이블 (플레이어 데이터 등) |
+| `[SpecData]` | class | 설정 데이터 (상점 가격, 레벨 테이블 등) |
 | `[Service]` | class | 서버 로직 (데이터 수정하는 비즈니스 로직) |
 
 ### 메서드 어트리뷰트
@@ -431,11 +431,11 @@ else
 
 ```
 Assets/Scripts/
-├── Table/               ← [Table] 클래스
+├── Table/               ← [UserData] 클래스
 │   ├── Player.cs
 │   ├── Item.cs
 │   └── GuildMember.cs
-├── Config/              ← [Config] 클래스
+├── Config/              ← [SpecData] 클래스
 │   ├── ShopItem.cs
 │   └── LevelTable.cs
 ├── Service/             ← [Service] 클래스

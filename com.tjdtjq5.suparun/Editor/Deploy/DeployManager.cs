@@ -18,12 +18,12 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             onProgress?.Invoke("코드 스캔 중...");
 
-            var tableTypes = ScanTypes<TableAttribute>();
-            var specTypes = ScanTypes<ConfigAttribute>();
+            var tableTypes = ScanTypes<UserDataAttribute>();
+            var specTypes = ScanTypes<SpecDataAttribute>();
             var logicTypes = ScanTypes<ServiceAttribute>();
 
             if (tableTypes.Length == 0 && specTypes.Length == 0 && logicTypes.Length == 0)
-                return (null, null, "[Table], [Config], [Service] 클래스가 하나도 없습니다.");
+                return (null, null, "[UserData], [SpecData], [Service] 클래스가 하나도 없습니다.");
 
             Debug.Log($"[SupaRun:Deploy] 스캔 완료 — Table: {tableTypes.Length}, Config: {specTypes.Length}, Service: {logicTypes.Length}");
 
@@ -240,7 +240,7 @@ namespace Tjdtjq5.SupaRun.Editor
             if (!ok) Debug.LogWarning($"[SupaRun:Deploy] pg_cron SQL 실패: {error}");
         }
 
-        // [Table]/[Config]/[Service] 부착된 모든 user 타입을 수집한다.
+        // [UserData]/[SpecData]/[Service] 부착된 모든 user 타입을 수집한다.
         // TypeCache는 모든 어셈블리(asmdef 분리 포함)를 미리 인덱싱하므로
         // Assembly-CSharp 단일 가정 없이 안전하게 스캔한다.
         static Type[] ScanTypes<T>() where T : Attribute
@@ -337,8 +337,8 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (sourceFile == null) continue;
 
                 var content = StripForServer(File.ReadAllText(sourceFile));
-                var category = type.GetCustomAttribute<TableAttribute>() != null ? "Table"
-                    : type.GetCustomAttribute<ConfigAttribute>() != null ? "Config"
+                var category = type.GetCustomAttribute<UserDataAttribute>() != null ? "Table"
+                    : type.GetCustomAttribute<SpecDataAttribute>() != null ? "Config"
                     : "Service";
 
                 files.Add(new GeneratedFile($"Shared/{category}/{type.Name}.cs", content));

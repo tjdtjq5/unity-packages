@@ -31,14 +31,14 @@ namespace Tjdtjq5.SupaRun.Editor
             files.Add(GenerateServerLogModel());
             files.Add(GenerateServerLogger());
 
-            // [Table] → Controller + Migration
+            // [UserData] → Controller + Migration
             foreach (var type in tableTypes)
             {
                 files.Add(GenerateReadController(type, "table"));
                 files.Add(GenerateMigration(type));
             }
 
-            // [Config] → Controller + Migration
+            // [SpecData] → Controller + Migration
             foreach (var type in specTypes)
             {
                 files.Add(GenerateReadController(type, "config"));
@@ -80,7 +80,7 @@ namespace Tjdtjq5.SupaRun.Editor
             sb.AppendLine("namespace Tjdtjq5.SupaRun");
             sb.AppendLine("{");
 
-            string[] attrs = { "Table", "Config", "Service", "API", "Cron",
+            string[] attrs = { "UserData", "SpecData", "Service", "API", "Cron",
                 "PrimaryKey", "ForeignKey", "Index", "Unique", "NotNull", "Default",
                 "MaxLength", "Hidden", "Json", "RenamedFrom", "CreatedAt", "UpdatedAt",
                 "Public", "Private" };
@@ -97,7 +97,7 @@ namespace Tjdtjq5.SupaRun.Editor
                     sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.All)] public class {a}Attribute : System.Attribute {{ public {a}Attribute(string s) {{}} }}");
                 else if (a == "Cron")
                     sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.Method)] public class {a}Attribute : System.Attribute {{ public string Expression; public string TimeZone; public string Description; public {a}Attribute(string expression, string timeZone = \"Etc/UTC\", string description = null) {{ Expression = expression; TimeZone = timeZone; Description = description; }} }}");
-                else if (a == "Table" || a == "Config")
+                else if (a == "UserData" || a == "SpecData")
                     sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.Class)] public class {a}Attribute : System.Attribute {{ public string Group {{ get; }} public {a}Attribute() {{}} public {a}Attribute(string group) => Group = group; }}");
                 else if (a == "Json")
                     sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.Field)] public class {a}Attribute : System.Attribute {{ public System.Type TargetType {{ get; }} public {a}Attribute() {{}} public {a}Attribute(System.Type targetType) => TargetType = targetType; }}");
@@ -621,7 +621,7 @@ public class DapperGameDB : IGameDB
 
         // ── Migration SQL ──
 
-        /// <summary>[Table]/[Config] 전체의 마이그레이션 SQL을 하나로 합쳐 반환.</summary>
+        /// <summary>[UserData]/[SpecData] 전체의 마이그레이션 SQL을 하나로 합쳐 반환.</summary>
         public static string GenerateMigrationSql()
         {
             var types = new List<Type>();
@@ -630,8 +630,8 @@ public class DapperGameDB : IGameDB
                 if (!assembly.GetName().Name.Contains("Assembly-CSharp")) continue;
                 foreach (var type in assembly.GetTypes())
                 {
-                    if (type.GetCustomAttribute<TableAttribute>() != null ||
-                        type.GetCustomAttribute<ConfigAttribute>() != null)
+                    if (type.GetCustomAttribute<UserDataAttribute>() != null ||
+                        type.GetCustomAttribute<SpecDataAttribute>() != null)
                         types.Add(type);
                 }
             }
@@ -756,7 +756,7 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
         {
             var sb = new StringBuilder();
             var tableName = ToSnakeCase(type.Name);
-            bool isConfig = type.GetCustomAttribute<ConfigAttribute>() != null;
+            bool isConfig = type.GetCustomAttribute<SpecDataAttribute>() != null;
 
             sb.AppendLine($"CREATE TABLE IF NOT EXISTS {tableName} (");
 
@@ -772,7 +772,7 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
                 lines.Add($"    {col} {sqlType}{constraints}");
             }
 
-            // [Config] 타입은 sort_order 컬럼 자동 추가 (어드민 드래그 정렬용)
+            // [SpecData] 타입은 sort_order 컬럼 자동 추가 (어드민 드래그 정렬용)
             if (isConfig && !fields.Any(f => f.Name == "sort_order"))
                 lines.Add("    sort_order INTEGER NOT NULL DEFAULT 0");
 
@@ -813,7 +813,7 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
                 sb.AppendLine($"END $$;");
             }
 
-            // [Config] 타입은 공개 읽기 RLS 정책 + sort_order 인덱스 + backfill 추가
+            // [SpecData] 타입은 공개 읽기 RLS 정책 + sort_order 인덱스 + backfill 추가
             if (isConfig)
             {
                 sb.AppendLine();
@@ -1700,9 +1700,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
             var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
             var fieldJsons = fields.Select(f => BuildMemberJson(f, f.FieldType)).ToList();
 
-            // [Config] 타입은 sort_order 메타 자동 주입 (어드민 드래그 정렬 마커)
+            // [SpecData] 타입은 sort_order 메타 자동 주입 (어드민 드래그 정렬 마커)
             // 사용자 클래스에 sort_order 필드를 명시한 경우는 그쪽이 우선
-            bool isConfig = type.GetCustomAttribute<ConfigAttribute>() != null;
+            bool isConfig = type.GetCustomAttribute<SpecDataAttribute>() != null;
             if (isConfig && !fields.Any(f => f.Name == "sort_order"))
                 fieldJsons.Add("{\"name\":\"sort_order\",\"type\":\"number\",\"isHidden\":true,\"isSortOrder\":true}");
 
@@ -1725,13 +1725,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
             return members.Count > 0 ? "[" + string.Join(",", members) + "]" : null;
         }
 
-        /// <summary>[Config] 타입 목록에서 메타데이터 JSON 문자열 생성.</summary>
+        /// <summary>[SpecData] 타입 목록에서 메타데이터 JSON 문자열 생성.</summary>
         static string BuildConfigMetadataJson(Type[] configTypes)
         {
             var items = new List<string>();
             foreach (var type in configTypes)
             {
-                var group = type.GetCustomAttribute<ConfigAttribute>()?.Group;
+                var group = type.GetCustomAttribute<SpecDataAttribute>()?.Group;
                 var groupPart = group != null ? $"\"group\":\"{group}\"," : "";
                 items.Add("{" +
                     $"\"name\":\"{type.Name}\"," +
@@ -2087,14 +2087,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
             return new GeneratedFile("Generated/Controllers/AdminTableController.cs", sb.ToString());
         }
 
-        /// <summary>[Table] 타입 목록에서 메타데이터 JSON 문자열 생성.</summary>
+        /// <summary>[UserData] 타입 목록에서 메타데이터 JSON 문자열 생성.</summary>
         static string BuildTableMetadataJson(Type[] tableTypes)
         {
             var items = new List<string>();
             foreach (var type in tableTypes)
             {
                 var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
-                var group = type.GetCustomAttribute<TableAttribute>()?.Group;
+                var group = type.GetCustomAttribute<UserDataAttribute>()?.Group;
                 var groupPart = group != null ? $"\"group\":\"{group}\"," : "";
                 var hasUserId = fields.Any(f => f.Name == "userId" || f.Name == "user_id");
                 var userIdPart = hasUserId ? "\"hasUserId\":true," : "";

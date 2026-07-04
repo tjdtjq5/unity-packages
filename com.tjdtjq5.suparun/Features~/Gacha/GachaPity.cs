@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>플레이어별 배너 천장 카운터.</summary>
-[Table]
+[UserData]
 public class GachaPity
 {
     [PrimaryKey] public string id;

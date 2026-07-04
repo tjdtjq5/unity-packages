@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.0] - 2026-07-05
+
+### Changed (Breaking) — 핵심 어트리뷰트 리네임 `[Config]`→`[SpecData]`, `[Table]`→`[UserData]`
+
+- **`[Config]` → `[SpecData]`**(게임 설정 데이터, 서버 읽기 전용), **`[Table]` → `[UserData]`**(DB 테이블 생성) 하드 리네임. 별칭 없이 옛 이름 제거. ⚠️ **Breaking**: `[Config]`/`[Table]`를 쓰던 소비자 코드는 `[SpecData]`/`[UserData]`로 수정해야 컴파일된다.
+- 두 어트리뷰트에 **`Group` 속성 추가** — `ServerCodeGenerator`가 어드민/서버 코드 생성 시 그룹 단위로 분류(`GetCustomAttribute<SpecDataAttribute>()?.Group`).
+- SourceGen(DefGenerator/ServiceGenerator/TableQueryGenerator) + `Tjdtjq5.SupaRun.SourceGen.dll` 재빌드. Runtime/Editor/Tests/Features~ 전반에 새 이름 반영.
+
 ## [0.9.0] - 2026-06-15
 
 ### Added — 어드민 컬럼 숨김 + Config 자동 정렬

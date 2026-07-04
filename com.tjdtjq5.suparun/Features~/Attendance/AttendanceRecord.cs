@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>출석 기록. playerId당 하루 1개.</summary>
-[Table]
+[UserData]
 public class AttendanceRecord
 {
     [PrimaryKey] public string id;

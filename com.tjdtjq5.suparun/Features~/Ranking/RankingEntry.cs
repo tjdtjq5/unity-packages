@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>랭킹 엔트리. boardId + playerId 조합으로 관리.</summary>
-[Table]
+[UserData]
 public class RankingEntry
 {
     [PrimaryKey] public string id;

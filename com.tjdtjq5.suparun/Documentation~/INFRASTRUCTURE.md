@@ -183,7 +183,7 @@ Cloud Run은 `minInstances=0`이면 요청 없을 때 서버를 꺼둔다.
 ## 현재 배포 파이프라인
 
 ```
-1. 개발자가 [Table], [Service], [API] 어트리뷰트로 코드 작성
+1. 개발자가 [UserData], [Service], [API] 어트리뷰트로 코드 작성
 2. Unity 에디터에서 "Deploy" 클릭
 3. ServerCodeGenerator가 ASP.NET 코드 + Migration SQL 생성
 4. 코드 해시 비교 → 변경 없으면 스킵
@@ -209,8 +209,8 @@ Supabase PostgREST로 직접 조회하면 Cloud Run 부하를 70% 줄일 수 있
   모든 요청 → Cloud Run → Supabase DB
 
 개선 후:
-  [Config] 읽기  → Supabase REST 직접 (공개 데이터)  ← 부분 구현 완료
-  [Table] 읽기   → Supabase REST + RLS (본인 데이터만)
+  [SpecData] 읽기  → Supabase REST 직접 (공개 데이터)  ← 부분 구현 완료
+  [UserData] 읽기   → Supabase REST + RLS (본인 데이터만)
   [Service] 호출 → Cloud Run (비즈니스 로직만)
 ```
 
@@ -224,8 +224,8 @@ QueryOptions는 PostgREST URL 파라미터와 1:1 대응된다:
 **현재 진행 상황:** Config 직접 조회를 위한 SupabaseRestClient 구현 완료
 
 **전제 조건:** RLS(Row Level Security) 구현 필요 (Table 직접 조회 시)
-- `[Config]`: 공개 읽기 정책 (`USING (true)`)
-- `[Table]`: 본인 데이터만 (`USING (playerid = auth.uid()::text)`)
+- `[SpecData]`: 공개 읽기 정책 (`USING (true)`)
+- `[UserData]`: 본인 데이터만 (`USING (playerid = auth.uid()::text)`)
 
 **효과:** Cold Start 영향 제거, Cloud Run 비용 -70%, 레이턴시 -50%
 

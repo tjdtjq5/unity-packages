@@ -8,10 +8,10 @@
 | Runtime/Auth | Auth | stable | SupabaseAuth.EnsureLoggedIn, SignOut, TryRefreshToken, OAuthHandler |
 | Runtime/DB | DB | stable | IGameDB.Get, GetAll, Save, Delete, Query, Count, LocalGameDB |
 | Runtime/Supabase | Supabase | stable | SupabaseRealtime, RealtimeChannel.Subscribe, SupabaseStorage |
-| Runtime/Attributes | Attributes | stable | [Config], [Table], [Service], [Json], [PrimaryKey], [ForeignKey] 등 18종 |
+| Runtime/Attributes | Attributes | stable | [SpecData], [UserData], [Service], [Json], [PrimaryKey], [ForeignKey] 등 18종 |
 | Editor/Deploy | Deploy | stable | DeployManager.Deploy, GenerateFiles, ServerCodeGenerator.Generate |
 | Editor/Dashboard | Dashboard | stable | SupaRunDashboard (EditorWindow), SetupWizard, 5개 탭 |
 | Editor/Features | Features | stable | FeatureInstaller.Install/Uninstall, FeatureRegistry, FeaturesWindow |
 | Templates/AdminTemplate~ | Admin | stable | index.html SPA — Config CRUD, JSON 에디터, 관리자, 변경 이력 |
 | Templates/AspNetTemplate~ | Server | stable | Program.cs, Dockerfile — JWT 인증, Rate Limiting, Auto Migration |
-| SourceGen~ | SourceGen | stable | ServiceGenerator, TableQueryGenerator — [Service]/[Table] 프록시 생성 |
+| SourceGen~ | SourceGen | stable | ServiceGenerator, TableQueryGenerator — [Service]/[UserData] 프록시 생성 |

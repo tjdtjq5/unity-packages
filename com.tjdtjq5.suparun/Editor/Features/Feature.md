@@ -1,7 +1,7 @@
 # Features
 
 - **상태**: stable
-- **용도**: 게임 기능 템플릿([Table]/[Service] 포함)을 설치/제거/관리하는 Feature 시스템 + EditorWindow
+- **용도**: 게임 기능 템플릿([UserData]/[Service] 포함)을 설치/제거/관리하는 Feature 시스템 + EditorWindow
 
 ## 의존성
 

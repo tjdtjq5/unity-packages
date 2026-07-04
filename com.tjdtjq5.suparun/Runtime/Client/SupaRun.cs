@@ -126,7 +126,7 @@ namespace Tjdtjq5.SupaRun
             var type = typeof(T);
             if (!_configCache.TryGetValue(type, out var result))
             {
-                result = Attribute.GetCustomAttribute(type, typeof(ConfigAttribute)) != null;
+                result = Attribute.GetCustomAttribute(type, typeof(SpecDataAttribute)) != null;
                 _configCache[type] = result;
             }
             return result;
@@ -159,10 +159,10 @@ namespace Tjdtjq5.SupaRun
 
         // ── 데이터 API (Instance 위임) ──
 
-        /// <summary>단건 조회. [Config]→Supabase REST 직접, [Table]→Cloud Run, 미배포→LocalGameDB.</summary>
+        /// <summary>단건 조회. [SpecData]→Supabase REST 직접, [UserData]→Cloud Run, 미배포→LocalGameDB.</summary>
         public static UniTask<ServerResponse<T>> Get<T>(object id) => Instance.Get<T>(id);
 
-        /// <summary>전체 조회. [Config]→Supabase REST 직접, [Table]→Cloud Run, 미배포→LocalGameDB.</summary>
+        /// <summary>전체 조회. [SpecData]→Supabase REST 직접, [UserData]→Cloud Run, 미배포→LocalGameDB.</summary>
         public static UniTask<ServerResponse<List<T>>> GetAll<T>() => Instance.GetAll<T>();
 
         // ── Auth 진입점 (Instance 위임) ──

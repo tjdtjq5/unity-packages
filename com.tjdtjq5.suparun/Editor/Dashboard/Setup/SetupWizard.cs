@@ -320,7 +320,7 @@ namespace Tjdtjq5.SupaRun.Editor
             EditorUI.BeginBody();
             EditorUI.DrawDescription(
                 "지금 바로 Unity Play를 눌러보세요!\n" +
-                "[Table]과 [Service]를 작성하면\n" +
+                "[UserData]와 [Service]를 작성하면\n" +
                 "LocalGameDB로 즉시 테스트됩니다.", EditorUI.COL_INFO);
             EditorUI.EndBody();
 

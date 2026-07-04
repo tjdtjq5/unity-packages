@@ -1,11 +1,11 @@
 # SourceGen
 
 > **상태**: stable
-> **용도**: `[Service]`, `[Table]`, `[Config]` 어트리뷰트가 붙은 클래스에서 ServerAPI 프록시와 Query 클래스를 자동 생성하는 Roslyn Source Generator
+> **용도**: `[Service]`, `[UserData]`, `[SpecData]` 어트리뷰트가 붙은 클래스에서 ServerAPI 프록시와 Query 클래스를 자동 생성하는 Roslyn Source Generator
 
 ## 의존성
 
-- `Tjdtjq5.SupaRun` 런타임 네임스페이스 — `ServiceAttribute`, `APIAttribute`, `TableAttribute`, `ConfigAttribute`, `HiddenAttribute`, `QueryOptions`, `ServerResponse`, `ErrorType`, `DeployRegistry`, `SupaRun.LocalDB/Client` 참조
+- `Tjdtjq5.SupaRun` 런타임 네임스페이스 — `ServiceAttribute`, `APIAttribute`, `UserDataAttribute`, `SpecDataAttribute`, `HiddenAttribute`, `QueryOptions`, `ServerResponse`, `ErrorType`, `DeployRegistry`, `SupaRun.LocalDB/Client` 참조
 - NuGet: `Microsoft.CodeAnalysis.CSharp` 4.3.0, `Microsoft.CodeAnalysis.Analyzers` 3.3.4
 
 ## 구조
@@ -13,7 +13,7 @@
 | 파일 | 설명 |
 |------|------|
 | `ServiceGenerator.cs` | `[Service]` + `[API]` 어트리뷰트 기반. `ServerAPI.{ServiceName}.{Method}()` 프록시 생성 |
-| `TableQueryGenerator.cs` | `[Table]` / `[Config]` 어트리뷰트 기반. `{ClassName}Query` 빌더 + `ServerAPI.Query{Name}s()` 생성 |
+| `TableQueryGenerator.cs` | `[UserData]` / `[SpecData]` 어트리뷰트 기반. `{ClassName}Query` 빌더 + `ServerAPI.Query{Name}s()` 생성 |
 | `Tjdtjq5.SupaRun.SourceGen.csproj` | netstandard2.0 Roslyn Source Generator 프로젝트 |
 
 ## API (생성되는 코드)
@@ -57,11 +57,11 @@ public static partial class ServerAPI
 
 ### TableQueryGenerator → `{ClassName}Query.g.cs` + `ServerAPI.Queries.g.cs`
 
-`[Table]` / `[Config]` 클래스의 public 필드(`[Hidden]` 제외)에서 타입별 쿼리 메서드를 가진 Query 빌더 클래스 생성.
+`[UserData]` / `[SpecData]` 클래스의 public 필드(`[Hidden]` 제외)에서 타입별 쿼리 메서드를 가진 Query 빌더 클래스 생성.
 
 ```csharp
 // 입력
-[Table]
+[UserData]
 public class PlayerData
 {
     public string id;

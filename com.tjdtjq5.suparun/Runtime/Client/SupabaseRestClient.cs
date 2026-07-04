@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Tjdtjq5.SupaRun
 {
-    /// <summary>Supabase PostgREST 직접 조회. [Config] 타입 전용.</summary>
+    /// <summary>Supabase PostgREST 직접 조회. [SpecData] 타입 전용.</summary>
     /// <remarks>
     /// P2-1e: HTTP 송신을 HttpExecutor + IHttpTransport로 위임. 인증 헤더는 BearerJwtOrAnonAuth strategy.
     /// 호출자(SupaRun)가 동일 transport 인스턴스를 주입하면 패키지 전체에서 단일 transport 사용.
@@ -67,9 +67,9 @@ namespace Tjdtjq5.SupaRun
         {
             var table = ToSnakeCase(typeof(T).Name);
             var url = $"{_restUrl}/{table}";
-            // [Config] 타입은 sort_order 자동 정렬 (어드민 드래그 순서 = 게임 표시 순서)
+            // [SpecData] 타입은 sort_order 자동 정렬 (어드민 드래그 순서 = 게임 표시 순서)
             // sort_order 컬럼은 ServerCodeGenerator가 마이그레이션에 자동 추가함
-            if (typeof(T).IsDefined(typeof(ConfigAttribute), inherit: true))
+            if (typeof(T).IsDefined(typeof(SpecDataAttribute), inherit: true))
                 url += "?order=sort_order.asc";
             return await Fetch<List<T>>(url);
         }

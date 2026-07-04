@@ -4,7 +4,7 @@ using Tjdtjq5.SupaRun;
 /// 우편. 시스템/관리자가 발송, 플레이어가 수신.
 /// rewards JSON 예시: [{"type":"currency","id":"gold","amount":1000},{"type":"item","id":"potion_hp","amount":5}]
 /// </summary>
-[Table]
+[UserData]
 public class Mail
 {
     [PrimaryKey] public string id;

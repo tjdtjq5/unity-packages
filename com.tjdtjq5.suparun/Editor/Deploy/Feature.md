@@ -1,7 +1,7 @@
 # Deploy
 
 - **상태**: stable
-- **용도**: Unity에서 [Table]/[Config]/[Service] 클래스를 스캔하여 ASP.NET 서버 코드를 자동 생성하고, GitHub에 push 후 Cloud Run에 배포하는 파이프라인
+- **용도**: Unity에서 [UserData]/[SpecData]/[Service] 클래스를 스캔하여 ASP.NET 서버 코드를 자동 생성하고, GitHub에 push 후 Cloud Run에 배포하는 파이프라인
 
 ## 의존성
 
@@ -17,7 +17,7 @@
 | 파일 | 타입 | 설명 |
 |------|------|------|
 | `DeployManager.cs` | `static class` | 배포 오케스트레이터 — 코드 생성, 빌드 테스트, 배포, pg_cron 잡 등록 |
-| `ServerCodeGenerator.cs` | `static class` | [Table]/[Config]/[Service] 리플렉션 스캔 → ASP.NET Controller/Migration/DTO/Admin 코드 생성 |
+| `ServerCodeGenerator.cs` | `static class` | [UserData]/[SpecData]/[Service] 리플렉션 스캔 → ASP.NET Controller/Migration/DTO/Admin 코드 생성 |
 | `GitHubPusher.cs` | `static class` | gh CLI로 레포 clone → 파일 쓰기 → commit/push + GitHub Secrets 설정 |
 | `ActionsTracker.cs` | `static class` | GitHub Actions 워크플로우 상태 폴링 (5초 간격, head_sha 필터링) + 성공/실패 결과 수집 |
 | `ServerCacheHealthChecker.cs` | `static class` | 배포 스냅샷 저장, 코드 변경 감지(SHA256), .NET 버전 변경/캐시 만료 경고 |
@@ -29,7 +29,7 @@
 
 | 메서드 | 설명 |
 |--------|------|
-| `GenerateFiles(settings, onProgress?)` | [Table]/[Config]/[Service] 스캔 → 서버 코드 + 템플릿 + 공유 파일 생성. `(List<GeneratedFile>, Type[], error)` 반환 |
+| `GenerateFiles(settings, onProgress?)` | [UserData]/[SpecData]/[Service] 스캔 → 서버 코드 + 템플릿 + 공유 파일 생성. `(List<GeneratedFile>, Type[], error)` 반환 |
 | `Deploy(settings, onProgress, onSuccess, onFailed, onSkipped?)` | 전체 배포 파이프라인 실행 (코드 생성 → 변경 감지 → GitHub push → 배포 기록) |
 | `IsDotnetAvailable()` | dotnet CLI 설치 여부 |
 | `PrepareBuildTest(settings)` | 메인 스레드에서 코드 생성 + temp 폴더에 쓰기. `(tempDir, error)` 반환 |

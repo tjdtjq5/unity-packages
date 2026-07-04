@@ -13,8 +13,8 @@
 
 ```
 Attributes/
-├── TableAttribute.cs         # [Table] 클래스를 DB 테이블로 생성 (클라이언트 읽기 전용)
-├── ConfigAttribute.cs        # [Config] 게임 설정 데이터 (서버에서 읽기 전용)
+├── UserDataAttribute.cs         # [UserData] 클래스를 DB 테이블로 생성 (클라이언트 읽기 전용)
+├── SpecDataAttribute.cs        # [SpecData] 게임 설정 데이터 (서버에서 읽기 전용)
 ├── ServiceAttribute.cs       # [Service] [API] 메서드를 ASP.NET Controller로 자동 생성
 ├── APIAttribute.cs           # [API] 메서드를 서버 API 엔드포인트로 노출
 ├── CronAttribute.cs          # [Cron] 메서드를 Cloud Scheduler 잡으로 등록
@@ -42,10 +42,10 @@ Attributes/
 
 | 어트리뷰트 | 대상 | 설명 |
 |-----------|------|------|
-| `[Table]` | Class | DB 테이블 생성. 선택적 `Group` 매개변수로 그룹핑. |
-| `[Table("그룹명")]` | Class | 그룹 지정 테이블. |
-| `[Config]` | Class | 게임 설정 데이터. PostgREST로 직접 조회. |
-| `[Config("그룹명")]` | Class | 그룹 지정 설정. |
+| `[UserData]` | Class | DB 테이블 생성. 선택적 `Group` 매개변수로 그룹핑. |
+| `[UserData("그룹명")]` | Class | 그룹 지정 테이블. |
+| `[SpecData]` | Class | 게임 설정 데이터. PostgREST로 직접 조회. |
+| `[SpecData("그룹명")]` | Class | 그룹 지정 설정. |
 | `[Service]` | Class | 서버 서비스 클래스. [API] 메서드를 Controller로 생성. |
 
 ### 메서드 레벨 어트리뷰트
@@ -80,8 +80,8 @@ Attributes/
 
 - 이 어트리뷰트들은 정의만 포함하며, 실제 동작은 세 곳에서 처리된다:
   1. **LocalGameDB** (Runtime): `[PrimaryKey]`, `[NotNull]`, `[MaxLength]`, `[Unique]`, `[Default]`, `[CreatedAt]`, `[UpdatedAt]` 검증/적용.
-  2. **Source Generator** (Editor): `[Service]`, `[API]`, `[Table]`, `[Config]`를 읽어 프록시 코드/마이그레이션 SQL 생성.
-  3. **Deploy 시스템** (Editor): `[Cron]`을 읽어 Cloud Scheduler 잡 등록, `[Table]`/`[Config]`로 DB 마이그레이션 실행.
-- `[ForeignKey]`의 참조 타입은 반드시 `[Table]` 또는 `[Config]` 어트리뷰트가 붙은 클래스여야 한다.
-- `[RenamedFrom]`은 `[Table]` 필드 이름을 바꿀 때 DB 마이그레이션이 DROP 대신 RENAME을 생성하도록 한다. 마이그레이션 완료 후 제거해도 된다.
+  2. **Source Generator** (Editor): `[Service]`, `[API]`, `[UserData]`, `[SpecData]`를 읽어 프록시 코드/마이그레이션 SQL 생성.
+  3. **Deploy 시스템** (Editor): `[Cron]`을 읽어 Cloud Scheduler 잡 등록, `[UserData]`/`[SpecData]`로 DB 마이그레이션 실행.
+- `[ForeignKey]`의 참조 타입은 반드시 `[UserData]` 또는 `[SpecData]` 어트리뷰트가 붙은 클래스여야 한다.
+- `[RenamedFrom]`은 `[UserData]` 필드 이름을 바꿀 때 DB 마이그레이션이 DROP 대신 RENAME을 생성하도록 한다. 마이그레이션 완료 후 제거해도 된다.
 - `[Cron]`의 TimeZone 기본값은 `"Etc/UTC"`이다.

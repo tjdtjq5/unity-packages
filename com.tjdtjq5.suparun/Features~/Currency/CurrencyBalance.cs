@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>재화 잔액. playerId + currencyId 조합으로 관리.</summary>
-[Table]
+[UserData]
 public class CurrencyBalance
 {
     [PrimaryKey] public string id;

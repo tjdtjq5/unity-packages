@@ -72,5 +72,5 @@
 - `.template` 확장자 파일들은 SupaRun 배포 도구가 플레이스홀더를 치환 후 실제 프로젝트 파일로 생성
 - `IGameDB`, `DapperGameDB`, `AdminUser` 등의 타입은 SourceGen 또는 배포 도구가 `Generated/` 폴더에 생성
 - Controller 코드도 `Generated/` 폴더에 자동 생성됨 — 이 템플릿에는 포함되지 않음
-- Migration SQL 파일은 `[Config]`, `[Table]` 어트리뷰트 기반으로 자동 생성됨
+- Migration SQL 파일은 `[SpecData]`, `[UserData]` 어트리뷰트 기반으로 자동 생성됨
 - `ConnectionStrings:Supabase`는 배포 환경에서 환경 변수 또는 시크릿으로 주입해야 함

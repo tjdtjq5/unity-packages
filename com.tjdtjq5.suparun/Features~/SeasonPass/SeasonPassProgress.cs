@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>유저별 시즌패스 진행도.</summary>
-[Table]
+[UserData]
 public class SeasonPassProgress
 {
     [PrimaryKey] public string id;          // "{seasonId}_{playerId}"

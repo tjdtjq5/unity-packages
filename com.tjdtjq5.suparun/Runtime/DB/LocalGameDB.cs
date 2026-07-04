@@ -28,7 +28,7 @@ namespace Tjdtjq5.SupaRun
 
         // ── 직렬화 (시스템 표준 Newtonsoft로 통일) ──
         // 이전엔 JsonUtility를 썼으나 properties/Dictionary/[JsonProperty]를 처리 못 해,
-        // 같은 [Table] 타입이 Realtime/REST/서버(전부 Newtonsoft) 경로와 불일치(조용한 데이터 손상)했다.
+        // 같은 [UserData] 타입이 Realtime/REST/서버(전부 Newtonsoft) 경로와 불일치(조용한 데이터 손상)했다.
         // 단일 지점으로 모아 두 경로가 동일 직렬화 규칙을 쓰도록 보장한다.
         static string Serialize<T>(T entity) => JsonConvert.SerializeObject(entity);
         static T Deserialize<T>(string json) => JsonConvert.DeserializeObject<T>(json);
@@ -60,9 +60,9 @@ namespace Tjdtjq5.SupaRun
                 .Select(json => Deserialize<T>(json))
                 .ToList();
 
-            // [Config] 타입은 sort_order 필드가 있으면 자동 정렬 (게임 표시 순서)
+            // [SpecData] 타입은 sort_order 필드가 있으면 자동 정렬 (게임 표시 순서)
             // 사용자 Config 클래스에 sort_order 필드가 없으면 입력 순서대로 fallback
-            if (typeof(T).IsDefined(typeof(ConfigAttribute), inherit: true))
+            if (typeof(T).IsDefined(typeof(SpecDataAttribute), inherit: true))
             {
                 var sortField = System.Array.Find(CachedFields(typeof(T)),
                     f => f.Name.Equals("sort_order", System.StringComparison.OrdinalIgnoreCase));
@@ -77,12 +77,12 @@ namespace Tjdtjq5.SupaRun
                 }
             }
 
-            // [Table] 타입에 대해 성능 경고 (100건 초과 시)
+            // [UserData] 타입에 대해 성능 경고 (100건 초과 시)
             if (list.Count > 100 && IsTableType<T>())
             {
                 Debug.LogWarning(
                     $"[SupaRun:성능] GetAll<{typeof(T).Name}>()이 {list.Count}건을 로드했습니다. " +
-                    $"[Table] 데이터에는 _db.Query<{typeof(T).Name}>(new QueryOptions().Eq(\"필드명\", 값))를 사용하세요.");
+                    $"[UserData] 데이터에는 _db.Query<{typeof(T).Name}>(new QueryOptions().Eq(\"필드명\", 값))를 사용하세요.");
             }
 
             Log($"GetAll<{typeof(T).Name}>() → {list.Count} rows");
@@ -436,7 +436,7 @@ namespace Tjdtjq5.SupaRun
                     $"현재 타입: {field.FieldType.Name}");
         }
 
-        // ── [Table] 타입 캐시 ──
+        // ── [UserData] 타입 캐시 ──
 
         static readonly Dictionary<System.Type, bool> _tableTypeCache = new();
 
@@ -445,7 +445,7 @@ namespace Tjdtjq5.SupaRun
             var type = typeof(T);
             if (_tableTypeCache.TryGetValue(type, out var cached))
                 return cached;
-            var result = type.GetCustomAttribute(typeof(TableAttribute)) != null;
+            var result = type.GetCustomAttribute(typeof(UserDataAttribute)) != null;
             _tableTypeCache[type] = result;
             return result;
         }

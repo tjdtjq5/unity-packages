@@ -15,14 +15,14 @@ namespace Tjdtjq5.SupaRun.SourceGen
         {
             var tableClasses = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    "Tjdtjq5.SupaRun.TableAttribute",
+                    "Tjdtjq5.SupaRun.UserDataAttribute",
                     predicate: (node, _) => node is ClassDeclarationSyntax,
                     transform: (ctx, _) => GetDataInfo(ctx))
                 .Where(info => info != null);
 
             var specClasses = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    "Tjdtjq5.SupaRun.ConfigAttribute",
+                    "Tjdtjq5.SupaRun.SpecDataAttribute",
                     predicate: (node, _) => node is ClassDeclarationSyntax,
                     transform: (ctx, _) => GetDataInfo(ctx))
                 .Where(info => info != null);

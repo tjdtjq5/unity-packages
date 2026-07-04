@@ -111,7 +111,7 @@ namespace Tjdtjq5.SupaRun
                 if (_client != null)
                     _client.OnTokenRefresh = async () => await _auth.TryRefreshToken();
 
-                // [Config] PostgREST 클라이언트 — 동일 refresher 주입 + Auth(ISessionProvider)에서 토큰 pull.
+                // [SpecData] PostgREST 클라이언트 — 동일 refresher 주입 + Auth(ISessionProvider)에서 토큰 pull.
                 var restRefresher = new CallbackAuthRefresher(async () => await _auth.TryRefreshToken());
                 _restClient = new SupabaseRestClient(supabaseUrl, anonKey, _transport, restRefresher, _auth);
 
@@ -199,7 +199,7 @@ namespace Tjdtjq5.SupaRun
 
         // ── 데이터 API ──
 
-        /// <summary>단건 조회. [Config]→Supabase REST 직접, [Table]→Cloud Run, 미배포→LocalGameDB.</summary>
+        /// <summary>단건 조회. [SpecData]→Supabase REST 직접, [UserData]→Cloud Run, 미배포→LocalGameDB.</summary>
         public async UniTask<ServerResponse<T>> Get<T>(object id)
         {
             if (_client != null)
@@ -226,7 +226,7 @@ namespace Tjdtjq5.SupaRun
             };
         }
 
-        /// <summary>전체 조회. [Config]→Supabase REST 직접, [Table]→Cloud Run, 미배포→LocalGameDB.</summary>
+        /// <summary>전체 조회. [SpecData]→Supabase REST 직접, [UserData]→Cloud Run, 미배포→LocalGameDB.</summary>
         public async UniTask<ServerResponse<List<T>>> GetAll<T>()
         {
             if (_client != null)

@@ -1,7 +1,7 @@
 using Tjdtjq5.SupaRun;
 
 /// <summary>구매 이력.</summary>
-[Table]
+[UserData]
 public class ShopPurchaseLog
 {
     [PrimaryKey] public string id;

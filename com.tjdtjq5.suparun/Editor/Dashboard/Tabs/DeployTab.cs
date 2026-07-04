@@ -303,7 +303,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             EditorUI.DrawDescription(
                 "[배포] 클릭 시:\n" +
-                "1. [Table]/[Config]/[Service] 스캔\n" +
+                "1. [UserData]/[SpecData]/[Service] 스캔\n" +
                 "2. ASP.NET 서버 코드 자동 생성\n" +
                 "3. 빌드 검증 (.NET SDK 설치 시)\n" +
                 "4. GitHub에 push -> GitHub Actions -> Cloud Run");

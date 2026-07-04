@@ -5,7 +5,7 @@ using Tjdtjq5.SupaRun;
 /// 스택형(소모품): id = "{playerId}_{itemDefId}", amount = N
 /// 개별형(장비): id = UUID, amount = 1, metadata = JSON
 /// </summary>
-[Table]
+[UserData]
 public class InventoryItem
 {
     [PrimaryKey] public string id;
