@@ -175,26 +175,24 @@ Unity Addressables 안전 래퍼 — SafeHandle 기반 자동 해제, 누수 감
 
 ---
 
-### Claude `v1.2.1`
+### Terminal `v1.0.0`
 
-Unity 에디터에서 Claude Code CLI 실행 + Channel Bridge(MCP) + Discord 연동 + Remote Control + git worktree 관리
+Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바로 여는 런처 — `claude` 패키지 후속 (전면 재설계)
 
 | 기능 | 내용 |
 |------|------|
-| 툴바 버튼 | ✦ Claude [N] ● — 좌클릭: Manager, 우클릭: Settings, ● 연결 상태 |
-| 터미널 런처 | Windows: WT 탭 / PowerShell fallback · macOS: cmux > iTerm2 > Terminal.app 자동 폴백 |
-| Channel Bridge | Unity 콘솔/컴파일 에러 → Named Pipe(UDS) → MCP Channel → Claude 자동 전달 |
-| Discord 연동 | 3단계 모드 (없음/알림/적극적 사용), 양방향 통신, !mode/!mute/!status |
-| Remote Control | `--rc` 플래그로 claude.ai/code, 모바일 앱에서 세션 접속 |
-| Worktree 관리 | git worktree 자동 생성/삭제 + 새 탭 |
-| 설정 UI | 모니터/Discord/RC/탭 색상/CLI 인자 통합 설정 |
+| 툴바 버튼 | `>_ {터미널명}` — 좌클릭: 즉시 실행, 우클릭: 터미널 전환/목록 편집 메뉴 |
+| 데이터 주도 목록 | `{name, command}` 전부 편집 가능 (EditorPrefs, 머신별). 새 터미널은 항목 추가만 하면 됨 |
+| 플레이스홀더 | `{dir}` / `{dirUri}`(URL 인코딩), `scheme://` 시작 시 URI로 실행 |
+| 자동 감지 (주문형) | 첫 실행 시 설치된 것만 시드 + [자동 감지] 버튼(추가만 함) + 설치 여부 ✓/✗ |
+| 기본 지원 | Win: Windows Terminal / Warp / PowerShell · Mac: Terminal / iTerm2 / Warp |
 
 ```json
-"com.tjdtjq5.claude": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.claude#claude/v1.2.1"
+"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v1.0.0"
 ```
 
 > 의존: `editor-toolkit >= 1.0.0`
-> Bridge 의존: Node.js, `@modelcontextprotocol/sdk`, `discord.js` (Bridge~/에서 npm install)
+> ⚠ `com.tjdtjq5.claude`는 v1.2.1을 끝으로 폐기 — 이 패키지가 대체 (기존 `claude/v*` 태그는 유지되어 설치는 계속 가능)
 
 ---
 
@@ -276,7 +274,7 @@ editor-toolkit (독립)
   ├── ui-framework (+ DOTween)
   ├── addrx (+ Addressables)
   ├── suparun
-  └── claude
+  └── terminal
 
 n4e-guard (독립, + Entities, NetCode)
   └── eos-wrapper (+ com.playeveryware.eos)

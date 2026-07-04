@@ -3,42 +3,34 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace Tjdtjq5.Claude
+namespace Tjdtjq5.Terminal
 {
     /// <summary>
-    /// 메인 툴바 우측에 Claude 버튼을 삽입한다.
-    /// 좌클릭: Manager 윈도우, 우클릭: 설정.
-    /// 활성 워크트리 수를 벳지로 표시.
+    /// 메인 툴바 우측에 터미널 버튼을 삽입한다.
+    /// 좌클릭: 선택된 터미널로 프로젝트 루트 열기, 우클릭: 터미널 전환/목록 편집 메뉴.
+    /// 버튼 라벨은 현재 선택된 터미널 이름.
     /// </summary>
     [InitializeOnLoad]
-    static class ClaudeToolbar
+    static class TerminalToolbar
     {
-        const string ContainerId = "ClaudeToolbarContainer";
+        const string ContainerId = "TerminalToolbarContainer";
         const int MaxPollFrames = 100;
 
-        // Claude 보라색
-        static readonly Color BtnColor = new(0.28f, 0.24f, 0.56f, 1f);
-        static readonly Color BtnHoverColor = new(0.42f, 0.36f, 0.91f, 1f);
-        static readonly Color TextColor = new(0.92f, 0.90f, 1f, 1f);
+        static readonly Color BtnColor = new(0.16f, 0.19f, 0.23f, 1f);
+        static readonly Color BtnHoverColor = new(0.25f, 0.30f, 0.36f, 1f);
+        static readonly Color TextColor = new(0.85f, 0.93f, 0.90f, 1f);
 
         static int _pollCount;
         static bool _injected;
+        static Label _label;
 
-        // 벳지
-        static Label _badgeLabel;
-        static Label _statusDot;
-        static double _lastBadgeCheck;
-        static int _cachedWtCount = -1;
-
-        static ClaudeToolbar()
+        static TerminalToolbar()
         {
             _injected = false;
             _pollCount = 0;
 
             EditorApplication.delayCall += TryInject;
             EditorApplication.update += PollInject;
-            EditorApplication.update += BadgePoll;
-            EditorApplication.delayCall += RefreshBadge;
         }
 
         static void PollInject()
@@ -52,47 +44,10 @@ namespace Tjdtjq5.Claude
             TryInject();
         }
 
-        static void BadgePoll()
+        internal static void RefreshLabel()
         {
-            if (EditorApplication.timeSinceStartup - _lastBadgeCheck < 10.0) return;
-            _lastBadgeCheck = EditorApplication.timeSinceStartup;
-            RefreshBadge();
-        }
-
-        internal static void RefreshBadge()
-        {
-            ClaudeCodeLauncher.GetActiveWorktreesAsync(list =>
-            {
-                int count = list?.Count ?? 0;
-                if (count == _cachedWtCount) return;
-                _cachedWtCount = count;
-
-                if (_badgeLabel != null)
-                    _badgeLabel.text = count > 0 ? $"Claude [{count}]" : "Claude";
-            });
-
-            UpdateStatusDot();
-        }
-
-        static void UpdateStatusDot()
-        {
-            if (_statusDot == null) return;
-
-            if (!ClaudeCodeSettings.DiscordEnabled)
-            {
-                _statusDot.style.color = new StyleColor(Color.clear);
-                return;
-            }
-
-            var dotColor = ChannelBridge.CurrentState switch
-            {
-                ChannelBridge.State.Connected => new Color(0.3f, 0.85f, 0.4f),   // 초록
-                ChannelBridge.State.Connecting => new Color(0.9f, 0.8f, 0.2f),   // 노랑
-                ChannelBridge.State.Error => new Color(0.9f, 0.3f, 0.3f),        // 빨강
-                _ => new Color(0.5f, 0.5f, 0.5f),                                 // 회색
-            };
-
-            _statusDot.style.color = new StyleColor(dotColor);
+            if (_label == null) return;
+            _label.text = TerminalProfiles.GetSelected()?.name ?? "Terminal";
         }
 
         static void TryInject()
@@ -130,7 +85,7 @@ namespace Tjdtjq5.Claude
             var container = new VisualElement
             {
                 name = ContainerId,
-                tooltip = "Claude Code Manager\n(우클릭: 설정)",
+                tooltip = "좌클릭: 터미널 열기\n우클릭: 터미널 선택/목록 편집",
                 style =
                 {
                     flexDirection = FlexDirection.Row,
@@ -158,21 +113,8 @@ namespace Tjdtjq5.Claude
                 }
             };
 
-            // ✦ 아이콘 (Claude 스파클)
-            var icon = new Label("\u2726")
-            {
-                style =
-                {
-                    color = TextColor,
-                    fontSize = 12,
-                    unityTextAlign = TextAnchor.MiddleCenter,
-                    marginRight = 4,
-                }
-            };
-            icon.pickingMode = PickingMode.Ignore;
-            btn.Add(icon);
-
-            _badgeLabel = new Label("Claude")
+            // >_ 아이콘
+            var icon = new Label(">_")
             {
                 style =
                 {
@@ -180,28 +122,25 @@ namespace Tjdtjq5.Claude
                     fontSize = 11,
                     unityFontStyleAndWeight = FontStyle.Bold,
                     unityTextAlign = TextAnchor.MiddleCenter,
-                    marginTop = 0,
-                    marginBottom = 0,
-                    paddingTop = 0,
-                    paddingBottom = 0,
+                    marginRight = 5,
                 }
             };
-            _badgeLabel.pickingMode = PickingMode.Ignore;
-            btn.Add(_badgeLabel);
+            icon.pickingMode = PickingMode.Ignore;
+            btn.Add(icon);
 
-            // ● 상태 인디케이터
-            _statusDot = new Label("\u25CF")
+            _label = new Label("Terminal")
             {
                 style =
                 {
-                    color = Color.clear, // 초기: 숨김
-                    fontSize = 8,
+                    color = TextColor,
+                    fontSize = 11,
                     unityTextAlign = TextAnchor.MiddleCenter,
-                    marginLeft = 4,
                 }
             };
-            _statusDot.pickingMode = PickingMode.Ignore;
-            btn.Add(_statusDot);
+            _label.pickingMode = PickingMode.Ignore;
+            btn.Add(_label);
+
+            RefreshLabel();
 
             // 호버
             btn.RegisterCallback<PointerEnterEvent>(_ =>
@@ -209,22 +148,43 @@ namespace Tjdtjq5.Claude
             btn.RegisterCallback<PointerLeaveEvent>(_ =>
                 btn.style.backgroundColor = BtnColor);
 
-            // 좌클릭 → Manager 윈도우
+            // 좌클릭 → 터미널 실행
             btn.RegisterCallback<PointerUpEvent>(evt =>
             {
                 if (evt.button == 0)
-                    ClaudeCodeManagerWindow.Open();
+                    TerminalLauncher.Open();
             });
 
-            // 우클릭 → 설정
+            // 우클릭 → 터미널 선택 메뉴
             btn.RegisterCallback<ContextClickEvent>(evt =>
             {
                 evt.StopPropagation();
-                ClaudeCodeSettingsWindow.Open();
+                ShowMenu();
             });
 
             container.Add(btn);
             return container;
+        }
+
+        static void ShowMenu()
+        {
+            var menu = new GenericMenu();
+            var list = TerminalProfiles.Load();
+            var selectedName = TerminalProfiles.GetSelected()?.name;
+
+            foreach (var p in list)
+            {
+                var captured = p.name;
+                menu.AddItem(new GUIContent(captured), captured == selectedName, () =>
+                {
+                    TerminalProfiles.SelectedName = captured;
+                    RefreshLabel();
+                });
+            }
+
+            if (list.Count > 0) menu.AddSeparator("");
+            menu.AddItem(new GUIContent("목록 편집..."), false, TerminalListWindow.Open);
+            menu.ShowAsContext();
         }
     }
 }

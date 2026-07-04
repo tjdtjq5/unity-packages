@@ -1,6 +1,6 @@
 {
-    "name": "Tjdtjq5.Claude.Editor",
-    "rootNamespace": "Tjdtjq5.Claude",
+    "name": "Tjdtjq5.Terminal.Editor",
+    "rootNamespace": "Tjdtjq5.Terminal",
     "references": ["Tjdtjq5.EditorToolkit.Editor"],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
