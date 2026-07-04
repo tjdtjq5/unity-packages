@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.2] - 2026-07-04
+
+### 신규
+- 자동 감지에 winghostty 추가 (Ghostty의 Windows 포트, `Program Files\winghostty` + `where` 폴백)
+  - `--working-directory` 명시 플래그 사용 (v1.3.116 config docs에서 확인)
+
 ## [1.0.1] - 2026-07-04
 
 ### 신규

@@ -10,7 +10,7 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 `Packages/manifest.json`의 `dependencies`에 추가:
 
 ```json
-"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v1.0.1"
+"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v1.0.2"
 ```
 
 ## 사용법
@@ -29,6 +29,7 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 | Windows Terminal | `wt -d "{dir}"` |
 | Warp (Win) | `warp://action/new_window?path={dirUri}` |
 | PowerShell | `powershell` |
+| winghostty (Win) | `"C:\Program Files\winghostty\winghostty.exe" --working-directory="{dir}"` |
 | Git Bash (Win) | `"C:\Program Files\Git\git-bash.exe" --cd="{dir}"` |
 | Alacritty | Win: `alacritty --working-directory "{dir}"` · Mac: 앱 내 바이너리 직접 실행 |
 | WezTerm | Win: `wezterm start --cwd "{dir}"` · Mac: 앱 내 바이너리 직접 실행 |

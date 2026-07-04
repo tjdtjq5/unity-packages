@@ -93,12 +93,17 @@ namespace Tjdtjq5.Terminal
             var gitBash = Path.Combine(programFiles, "Git", "git-bash.exe");
             var tabby = Path.Combine(localAppData, "Programs", "Tabby", "Tabby.exe");
             var cmderRoot = Environment.GetEnvironmentVariable("CMDER_ROOT");
+            var winghostty = Path.Combine(programFiles, "winghostty", "winghostty.exe");
 
             return new[]
             {
                 new KnownTerminal { Name = "Windows Terminal", Command = "wt -d \"{dir}\"", IsInstalled = () => RunExitOk("where", "wt") },
                 new KnownTerminal { Name = "Warp", Command = "warp://action/new_window?path={dirUri}", IsInstalled = HasWarpWindows },
                 new KnownTerminal { Name = "PowerShell", Command = "powershell", IsInstalled = () => true },
+                // winghostty: Ghostty의 Windows 포트. --working-directory 명시 플래그 지원 (config docs 확인)
+                new KnownTerminal { Name = "winghostty",
+                    Command = File.Exists(winghostty) ? $"\"{winghostty}\" --working-directory=\"{{dir}}\"" : "winghostty --working-directory=\"{dir}\"",
+                    IsInstalled = () => File.Exists(winghostty) || RunExitOk("where", "winghostty") },
                 new KnownTerminal { Name = "Git Bash", Command = $"\"{gitBash}\" --cd=\"{{dir}}\"", IsInstalled = () => File.Exists(gitBash) },
                 new KnownTerminal { Name = "Alacritty", Command = "alacritty --working-directory \"{dir}\"",
                     IsInstalled = () => RunExitOk("where", "alacritty") || File.Exists(Path.Combine(programFiles, "Alacritty", "alacritty.exe")) },
