@@ -10,7 +10,7 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 `Packages/manifest.json`의 `dependencies`에 추가:
 
 ```json
-"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v1.0.0"
+"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v1.0.1"
 ```
 
 ## 사용법
@@ -29,9 +29,18 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 | Windows Terminal | `wt -d "{dir}"` |
 | Warp (Win) | `warp://action/new_window?path={dirUri}` |
 | PowerShell | `powershell` |
+| Git Bash (Win) | `"C:\Program Files\Git\git-bash.exe" --cd="{dir}"` |
+| Alacritty | Win: `alacritty --working-directory "{dir}"` · Mac: 앱 내 바이너리 직접 실행 |
+| WezTerm | Win: `wezterm start --cwd "{dir}"` · Mac: 앱 내 바이너리 직접 실행 |
+| Tabby | Win: `Tabby.exe open "{dir}"` · Mac: `open -a Tabby "{dir}"` |
+| cmder (Win) | `cmder /START "{dir}"` (CMDER_ROOT 있으면 절대경로) |
+| Ghostty (Mac) | `open -na Ghostty --args --working-directory="{dir}"` |
 | Terminal (Mac) | `open -a Terminal "{dir}"` |
 | iTerm2 (Mac) | `open -a iTerm "{dir}"` |
 | Warp (Mac) | `open -a Warp "{dir}"` |
+
+> cmder는 portable 앱 — `CMDER_ROOT` 환경변수/PATH 등록 시에만 감지.
+> Tabby·Ghostty 명령은 실기기 검증 전이므로 동작이 다르면 목록 편집에서 수정.
 
 ### 플레이스홀더
 

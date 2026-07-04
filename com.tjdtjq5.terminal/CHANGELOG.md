@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1] - 2026-07-04
+
+### 신규
+- 자동 감지 테이블 6종 확장: Alacritty, WezTerm, Git Bash(Win), Tabby, cmder(Win), Ghostty(Mac)
+  - Win: `where` + 기본 설치 경로 확인, Mac: `/Applications/*.app` 확인
+  - cmder는 portable 앱 특성상 `CMDER_ROOT` 환경변수 또는 PATH 등록 시에만 감지됨
+  - Tabby/Ghostty의 디렉토리 열기 명령은 실기기 검증 전 — 문제 시 목록 편집에서 명령 수정
+
 ## [1.0.0] - 2026-07-04
 
 `com.tjdtjq5.claude` v1.2.x를 대체하는 신규 패키지. "터미널을 간편하게 연다" 하나로 재설계.

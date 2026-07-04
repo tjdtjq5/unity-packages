@@ -80,13 +80,35 @@ namespace Tjdtjq5.Terminal
                     new KnownTerminal { Name = "Terminal", Command = "open -a Terminal \"{dir}\"", IsInstalled = () => true },
                     new KnownTerminal { Name = "iTerm2", Command = "open -a iTerm \"{dir}\"", IsInstalled = () => Directory.Exists("/Applications/iTerm.app") },
                     new KnownTerminal { Name = "Warp", Command = "open -a Warp \"{dir}\"", IsInstalled = () => Directory.Exists("/Applications/Warp.app") },
+                    new KnownTerminal { Name = "Ghostty", Command = "open -na Ghostty --args --working-directory=\"{dir}\"", IsInstalled = () => Directory.Exists("/Applications/Ghostty.app") },
+                    new KnownTerminal { Name = "Alacritty", Command = "/Applications/Alacritty.app/Contents/MacOS/alacritty --working-directory \"{dir}\"", IsInstalled = () => Directory.Exists("/Applications/Alacritty.app") },
+                    new KnownTerminal { Name = "WezTerm", Command = "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui start --cwd \"{dir}\"", IsInstalled = () => Directory.Exists("/Applications/WezTerm.app") },
+                    new KnownTerminal { Name = "Tabby", Command = "open -a Tabby \"{dir}\"", IsInstalled = () => Directory.Exists("/Applications/Tabby.app") },
                 };
             }
+
+            // 경로 계산은 싸고(폴더 경로 조합), 프로세스 실행은 IsInstalled 람다 안에서만 (lazy)
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var gitBash = Path.Combine(programFiles, "Git", "git-bash.exe");
+            var tabby = Path.Combine(localAppData, "Programs", "Tabby", "Tabby.exe");
+            var cmderRoot = Environment.GetEnvironmentVariable("CMDER_ROOT");
+
             return new[]
             {
                 new KnownTerminal { Name = "Windows Terminal", Command = "wt -d \"{dir}\"", IsInstalled = () => RunExitOk("where", "wt") },
                 new KnownTerminal { Name = "Warp", Command = "warp://action/new_window?path={dirUri}", IsInstalled = HasWarpWindows },
                 new KnownTerminal { Name = "PowerShell", Command = "powershell", IsInstalled = () => true },
+                new KnownTerminal { Name = "Git Bash", Command = $"\"{gitBash}\" --cd=\"{{dir}}\"", IsInstalled = () => File.Exists(gitBash) },
+                new KnownTerminal { Name = "Alacritty", Command = "alacritty --working-directory \"{dir}\"",
+                    IsInstalled = () => RunExitOk("where", "alacritty") || File.Exists(Path.Combine(programFiles, "Alacritty", "alacritty.exe")) },
+                new KnownTerminal { Name = "WezTerm", Command = "wezterm start --cwd \"{dir}\"",
+                    IsInstalled = () => RunExitOk("where", "wezterm") || File.Exists(Path.Combine(programFiles, "WezTerm", "wezterm-gui.exe")) },
+                new KnownTerminal { Name = "Tabby", Command = $"\"{tabby}\" open \"{{dir}}\"", IsInstalled = () => File.Exists(tabby) },
+                // cmder는 portable 앱 — CMDER_ROOT 환경변수 또는 PATH 등록 시에만 감지 가능
+                new KnownTerminal { Name = "cmder",
+                    Command = string.IsNullOrEmpty(cmderRoot) ? "cmder /START \"{dir}\"" : $"\"{Path.Combine(cmderRoot, "Cmder.exe")}\" /START \"{{dir}}\"",
+                    IsInstalled = () => !string.IsNullOrEmpty(cmderRoot) || RunExitOk("where", "cmder") },
             };
         }
 
