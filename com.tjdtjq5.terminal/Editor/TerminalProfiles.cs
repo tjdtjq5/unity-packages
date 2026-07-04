@@ -94,6 +94,9 @@ namespace Tjdtjq5.Terminal
             var tabby = Path.Combine(localAppData, "Programs", "Tabby", "Tabby.exe");
             var cmderRoot = Environment.GetEnvironmentVariable("CMDER_ROOT");
             var winghostty = Path.Combine(programFiles, "winghostty", "winghostty.exe");
+            var alacritty = Path.Combine(programFiles, "Alacritty", "alacritty.exe");
+            var wezterm = Path.Combine(programFiles, "WezTerm", "wezterm-gui.exe");
+            var orchterm = Path.Combine(localAppData, "orchterm", "app.exe");
 
             return new[]
             {
@@ -105,10 +108,17 @@ namespace Tjdtjq5.Terminal
                     Command = File.Exists(winghostty) ? $"\"{winghostty}\" --working-directory=\"{{dir}}\"" : "winghostty --working-directory=\"{dir}\"",
                     IsInstalled = () => File.Exists(winghostty) || RunExitOk("where", "winghostty") },
                 new KnownTerminal { Name = "Git Bash", Command = $"\"{gitBash}\" --cd=\"{{dir}}\"", IsInstalled = () => File.Exists(gitBash) },
-                new KnownTerminal { Name = "Alacritty", Command = "alacritty --working-directory \"{dir}\"",
-                    IsInstalled = () => RunExitOk("where", "alacritty") || File.Exists(Path.Combine(programFiles, "Alacritty", "alacritty.exe")) },
-                new KnownTerminal { Name = "WezTerm", Command = "wezterm start --cwd \"{dir}\"",
-                    IsInstalled = () => RunExitOk("where", "wezterm") || File.Exists(Path.Combine(programFiles, "WezTerm", "wezterm-gui.exe")) },
+                // 감지가 "기본 설치 경로" 폴백으로 통과한 경우 PATH 기반 명령은 실행 실패한다
+                // → 파일이 있으면 절대경로 명령, 없으면(=PATH 감지) PATH 명령 (v1.0.3 수정)
+                new KnownTerminal { Name = "Alacritty",
+                    Command = File.Exists(alacritty) ? $"\"{alacritty}\" --working-directory \"{{dir}}\"" : "alacritty --working-directory \"{dir}\"",
+                    IsInstalled = () => File.Exists(alacritty) || RunExitOk("where", "alacritty") },
+                new KnownTerminal { Name = "WezTerm",
+                    Command = File.Exists(wezterm) ? $"\"{wezterm}\" start --cwd \"{{dir}}\"" : "wezterm start --cwd \"{dir}\"",
+                    IsInstalled = () => File.Exists(wezterm) || RunExitOk("where", "wezterm") },
+                // orchterm: CLI 문서 없음 — 프로세스 CWD 상속으로 프로젝트 루트에서 열리는 것에 의존
+                new KnownTerminal { Name = "orchterm", Command = $"\"{orchterm}\"",
+                    IsInstalled = () => File.Exists(orchterm) },
                 new KnownTerminal { Name = "Tabby", Command = $"\"{tabby}\" open \"{{dir}}\"", IsInstalled = () => File.Exists(tabby) },
                 // cmder는 portable 앱 — CMDER_ROOT 환경변수 또는 PATH 등록 시에만 감지 가능
                 new KnownTerminal { Name = "cmder",

@@ -175,7 +175,7 @@ Unity Addressables 안전 래퍼 — SafeHandle 기반 자동 해제, 누수 감
 
 ---
 
-### Terminal `v1.0.2`
+### Terminal `v1.0.3`
 
 Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바로 여는 런처 — `claude` 패키지 후속 (전면 재설계)
 
@@ -185,10 +185,10 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 | 데이터 주도 목록 | `{name, command}` 전부 편집 가능 (EditorPrefs, 머신별). 새 터미널은 항목 추가만 하면 됨 |
 | 플레이스홀더 | `{dir}` / `{dirUri}`(URL 인코딩), `scheme://` 시작 시 URI로 실행 |
 | 자동 감지 (주문형) | 첫 실행 시 설치된 것만 시드 + [자동 감지] 버튼(추가만 함) + 설치 여부 ✓/✗ |
-| 기본 지원 | Win: Windows Terminal / Warp / PowerShell / winghostty / Git Bash / Alacritty / WezTerm / Tabby / cmder · Mac: Terminal / iTerm2 / Warp / Ghostty / Alacritty / WezTerm / Tabby |
+| 기본 지원 | Win: Windows Terminal / Warp / PowerShell / winghostty / orchterm / Git Bash / Alacritty / WezTerm / Tabby / cmder · Mac: Terminal / iTerm2 / Warp / Ghostty / Alacritty / WezTerm / Tabby |
 
 ```json
-"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v1.0.2"
+"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v1.0.3"
 ```
 
 > 의존: `editor-toolkit >= 1.0.0`

@@ -10,7 +10,7 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 `Packages/manifest.json`의 `dependencies`에 추가:
 
 ```json
-"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v1.0.2"
+"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v1.0.3"
 ```
 
 ## 사용법
@@ -31,8 +31,9 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 | PowerShell | `powershell` |
 | winghostty (Win) | `"C:\Program Files\winghostty\winghostty.exe" --working-directory="{dir}"` |
 | Git Bash (Win) | `"C:\Program Files\Git\git-bash.exe" --cd="{dir}"` |
-| Alacritty | Win: `alacritty --working-directory "{dir}"` · Mac: 앱 내 바이너리 직접 실행 |
-| WezTerm | Win: `wezterm start --cwd "{dir}"` · Mac: 앱 내 바이너리 직접 실행 |
+| Alacritty | Win: 절대경로(설치 감지 시) 또는 `alacritty --working-directory "{dir}"` · Mac: 앱 내 바이너리 직접 실행 |
+| WezTerm | Win: 절대경로(설치 감지 시) 또는 `wezterm start --cwd "{dir}"` · Mac: 앱 내 바이너리 직접 실행 |
+| orchterm (Win) | `"%LOCALAPPDATA%\orchterm\app.exe"` (CWD 상속) |
 | Tabby | Win: `Tabby.exe open "{dir}"` · Mac: `open -a Tabby "{dir}"` |
 | cmder (Win) | `cmder /START "{dir}"` (CMDER_ROOT 있으면 절대경로) |
 | Ghostty (Mac) | `open -na Ghostty --args --working-directory="{dir}"` |

@@ -1,6 +1,6 @@
 {
   "name": "com.tjdtjq5.terminal",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "displayName": "Terminal",
   "description": "Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바로 연다. 터미널 목록은 완전 커스텀 가능 (Windows Terminal / Warp / PowerShell / Terminal.app / iTerm2 + 직접 추가)",
   "unity": "6000.1",
