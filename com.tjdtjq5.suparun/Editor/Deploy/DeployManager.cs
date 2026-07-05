@@ -374,9 +374,14 @@ namespace Tjdtjq5.SupaRun.Editor
             content = System.Text.RegularExpressions.Regex.Replace(
                 content, @"\[Json\(typeof\(.+?\)\)\]", "[Json]");
 
-            // 2) 어드민 전용 어트리뷰트 통째로 제거 (서버에서 불필요, [ \t]*로 개행 보존)
+            // 2) 어드민/클라 전용 어트리뷰트 통째로 제거 (서버에서 불필요, [ \t]*로 개행 보존)
             content = System.Text.RegularExpressions.Regex.Replace(
                 content, @"[ \t]*\[EnumType\(typeof\(.+?\)\)\]", "");
+            // [SpecDataId(typeof(...))] / [SkipIdConstants] — 클라 전용 codegen 마커라 서버 빌드 불가
+            content = System.Text.RegularExpressions.Regex.Replace(
+                content, @"[ \t]*\[SpecDataId\(typeof\(.+?\)\)\]", "");
+            content = System.Text.RegularExpressions.Regex.Replace(
+                content, @"[ \t]*\[SkipIdConstants\]", "");
             content = System.Text.RegularExpressions.Regex.Replace(
                 content, @"[ \t]*\[VisibleIf\(.+?\)\]", "");
             content = System.Text.RegularExpressions.Regex.Replace(

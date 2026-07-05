@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.0] - 2026-07-05
+
+### Added — [SpecData] PK 상수 codegen + 인스펙터 드롭다운
+
+- **`IdConstantGenerator`**(Editor/CodeGen) — 순수 `[SpecData]` 테이블 PK를 에디터 REST로 읽어 `{Name}Ids` 상수 클래스 + `SpecDataIdIndex`를 생성. 대시보드 > Deploy > "Generate Id Constants" 버튼으로 트리거. 실패해도 절대 abort하지 않음.
+- **`[SpecDataId(typeof(T))]` attribute**(Runtime/Attributes) — 문자열 PK 필드를 해당 `[SpecData]` 타입의 PK 값 검색 드롭다운으로 렌더(`SpecDataIdDrawer`). 값은 문자열(id) 그대로 저장 — 오타만 방지. PK 목록은 `SpecDataIdIndex`에서 읽고, 없으면 텍스트 필드 + 경고로 폴백.
+- **`[SkipIdConstants]` attribute**(Runtime/Attributes) — 특정 `[SpecData]` 테이블을 codegen 대상에서 제외. enum↔pk를 손으로 관리하는 브리지 테이블(예: `PlayerStatConfig` ↔ `StatType`/`StatIds`)에 부착. 클라 전용 마커 — `DeployManager.StripForServer`가 서버 빌드에서 제거.
+- **`[assembly: SupaRunIdsConfig]` attribute**(Runtime/Attributes) — 생성물 출력 경로/네임스페이스를 프로젝트가 assembly 단위로 선언. 미선언 시 기본값(`Assets/Generated/SupaRunIds`, global namespace).
+
+### Changed
+
+- **Deploy 탭** — "Generate Id Constants" 액션 추가(`DeployTab`). `DeployManager.StripForServer`가 `[SkipIdConstants]` 마커를 서버 빌드에서 스트립.
+
 ## [0.10.1] - 2026-07-05
 
 ### Added — 어드민 에셋 참조 어트리뷰트 2종

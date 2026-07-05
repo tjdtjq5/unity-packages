@@ -22,6 +22,9 @@ namespace Tjdtjq5.SupaRun.Editor
         // 캐시 UI
         bool _showCacheDropdown;
 
+        // Id 상수 생성 결과
+        IdGenResult? _idGenResult;
+
         public DeployTab(SupaRunDashboard dashboard) => _dashboard = dashboard;
 
         public void OnDraw()
@@ -30,6 +33,10 @@ namespace Tjdtjq5.SupaRun.Editor
             GUILayout.Space(8);
 
             var settings = SupaRunSettings.Instance;
+
+            // Id 상수 생성 — GitHub 설정과 무관 (Supabase만 필요)
+            DrawIdConstantsSection();
+            GUILayout.Space(8);
 
             if (!settings.IsGitHubConfigured)
             {
@@ -44,6 +51,44 @@ namespace Tjdtjq5.SupaRun.Editor
             DrawCacheSection(settings);
             GUILayout.Space(8);
             DrawDeployArea(settings);
+        }
+
+        // ── Id 상수 생성 ──
+
+        void DrawIdConstantsSection()
+        {
+            EditorUI.DrawSubLabel("Id 상수 생성");
+            EditorUI.BeginBody();
+            EditorUI.DrawDescription(
+                "[SpecData] PK 값을 DB에서 읽어 {Name}Ids 상수로 생성합니다.\n" +
+                "손 브리지 테이블([SkipIdConstants], 예: 스탯)은 제외됩니다.");
+            GUILayout.Space(4);
+
+            if (EditorUI.DrawColorButton("Generate Id Constants", SupaRunDashboard.COL_PRIMARY, 28))
+            {
+                var r = IdConstantGenerator.Generate();
+                _idGenResult = r;
+                _dashboard.ShowNotification(
+                    r.Ok ? $"Id 상수 {r.FileCount}개 파일 생성"
+                         : $"생성 {r.FileCount}개 · 에러 {r.Errors.Count}건",
+                    r.Ok ? EditorUI.NotificationType.Success : EditorUI.NotificationType.Info);
+            }
+
+            if (_idGenResult.HasValue)
+            {
+                var r = _idGenResult.Value;
+                GUILayout.Space(4);
+                if (r.FileCount > 0)
+                    EditorUI.DrawCellLabel($"  ✅ {r.FileCount}개 생성 → {r.OutputDir}", 0, EditorUI.COL_SUCCESS);
+                foreach (var g in r.Generated)
+                    EditorUI.DrawCellLabel($"    • {g}", 0, EditorUI.COL_MUTED);
+                foreach (var s in r.Skipped)
+                    EditorUI.DrawCellLabel($"  ⏭ {s}", 0, EditorUI.COL_INFO);
+                foreach (var e in r.Errors)
+                    EditorUI.DrawCellLabel($"  ● {e}", 0, EditorUI.COL_ERROR);
+            }
+
+            EditorUI.EndBody();
         }
 
         // ── Tracker 동기화 ──

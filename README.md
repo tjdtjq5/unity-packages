@@ -196,7 +196,7 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 
 ---
 
-### SupaRun `v0.10.0`
+### SupaRun `v0.11.0`
 
 Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. Supabase + Cloud Run 자동 배포.
 
@@ -216,7 +216,7 @@ Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. 
 | MPPM | Multiplayer Play Mode Virtual Player 자동 분리 (인스턴스별 게스트 계정) |
 
 ```json
-"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.10.1"
+"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.11.0"
 ```
 
 > 의존: `editor-toolkit >= 1.1.0`
