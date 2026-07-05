@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.10.1] - 2026-07-05
+
+### Added — 어드민 에셋 참조 어트리뷰트 2종
+
+- **`[Icon("atlas")]` attribute**(Runtime/Attributes) — 문자열 필드를 아틀라스 sprite 그리드 피커(썸네일)로 렌더. `IconAtlas.Of<T>(nameof(T.field))` 리플렉션 헬퍼로 뷰 코드와 아틀라스 키를 단일화. 어드민 `/_icons` 엔드포인트(ServerCodeGenerator가 아틀라스 sprite 추출).
+- **`[Component(typeof(T))]` attribute**(Runtime/Attributes) — 문자열 필드를 "컴포넌트 T를 가진 어드레서블 프리팹" 검색 드롭다운으로 렌더. 어드민 `/_components` 엔드포인트(`#if SUPARUN_ADDRESSABLES`로 Addressables 스캔). Editor asmdef에 `Unity.Addressables.Editor` 참조 + `SUPARUN_ADDRESSABLES` versionDefine.
+
+### Changed
+
+- `DeployManager.StripForServer` — 서버 복사 소스에서 `[Icon]`/`[Component]` 스트립(서버 컴파일용).
+- `ServerCodeGenerator` — 필드 메타에 `iconAtlas`/`componentType` emit + `_iconsJson`/`_componentsJson` 상수 및 `/_icons` `/_components` 엔드포인트.
+- 어드민 템플릿(index.html): FK 검색 드롭다운 공통 헬퍼(`renderSearchSelect`), 키보드 맵핑(WASD/화살표 스크롤 · `[`/`]` config 전환 · `/` 검색 · `?` 치트시트), 아이콘 그리드 모달, 새로고침 시 탭/시트 복원(URL 해시).
+
+### Fixed
+
+- 어드민 검색 드롭다운(FK/Component)이 **내부 스크롤(휠/스크롤바 드래그) 시 닫히던 문제** — capturing `scroll` 리스너가 팝업 내부 스크롤을 무시하도록 + 팝업 내부 mousedown을 `preventDefault`(input blur → focusout 닫힘 차단).
+
 ## [0.10.0] - 2026-07-05
 
 ### Changed (Breaking) — 핵심 어트리뷰트 리네임 `[Config]`→`[SpecData]`, `[Table]`→`[UserData]`

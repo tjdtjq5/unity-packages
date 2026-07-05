@@ -297,6 +297,90 @@ code, kbd, pre, samp, .text-mono, .font-mono { font-family: var(--mono); font-si
 }
 .dropdown-toggle::after { opacity: 0.6; }
 
+/* ── 검색 드롭다운 (FK) ── */
+.ss-wrap { position: relative; display: block; }
+.ss-display { cursor: pointer; }
+.ss-display::placeholder { color: var(--very-dim); }
+.ss-pop {
+  position: fixed;
+  z-index: 1080;
+  background: var(--bg-1);
+  border: 1px solid var(--green-2);
+  box-shadow: 0 0 0 1px var(--green-soft), 0 12px 32px rgba(0,0,0,0.7);
+  font-family: var(--mono); font-size: 11px;
+  max-height: 240px; overflow-y: auto;
+  padding: 0;
+}
+.ss-opt {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg);
+}
+.ss-opt:last-child { border-bottom: 0; }
+.ss-opt.ss-active, .ss-opt:hover { background: var(--green); color: var(--bg); }
+.ss-opt.ss-active .ss-id, .ss-opt:hover .ss-id { color: var(--bg); opacity: 0.7; }
+.ss-opt-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.ss-id { color: var(--dim); font-size: 10px; }
+.ss-clear { color: var(--amber); }
+.ss-empty { padding: 6px 10px; color: var(--very-dim); font-style: italic; }
+
+/* ── 아이콘 셀 (그리드 모달 트리거) ── */
+.icon-cell { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 4px; max-width: 100%; }
+.icon-cell:hover { background: var(--green-soft); }
+.icon-cell-thumb { width: 24px; height: 24px; object-fit: contain; image-rendering: pixelated; flex: 0 0 auto; }
+.icon-cell-noimg { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; color: var(--very-dim); flex: 0 0 auto; }
+.icon-cell-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 아이콘 그리드 모달 ── */
+.icon-grid-overlay { position: fixed; inset: 0; z-index: 1090; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }
+.icon-grid-panel {
+  background: var(--bg-1); border: 1px solid var(--green-2);
+  box-shadow: 0 0 0 1px var(--green-soft), 0 16px 48px rgba(0,0,0,0.8);
+  width: min(640px, calc(100vw - 40px)); max-height: 70vh;
+  display: flex; flex-direction: column; font-family: var(--mono);
+}
+.icon-grid-head { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); }
+.icon-grid-search { flex: 1; }
+.icon-grid-close { background: transparent; border: 1px solid var(--line); color: var(--fg); width: 32px; cursor: pointer; font-size: 16px; }
+.icon-grid-close:hover { border-color: var(--green); color: var(--green); }
+.icon-grid-body { padding: 12px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.icon-grid-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; cursor: pointer; border: 1px solid transparent; }
+.icon-grid-cell:hover { border-color: var(--green-2); background: var(--green-soft); }
+.icon-grid-cell.sel { border-color: var(--green); background: var(--green-soft); }
+.icon-grid-cell img { width: 48px; height: 48px; object-fit: contain; image-rendering: pixelated; }
+.icon-grid-x { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; color: var(--amber); font-size: 20px; }
+.icon-grid-label { font-size: 10px; color: var(--fg); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.icon-grid-empty { padding: 24px; text-align: center; color: var(--very-dim); grid-column: 1 / -1; }
+
+/* ── 단축키 치트시트 ── */
+.keymap-overlay {
+  position: fixed; inset: 0; z-index: 1090;
+  background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+}
+.keymap-panel {
+  background: var(--bg-1);
+  border: 1px solid var(--green-2);
+  box-shadow: 0 0 0 1px var(--green-soft), 0 16px 48px rgba(0,0,0,0.8);
+  padding: 20px 24px; min-width: 380px;
+  font-family: var(--mono); font-size: 12px;
+}
+.keymap-title {
+  color: var(--green); font-weight: 700; letter-spacing: 0.12em;
+  font-size: 11px; margin-bottom: 14px; text-transform: uppercase;
+}
+.keymap-row { display: flex; align-items: center; gap: 16px; padding: 4px 0; }
+.keymap-row kbd {
+  flex: 0 0 210px; text-align: right;
+  color: var(--amber); background: transparent; border: 0; box-shadow: none;
+  font-family: var(--mono); font-size: 11px; padding: 0;
+}
+.keymap-row span { color: var(--fg); }
+.keymap-hint { margin-top: 14px; color: var(--very-dim); font-size: 10px; text-align: center; }
+
 /* ── 페이지 헤더 ── */
 .page-wrapper, .page, .container, .container-xl, .container-fluid { background: transparent; }
 .page-wrapper { padding: 0; }
@@ -1627,6 +1711,78 @@ document.addEventListener('keydown', async e => {
   }
 });
 
+// ── 시트 키 맵핑 (스크롤/이동 편의) ──
+// 입력창 포커스 or 모달 열림 시 전부 스킵 → 편집 무간섭 (Ctrl+Z 가드와 동일 정책).
+const KEYMAP_STEP = 60;   // 키 1회당 스크롤 px
+function keymapBlocked(e) {
+  if (document.querySelector('.modal.show')) return true;   // 모달 열림 → 스킵
+  const t = e.target;
+  return !!(t && t.matches && t.matches('input,textarea,select,[contenteditable]'));
+}
+function cycleConfig(dir) {
+  const items = [...document.querySelectorAll('.tree-item[data-type]')];
+  if (!items.length) return;
+  let idx = items.findIndex(a => a.dataset.type === (currentType && currentType.tableName));
+  if (idx < 0) idx = dir > 0 ? -1 : 0;   // 미선택 시 첫/끝으로
+  const next = items[(idx + dir + items.length) % items.length];
+  if (next) selectType(next.dataset.type);
+}
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;   // 조합키(Ctrl+Z 등)는 별도 핸들러 담당
+  if (e.key === '?' && !keymapBlocked(e)) { e.preventDefault(); toggleKeymapHelp(); return; }
+  if (keymapBlocked(e)) return;
+  const c = document.getElementById('table-container');
+  if (!c) return;
+  const step = KEYMAP_STEP * (e.shiftKey ? 3 : 1);
+  switch (e.key) {
+    case 'a': case 'A': case 'ArrowLeft':  c.scrollBy(-step, 0); break;
+    case 'd': case 'D': case 'ArrowRight': c.scrollBy(step, 0);  break;
+    case 'w': case 'W': case 'ArrowUp':    c.scrollBy(0, -step); break;
+    case 's': case 'S': case 'ArrowDown':  c.scrollBy(0, step);  break;
+    case 'Home': c.scrollTo({ left: c.scrollLeft, top: 0 }); break;
+    case 'End':  c.scrollTo({ left: c.scrollLeft, top: c.scrollHeight }); break;
+    case 'PageUp':   c.scrollBy(0, -c.clientHeight * 0.9); break;
+    case 'PageDown': c.scrollBy(0,  c.clientHeight * 0.9); break;
+    case '[': cycleConfig(-1); break;
+    case ']': cycleConfig(1);  break;
+    case '/': {
+      const s = document.getElementById('search-input');
+      if (s && s.offsetParent !== null) { s.focus(); s.select(); } else return;
+      break;
+    }
+    default: return;
+  }
+  e.preventDefault();
+});
+
+// 단축키 치트시트 오버레이 (동적 생성/제거)
+const KEYMAP_HELP = [
+  ['A / D  ·  ← / →', '가로 스크롤'],
+  ['W / S  ·  ↑ / ↓', '세로 스크롤'],
+  ['Shift + 스크롤키', '3배 가속'],
+  ['Home / End', '맨 위 / 맨 아래'],
+  ['PgUp / PgDn', '한 화면씩'],
+  ['[  /  ]', '이전 / 다음 Config'],
+  ['/', '검색창 포커스'],
+  ['Ctrl + Z', '되돌리기'],
+  ['?', '이 도움말 (Esc로 닫기)'],
+];
+function toggleKeymapHelp() {
+  const exist = document.getElementById('keymap-help');
+  if (exist) { exist.remove(); return; }
+  const ov = document.createElement('div');
+  ov.id = 'keymap-help';
+  ov.className = 'keymap-overlay';
+  ov.onclick = ev => { if (ev.target === ov) ov.remove(); };
+  ov.innerHTML = '<div class="keymap-panel"><div class="keymap-title">KEYBOARD SHORTCUTS</div>'
+    + KEYMAP_HELP.map(([k, d]) => `<div class="keymap-row"><kbd>${escHtml(k)}</kbd><span>${escHtml(d)}</span></div>`).join('')
+    + '<div class="keymap-hint">Esc 또는 바깥 클릭으로 닫기</div></div>';
+  document.body.appendChild(ov);
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { const h = document.getElementById('keymap-help'); if (h) { e.preventDefault(); h.remove(); } }
+});
+
 // ── API ──
 async function api(path, method = 'GET', body = null) {
   if (window.__SUPARUN_PREVIEW__) return window.__previewApi(path, method, body);
@@ -1671,6 +1827,20 @@ async function adminApi(path, method = 'GET', body = null) {
 }
 
 // ── 초기화 ──
+// ── 선택 뷰를 URL 해시에 기록/복원 (세로고침 시 원래 탭 복원) ──
+function setViewHash(key) { try { history.replaceState(null, '', '#' + key); } catch {} }
+function restoreFromHash() {
+  const h = decodeURIComponent((location.hash || '').replace(/^#/, ''));
+  if (h.startsWith('config/')) {
+    const tn = h.slice(7);
+    if (types.some(t => t.tableName === tn)) selectType(tn);   // 존재할 때만 (삭제/리네임 방어)
+  } else if (h === 'player_search') showPlayerSearch();
+  else if (h === 'cross_search') showCrossSearch();
+  else if (h === 'admins') showAdmins();
+  else if (h === 'audit_log') showAuditLog();
+  // 그 외/빈 값 → 홈 유지
+}
+
 async function showAdmin() {
   // 로그인→어드민 fade 전환
   document.getElementById('login-page').style.transition = 'opacity .2s';
@@ -1697,7 +1867,8 @@ async function showAdmin() {
       '<p>Unity에서 Feature를 설치하고 Deploy하면 여기에 나타납니다.</p>' +
       '</div>';
   }
-  loadRewardSources();
+  await loadRewardSources();   // FK 소스 준비 후 복원 (복원된 config의 FK 드롭다운 옵션 보장)
+  restoreFromHash();
 }
 
 async function loadRewardSources() {
@@ -1813,6 +1984,7 @@ function showToolbar() {
 async function selectType(tableName) {
   currentType = types.find(t => t.tableName === tableName);
   if (!currentType) return;
+  setViewHash('config/' + tableName);
   document.querySelectorAll('.sidebar-link, .tree-item').forEach(el => el.classList.remove('active'));
   document.querySelector(`[data-type="${tableName}"]`)?.classList.add('active');
   document.getElementById('page-title').textContent = currentType.name;
@@ -1933,6 +2105,249 @@ function isFieldDisabled(row, field) {
   return false;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 검색 가능한 FK 드롭다운 — 옛 <select> FK 패턴의 드롭인 대체.
+//   값 캐리어 = hidden input(옛 select와 같은 id·value·onchange). 그 옆에 보이는 검색창,
+//   팝업은 열릴 때만 body에 position:fixed로 생성(overflow 클리핑 회피).
+//   → collectJsonEditorRows / onFieldChange / onJsonFieldChange 무변경.
+// ═══════════════════════════════════════════════════════════════
+const ssOptions = {};   // carrierId -> [{id,name}]  (UI 레지스트리, 재렌더 시 같은 키로 덮어씀)
+let ssOpen = null;      // 열린 팝업 상태(한 번에 하나)
+
+function ssDisplayText(options, value) {
+  if (!value) return '';
+  const hit = (options || []).find(o => String(o.id) === String(value));
+  return hit ? (hit.name || hit.id) : value;   // 옵션 밖 값도 그대로 표시(보존)
+}
+
+// 옵션에 thumb(dataURI)가 있으면 아이콘 썸네일 모드로 렌더 (FK는 thumb 없음 → 기존 동작 동일).
+function renderSearchSelect({ carrierId, options, value, onChange }) {
+  ssOptions[carrierId] = options || [];
+  const v = value == null ? '' : String(value);
+  const disp = ssDisplayText(options, v);
+  return `<span class="ss-wrap">`
+    + `<input type="hidden" id="${escHtml(carrierId)}" value="${escHtml(v)}" onchange="${onChange}">`
+    + `<input class="form-select form-select-sm ss-display" data-ss="${escHtml(carrierId)}" `
+    +   `value="${escHtml(disp)}" placeholder="(없음)" autocomplete="off">`
+    + `</span>`;
+}
+
+// ── [Icon] 아틀라스 썸네일 맵 (1회 lazy fetch + 캐시) ──
+let iconMap = null;         // { atlasKey: [{name, thumb}] }
+let iconMapLoading = false;
+async function ensureIconsLoaded() {
+  if (iconMap !== null || iconMapLoading) return;
+  iconMapLoading = true;
+  try { iconMap = await api('/_icons'); } catch { iconMap = {}; }
+  iconMapLoading = false;
+  if (currentType) renderTable(document.getElementById('search-input')?.value || '');  // 썸네일 반영 위해 재렌더
+  if (iconGridState) { const s = document.querySelector('.icon-grid-search'); renderIconGrid(s ? s.value : ''); }  // 열린 그리드 갱신
+}
+
+// ── [Component] 컴포넌트별 어드레서블 주소 맵 (1회 lazy fetch + 캐시) ──
+let componentMap = null;    // { "<FullName>": ["addr", ...] }
+let componentMapLoading = false;
+async function ensureComponentsLoaded() {
+  if (componentMap !== null || componentMapLoading) return;
+  componentMapLoading = true;
+  try { componentMap = await api('/_components'); } catch { componentMap = {}; }
+  componentMapLoading = false;
+  if (currentType) renderTable(document.getElementById('search-input')?.value || '');  // 주소 목록 반영 위해 재렌더
+}
+
+// ── 아이콘 셀 (그리드 모달 트리거) — 값 캐리어(hidden)는 FK와 동일 계약 → 저장/수거 무변경 ──
+function renderIconCell({ carrierId, atlas, value, onChange }) {
+  const v = value == null ? '' : String(value);
+  return `<span class="icon-cell" onclick="openIconGrid('${escHtml(carrierId)}','${escHtml(atlas)}')">`
+    + `<input type="hidden" id="${escHtml(carrierId)}" value="${escHtml(v)}" onchange="${onChange}">`
+    + iconCellInner(atlas, v)
+    + `</span>`;
+}
+function iconCellInner(atlas, v) {
+  const icons = (iconMap && iconMap[atlas]) || [];
+  const hit = icons.find(s => s.name === v);
+  const img = hit ? `<img class="icon-cell-thumb" src="${hit.thumb}" alt="">` : `<span class="icon-cell-noimg">▦</span>`;
+  return img + `<span class="icon-cell-name">${escHtml(v || '(없음)')}</span>`;
+}
+
+// ── 아이콘 그리드 모달 (커스텀 오버레이) ──
+let iconGridState = null;   // { carrierId, atlas }
+function openIconGrid(carrierId, atlas) {
+  ensureIconsLoaded();
+  iconGridState = { carrierId, atlas };
+  const ov = document.createElement('div');
+  ov.id = 'icon-grid-overlay';
+  ov.className = 'icon-grid-overlay';
+  ov.onclick = e => { if (e.target === ov) closeIconGrid(); };
+  ov.innerHTML = '<div class="icon-grid-panel">'
+    + '<div class="icon-grid-head"><input class="form-control form-control-sm icon-grid-search" placeholder="아이콘 검색..." autocomplete="off"><button class="icon-grid-close" title="닫기 (Esc)">×</button></div>'
+    + '<div class="icon-grid-body" id="icon-grid-body"></div></div>';
+  document.body.appendChild(ov);
+  ov.querySelector('.icon-grid-close').onclick = closeIconGrid;
+  const search = ov.querySelector('.icon-grid-search');
+  search.addEventListener('input', () => renderIconGrid(search.value));
+  renderIconGrid('');
+  search.focus();
+}
+function renderIconGrid(q) {
+  if (!iconGridState) return;
+  const body = document.getElementById('icon-grid-body');
+  if (!body) return;
+  const { carrierId, atlas } = iconGridState;
+  const carrier = document.getElementById(carrierId);
+  const curVal = carrier ? carrier.value : '';
+  const query = (q || '').trim().toLowerCase();
+  const match = s => !query || String(s ?? '').toLowerCase().includes(query);
+  const icons = (iconMap && iconMap[atlas]) || [];
+
+  let html = '';
+  if (!query) html += `<div class="icon-grid-cell icon-grid-clear${curVal ? '' : ' sel'}" data-name=""><span class="icon-grid-x">∅</span><span class="icon-grid-label">(없음)</span></div>`;
+  if (curVal && !icons.some(s => s.name === curVal) && match(curVal))
+    html += `<div class="icon-grid-cell sel" data-name="${escHtml(curVal)}"><span class="icon-grid-x">?</span><span class="icon-grid-label">${escHtml(curVal)} (미참조)</span></div>`;
+  for (const s of icons) {
+    if (!match(s.name)) continue;
+    html += `<div class="icon-grid-cell${s.name === curVal ? ' sel' : ''}" data-name="${escHtml(s.name)}"><img src="${s.thumb}" alt=""><span class="icon-grid-label">${escHtml(s.name)}</span></div>`;
+  }
+  body.innerHTML = html || `<div class="icon-grid-empty">${iconMap ? '결과 없음' : '로딩 중…'}</div>`;
+  body.querySelectorAll('.icon-grid-cell').forEach(cell => { cell.onclick = () => commitIconGrid(cell.dataset.name); });
+}
+function commitIconGrid(name) {
+  if (!iconGridState) return;
+  const { carrierId, atlas } = iconGridState;
+  const carrier = document.getElementById(carrierId);
+  const cell = carrier ? carrier.closest('.icon-cell') : null;
+  if (carrier) carrier.value = name;
+  if (cell) {  // 표시 먼저 갱신 (재렌더 안 되는 컬럼 대비). hidden 캐리어는 유지.
+    [...cell.children].forEach(c => { if (c.tagName !== 'INPUT') c.remove(); });
+    cell.insertAdjacentHTML('beforeend', iconCellInner(atlas, name));
+  }
+  if (carrier) carrier.dispatchEvent(new Event('change', { bubbles: true }));  // 저장 발화 (기존 onchange)
+  closeIconGrid();
+}
+function closeIconGrid() {
+  const ov = document.getElementById('icon-grid-overlay');
+  if (ov) ov.remove();
+  iconGridState = null;
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && iconGridState) { e.preventDefault(); closeIconGrid(); } });
+
+function ssOpenPopup(input) {
+  ssClosePopup(true);   // 다른 팝업 열려 있으면 되돌리고 닫기
+  const carrierId = input.dataset.ss;
+  const pop = document.createElement('div');
+  pop.className = 'ss-pop';
+  document.body.appendChild(pop);
+  ssOpen = { carrierId, input, carrier: document.getElementById(carrierId),
+             options: ssOptions[carrierId] || [], pop, entries: [], active: 0 };
+  input.value = '';     // 검색 시작 — 비우고 전체 노출
+  ssFilter('');
+}
+
+function ssFilter(q) {
+  if (!ssOpen) return;
+  const query = q.trim().toLowerCase();
+  const curVal = ssOpen.carrier ? ssOpen.carrier.value : '';
+  const match = s => !query || String(s ?? '').toLowerCase().includes(query);
+  const entries = [{ kind: 'clear', id: '', label: '(없음)' }];
+  if (curVal && !ssOpen.options.some(o => String(o.id) === String(curVal)) && match(curVal)) {
+    entries.push({ kind: 'preserve', id: curVal, label: curVal });   // 옵션 밖 현재값 보존
+  }
+  for (const o of ssOpen.options) {
+    if (match(o.name) || match(o.id)) entries.push({ kind: 'opt', id: o.id, name: o.name, label: o.name || o.id });
+  }
+  ssOpen.entries = entries;
+  let act = entries.findIndex(e => e.kind !== 'clear' && String(e.id) === String(curVal));
+  ssOpen.active = act >= 0 ? act : (entries.length > 1 ? 1 : 0);
+  ssRenderEntries();
+}
+
+function ssRenderEntries() {
+  if (!ssOpen) return;
+  const { entries, active } = ssOpen;
+  ssOpen.pop.innerHTML = entries.map((e, i) => {
+    const cls = 'ss-opt' + (i === active ? ' ss-active' : '') + (e.kind === 'clear' ? ' ss-clear' : '');
+    const tag = (e.kind === 'opt' && e.name && e.name !== e.id) ? `<span class="ss-id">${escHtml(e.id)}</span>`
+              : (e.kind === 'preserve') ? `<span class="ss-id">(미참조)</span>` : '';
+    return `<div class="${cls}" data-idx="${i}"><span class="ss-opt-name">${escHtml(e.label)}</span>${tag}</div>`;
+  }).join('') || `<div class="ss-empty">결과 없음</div>`;
+  ssPosition();
+}
+
+function ssPosition() {
+  if (!ssOpen) return;
+  const r = ssOpen.input.getBoundingClientRect();
+  const pop = ssOpen.pop;
+  pop.style.left = r.left + 'px';
+  pop.style.minWidth = r.width + 'px';
+  pop.style.top = (r.bottom + 2) + 'px';
+  const ph = pop.offsetHeight;
+  if (r.bottom + 2 + ph > window.innerHeight && r.top - 2 - ph > 0) pop.style.top = (r.top - 2 - ph) + 'px';
+}
+
+function ssMove(d) {
+  if (!ssOpen || !ssOpen.entries.length) return;
+  const n = ssOpen.entries.length;
+  ssOpen.active = (ssOpen.active + d + n) % n;
+  ssRenderEntries();
+  const el = ssOpen.pop.querySelector('.ss-active');
+  if (el) el.scrollIntoView({ block: 'nearest' });
+}
+
+function ssCommit(idx) {
+  if (!ssOpen) return;
+  const { input, carrier, entries } = ssOpen;
+  const e = entries[idx];
+  ssClosePopup(false);
+  if (!e) return;
+  const newVal = e.kind === 'clear' ? '' : String(e.id);
+  if (carrier) { carrier.value = newVal; carrier.dispatchEvent(new Event('change', { bubbles: true })); }  // 옛 onchange 발화
+  input.value = ssDisplayText(ssOptions[input.dataset.ss] || [], newVal);
+  input.blur();
+}
+
+function ssClosePopup(revert) {
+  if (!ssOpen) return;
+  const { input, carrier, pop } = ssOpen;
+  if (pop && pop.parentNode) pop.parentNode.removeChild(pop);
+  if (revert && input) input.value = ssDisplayText(ssOptions[input.dataset.ss] || [], carrier ? carrier.value : '');
+  ssOpen = null;
+}
+
+// ── 컨트롤러: document 위임 리스너 1회 등록 ──
+document.addEventListener('focusin', e => {
+  const t = e.target;
+  if (t.classList && t.classList.contains('ss-display')) ssOpenPopup(t);
+});
+document.addEventListener('input', e => { if (ssOpen && e.target === ssOpen.input) ssFilter(e.target.value); });
+document.addEventListener('keydown', e => {
+  if (!ssOpen || e.target !== ssOpen.input) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); ssMove(1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); ssMove(-1); }
+  else if (e.key === 'Enter') { e.preventDefault(); ssCommit(ssOpen.active); }
+  else if (e.key === 'Escape') { e.preventDefault(); const inp = ssOpen.input; ssClosePopup(true); inp.blur(); }
+});
+document.addEventListener('mousedown', e => {
+  if (!ssOpen) return;
+  // 팝업 내부(옵션/스크롤바/빈영역) mousedown → preventDefault로 input blur 방지 (스크롤바 드래그 시 focusout 닫힘 차단).
+  if (ssOpen.pop.contains(e.target)) {
+    e.preventDefault();
+    const opt = e.target.closest ? e.target.closest('.ss-opt') : null;
+    if (opt) ssCommit(parseInt(opt.dataset.idx));
+    return;
+  }
+  if (e.target !== ssOpen.input) ssClosePopup(true);
+});
+document.addEventListener('focusout', e => {
+  if (ssOpen && e.target === ssOpen.input) { const cap = ssOpen; setTimeout(() => { if (ssOpen === cap) ssClosePopup(true); }, 120); }
+});
+// 팝업 내부 스크롤(휠/스크롤바)은 무시 — 바깥(페이지/테이블) 스크롤만 닫아 위치 어긋남 방지.
+window.addEventListener('scroll', e => {
+  if (!ssOpen) return;
+  if (ssOpen.pop && ssOpen.pop.contains(e.target)) return;
+  ssClosePopup(true);
+}, true);
+window.addEventListener('resize', () => { if (ssOpen) ssClosePopup(true); });
+
 function renderCell(row, field) {
   if (isFieldDisabled(row, field)) return '<span class="cell-na">—</span>';
   const val = row[field.name];
@@ -1943,10 +2358,31 @@ function renderCell(row, field) {
       onchange="toggleBool('${sid}','${sfn}',this.checked)"></label>`;
   }
   if (field.foreignKey && fkSources[field.foreignKey]) {
-    const src = fkSources[field.foreignKey];
-    let opts = src.map(s => `<option value="${escHtml(s.id)}" ${s.id===val?'selected':''}>${escHtml(s.name||s.id)}</option>`).join('');
-    if (!val || !src.find(s => s.id === val)) opts = `<option value="${escHtml(val||'')}" selected>${escHtml(val||'(없음)')}</option>` + opts;
-    return `<select class="form-select form-select-sm" onchange="onFieldChange('${sid}','${sfn}',this.value)">${opts}</select>`;
+    return renderSearchSelect({
+      carrierId: `fk_${row.id}_${field.name}`,
+      options: fkSources[field.foreignKey],
+      value: val,
+      onChange: `onFieldChange('${sid}','${sfn}',this.value)`,
+    });
+  }
+  if (field.iconAtlas) {
+    ensureIconsLoaded();   // 최초 1회 _icons lazy fetch → 완료 시 재렌더(썸네일 반영)
+    return renderIconCell({
+      carrierId: `icon_${row.id}_${field.name}`,
+      atlas: field.iconAtlas,
+      value: val,
+      onChange: `onFieldChange('${sid}','${sfn}',this.value)`,
+    });
+  }
+  if (field.componentType) {
+    ensureComponentsLoaded();   // 최초 1회 _components lazy fetch → 완료 시 재렌더
+    const addrs = (componentMap && componentMap[field.componentType]) || [];
+    return renderSearchSelect({
+      carrierId: `comp_${row.id}_${field.name}`,
+      options: addrs.map(a => ({ id: a, name: a })),   // 값=어드레서블 주소 (썸네일 없음)
+      value: val,
+      onChange: `onFieldChange('${sid}','${sfn}',this.value)`,
+    });
   }
   if (field.isEnum && field.enumValues) {
     let opts = field.enumValues.map(v => `<option value="${escHtml(v)}" ${v===val?'selected':''}>${escHtml(v)}</option>`).join('');
@@ -2158,7 +2594,7 @@ function mapJsonSchema(arr) {
     type: s.type === 'number' ? 'float' : s.type,
     isEnum: s.isEnum, enumValues: s.enumValues,
     isJson: s.isJson, jsonSchema: s.jsonSchema,
-    foreignKey: s.foreignKey,
+    foreignKey: s.foreignKey, iconAtlas: s.iconAtlas, componentType: s.componentType,
     visibleIf: s.visibleIf, hiddenIf: s.hiddenIf
   }));
 }
@@ -2309,11 +2745,17 @@ function renderJsonEditorRows(items) {
         return;
       }
       if (s.foreignKey && fkSources[s.foreignKey]) {
-        // 평면 셀(renderCell)의 FK dropdown 패턴 그대로 복제 — id + name 표시, 옵션 외 값은 보존 옵션으로 추가.
-        const src = fkSources[s.foreignKey];
-        let opts = src.map(o => `<option value="${escHtml(o.id)}" ${o.id===val?'selected':''}>${escHtml(o.name||o.id)}</option>`).join('');
-        if (!val || !src.find(o => o.id === val)) opts = `<option value="${escHtml(val||'')}" selected>${escHtml(val||'(없음)')}</option>` + opts;
-        html += `<td><select class="form-select form-select-sm" id="${eid}" onchange="onJsonFieldChange()">${opts}</select></td>`;
+        // 평면 셀과 동일한 검색 FK 드롭다운. carrierId=eid → collectJsonEditorRows가 hidden input .value(=id)를 그대로 수거.
+        html += `<td>${renderSearchSelect({ carrierId: eid, options: fkSources[s.foreignKey], value: val, onChange: 'onJsonFieldChange()' })}</td>`;
+      } else if (s.iconAtlas) {
+        // 평면 셀과 동일한 아이콘 그리드 셀. carrierId=eid → collectJsonEditorRows가 hidden .value(=sprite명) 수거.
+        ensureIconsLoaded();
+        html += `<td>${renderIconCell({ carrierId: eid, atlas: s.iconAtlas, value: val, onChange: 'onJsonFieldChange()' })}</td>`;
+      } else if (s.componentType) {
+        // 평면 셀과 동일한 어드레서블 주소 검색 드롭다운.
+        ensureComponentsLoaded();
+        const addrs = (componentMap && componentMap[s.componentType]) || [];
+        html += `<td>${renderSearchSelect({ carrierId: eid, options: addrs.map(a => ({ id: a, name: a })), value: val, onChange: 'onJsonFieldChange()' })}</td>`;
       } else if (s.isEnum && s.enumValues) {
         const sv = val || s.enumValues[0] || '';
         let opts = s.enumValues.map(v => `<option value="${escHtml(v)}" ${v===sv?'selected':''}>${escHtml(v)}</option>`).join('');
@@ -2494,6 +2936,7 @@ async function importData(input) {
 
 // ── 관리자 목록 ──
 async function showAdmins() {
+  setViewHash('admins');
   currentType = null;
   document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
   document.getElementById('page-title').textContent = '관리자 목록'; hideSupabaseLink();
@@ -2564,6 +3007,7 @@ function showAuditJson(idx, field) {
   catch { const w = window.open('', '_blank', 'width=600,height=400'); w.document.title = field; w.document.body.textContent = json; }
 }
 async function showAuditLog() {
+  setViewHash('audit_log');
   currentType = null;
   document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
   document.getElementById('page-title').textContent = '변경 이력'; hideSupabaseLink();
@@ -2787,6 +3231,7 @@ function renderDistChart(buckets, field) {
 // ── 크로스 검색 ──
 let crossConditions = [];
 function showCrossSearch() {
+  setViewHash('cross_search');
   isTableMode = true;
   currentType = null;
   currentTableType = null;
@@ -2905,6 +3350,7 @@ let playerData = null;
 let playerUserId = null;
 
 function showPlayerSearch() {
+  setViewHash('player_search');
   isTableMode = true;
   currentType = null;
   currentTableType = null;

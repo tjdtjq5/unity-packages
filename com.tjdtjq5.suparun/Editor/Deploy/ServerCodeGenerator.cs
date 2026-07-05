@@ -1165,6 +1165,16 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             sb.AppendLine($"    static readonly string _typesJson = @\"{metaJson}\";");
             sb.AppendLine("");
 
+            // [Icon] 아틀라스 sprite 썸네일 맵 (아틀라스별 dedup, base64). 어드민이 1회 fetch + 캐시.
+            var iconsJson = BuildIconsJson(configTypes).Replace("\"", "\"\"");
+            sb.AppendLine($"    static readonly string _iconsJson = @\"{iconsJson}\";");
+            sb.AppendLine("");
+
+            // [Component] 컴포넌트별 어드레서블 주소 맵. 어드민이 1회 fetch + 캐시.
+            var componentsJson = BuildComponentsJson(configTypes).Replace("\"", "\"\"");
+            sb.AppendLine($"    static readonly string _componentsJson = @\"{componentsJson}\";");
+            sb.AppendLine("");
+
             // DB operation delegates (Reflection 제거 — 타입별 직접 호출)
             sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, Task<object>>> _getAll = new()");
             sb.AppendLine("    {");
@@ -1257,6 +1267,16 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             // ── GET _types ──
             sb.AppendLine("    [HttpGet(\"_types\")]");
             sb.AppendLine("    public IActionResult GetTypes() => Content(_typesJson, \"application/json\");");
+            sb.AppendLine("");
+
+            // ── GET _icons (아틀라스별 sprite 썸네일 맵) ──
+            sb.AppendLine("    [HttpGet(\"_icons\")]");
+            sb.AppendLine("    public IActionResult GetIcons() => Content(_iconsJson, \"application/json\");");
+            sb.AppendLine("");
+
+            // ── GET _components (컴포넌트별 어드레서블 주소 맵) ──
+            sb.AppendLine("    [HttpGet(\"_components\")]");
+            sb.AppendLine("    public IActionResult GetComponents() => Content(_componentsJson, \"application/json\");");
             sb.AppendLine("");
 
             // ── GET _audit ──
@@ -1669,6 +1689,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
             if (fk != null)
                 parts.Add($"\"foreignKey\":\"{fk.ReferenceType.Name}\"");
 
+            // Icon → SpriteAtlas sprite 이름 드롭다운 (썸네일). 값은 여전히 string.
+            var iconAttr = member.GetCustomAttribute<IconAttribute>();
+            if (iconAttr != null)
+                parts.Add($"\"iconAtlas\":\"{iconAttr.AtlasKey}\"");
+
+            // Component → 루트에 T를 가진 어드레서블 주소 검색 드롭다운. 값은 어드레서블 주소 string.
+            var compAttr = member.GetCustomAttribute<ComponentAttribute>();
+            if (compAttr?.ComponentType != null)
+                parts.Add($"\"componentType\":\"{EscapeJson(compAttr.ComponentType.FullName)}\"");
+
             // VisibleIf / HiddenIf
             var visibleIf = member.GetCustomAttribute<VisibleIfAttribute>();
             if (visibleIf != null)
@@ -1742,6 +1772,151 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
             }
             return "[" + string.Join(",", items) + "]";
         }
+
+        // ── [Icon] 아틀라스 sprite 썸네일 추출 (에디터 codegen 시) ──
+        // 결과 형태: {"Common/FieldOrb":[{"name":"Baton","thumb":"data:image/png;base64,..."}], ...}
+        // 브라우저는 Unity SpriteAtlas를 못 읽으므로 여기서 base64로 구워 어드민에 넘긴다.
+        // 2D sprite 에디터 API 의존을 피하려 .spriteatlasv2를 텍스트 파싱해 packable 폴더를 찾고
+        // AssetDatabase만으로 sprite를 열거한다. 실패 시 해당 아틀라스는 조용히 생략(어드민 텍스트 fallback).
+        static string BuildIconsJson(Type[] configTypes)
+        {
+            var atlasKeys = new HashSet<string>();
+            foreach (var t in configTypes)
+                foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    var icon = f.GetCustomAttribute<IconAttribute>();
+                    if (icon != null && !string.IsNullOrEmpty(icon.AtlasKey))
+                        atlasKeys.Add(icon.AtlasKey);
+                }
+            if (atlasKeys.Count == 0) return "{}";
+
+            var entries = new List<string>();
+            foreach (var key in atlasKeys)
+            {
+                var sprites = ExtractAtlasSprites(key);
+                if (sprites.Count == 0) continue;
+                var items = sprites.Select(s =>
+                    $"{{\"name\":\"{EscapeJson(s.name)}\",\"thumb\":\"data:image/png;base64,{s.base64}\"}}");
+                entries.Add($"\"{EscapeJson(key)}\":[{string.Join(",", items)}]");
+            }
+            return "{" + string.Join(",", entries) + "}";
+        }
+
+        static List<(string name, string base64)> ExtractAtlasSprites(string atlasKey)
+        {
+            var result = new List<(string, string)>();
+            try
+            {
+                var shortName = atlasKey.Contains("/")
+                    ? atlasKey.Substring(atlasKey.LastIndexOf('/') + 1) : atlasKey;
+
+                // .spriteatlasv2 에셋 경로 찾기 (이름 일치)
+                string atlasPath = null;
+                foreach (var g in UnityEditor.AssetDatabase.FindAssets(shortName))
+                {
+                    var p = UnityEditor.AssetDatabase.GUIDToAssetPath(g);
+                    if (p.EndsWith(".spriteatlasv2", StringComparison.OrdinalIgnoreCase)
+                        && System.IO.Path.GetFileNameWithoutExtension(p) == shortName)
+                    { atlasPath = p; break; }
+                }
+                if (atlasPath == null)
+                {
+                    UnityEngine.Debug.LogWarning($"[SupaRun:Icon] SpriteAtlas '{atlasKey}' (name '{shortName}') 못 찾음 — 썸네일 생략");
+                    return result;
+                }
+
+                // packables GUID 파싱 → 폴더/스프라이트 경로 수집
+                var yaml = System.IO.File.ReadAllText(atlasPath);
+                var spritePaths = new HashSet<string>();
+                foreach (System.Text.RegularExpressions.Match m in
+                    System.Text.RegularExpressions.Regex.Matches(yaml, @"guid:\s*([0-9a-fA-F]{32})"))
+                {
+                    var refPath = UnityEditor.AssetDatabase.GUIDToAssetPath(m.Groups[1].Value);
+                    if (string.IsNullOrEmpty(refPath)) continue;
+                    if (UnityEditor.AssetDatabase.IsValidFolder(refPath))
+                        foreach (var sg in UnityEditor.AssetDatabase.FindAssets("t:Sprite", new[] { refPath }))
+                            spritePaths.Add(UnityEditor.AssetDatabase.GUIDToAssetPath(sg));
+                    else if (refPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                        spritePaths.Add(refPath);
+                }
+
+                // 각 sprite: 이름 = Sprite 서브에셋 name, 썸네일 = 소스 PNG 바이트(단일 sprite 가정)
+                foreach (var sp in spritePaths)
+                {
+                    string base64;
+                    try { base64 = Convert.ToBase64String(System.IO.File.ReadAllBytes(sp)); }
+                    catch { continue; }
+                    foreach (var obj in UnityEditor.AssetDatabase.LoadAllAssetRepresentationsAtPath(sp))
+                        if (obj is UnityEngine.Sprite sprite)
+                            result.Add((sprite.name, base64));
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogWarning($"[SupaRun:Icon] '{atlasKey}' 추출 실패: {ex.Message}");
+            }
+            return result;
+        }
+
+        static string EscapeJson(string s) =>
+            string.IsNullOrEmpty(s) ? "" : s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+        // ── [Component] 어드레서블 주소 추출 (에디터 codegen 시) ──
+        // 결과 형태: {"UnityEngine.ParticleSystem":["Common/FxA","InGame/FxB"], ...}
+        // 루트에 컴포넌트 T를 가진 어드레서블 프리팹의 주소를 모은다.
+        // Addressables 패키지가 없는 프로젝트에선 #if로 제외 → 빈 맵(어드민 드롭다운 비어있음, graceful).
+#if SUPARUN_ADDRESSABLES
+        static string BuildComponentsJson(Type[] configTypes)
+        {
+            var compTypes = new Dictionary<string, Type>();   // FullName -> Type (중복 제거)
+            foreach (var t in configTypes)
+                foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    var c = f.GetCustomAttribute<ComponentAttribute>();
+                    if (c?.ComponentType != null) compTypes[c.ComponentType.FullName] = c.ComponentType;
+                }
+            if (compTypes.Count == 0) return "{}";
+
+            var settings = UnityEditor.AddressableAssets.AddressableAssetSettingsDefaultObject.Settings;
+            var entries = new List<string>();
+            foreach (var kv in compTypes)
+            {
+                var addrs = ExtractAddressesWithComponent(settings, kv.Value);
+                var items = addrs.Select(a => $"\"{EscapeJson(a)}\"");
+                entries.Add($"\"{EscapeJson(kv.Key)}\":[{string.Join(",", items)}]");
+            }
+            return "{" + string.Join(",", entries) + "}";
+        }
+
+        static List<string> ExtractAddressesWithComponent(
+            UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, Type comp)
+        {
+            var result = new List<string>();
+            if (settings == null || comp == null) return result;
+            try
+            {
+                foreach (var group in settings.groups)
+                {
+                    if (group == null) continue;
+                    foreach (var entry in group.entries)
+                    {
+                        if (entry == null || string.IsNullOrEmpty(entry.AssetPath)) continue;
+                        var go = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(entry.AssetPath);
+                        if (go != null && go.GetComponent(comp) != null)
+                            result.Add(entry.address);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogWarning($"[SupaRun:Component] '{comp.Name}' 주소 추출 실패: {ex.Message}");
+            }
+            result.Sort();
+            return result;
+        }
+#else
+        static string BuildComponentsJson(Type[] configTypes) => "{}";
+#endif
 
         static string GetJsType(Type t)
         {

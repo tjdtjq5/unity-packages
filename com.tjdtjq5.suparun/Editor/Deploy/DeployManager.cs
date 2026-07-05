@@ -383,6 +383,10 @@ namespace Tjdtjq5.SupaRun.Editor
                 content, @"[ \t]*\[HiddenIf\(.+?\)\]", "");
             content = System.Text.RegularExpressions.Regex.Replace(
                 content, @"[ \t]*\[AdminHidden\]", "");
+            content = System.Text.RegularExpressions.Regex.Replace(
+                content, @"[ \t]*\[Icon\(.+?\)\]", "");
+            content = System.Text.RegularExpressions.Regex.Replace(
+                content, @"[ \t]*\[Component\(.+?\)\]", "");
 
             // 3) #if UNITY 전처리기 블록 제거
             content = StripUnityPreprocessorBlocks(content);

@@ -216,7 +216,7 @@ Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. 
 | MPPM | Multiplayer Play Mode Virtual Player 자동 분리 (인스턴스별 게스트 계정) |
 
 ```json
-"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.10.0"
+"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.10.1"
 ```
 
 > 의존: `editor-toolkit >= 1.1.0`
