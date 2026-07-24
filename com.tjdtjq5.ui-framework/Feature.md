@@ -7,7 +7,7 @@ stable
 범용 UI 도구 모음 패키지 — 독립적인 UI 컴포넌트 + Screen 시스템(Page/Modal/Sheet) + 기본 자산 + Unity-UI-Extensions Tier 1 흡수 (v3.5.0)
 
 ## 의존성
-- com.tjdtjq5.editor-toolkit — Inspector Attribute (SectionHeader, Required, BoxGroup 등)
+- com.annulusgames.alchemy — Inspector Attribute (Title, Required, BoxGroup 등)
 - com.tjdtjq5.addrx — Addressable 에셋 로드 (Sheet 등록용)
 - com.annulusgames.lit-motion — 트윈 엔진 (zero allocation, Burst+JobSystem)
 - com.cysharp.unitask — async lifecycle

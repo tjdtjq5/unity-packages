@@ -1,6 +1,6 @@
 using System;
 using LitMotion;
-using Tjdtjq5.EditorToolkit;
+using Alchemy.Inspector;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -13,7 +13,7 @@ namespace Tjdtjq5.UIFramework
     /// </summary>
     public class UIFlyEffect : MonoBehaviour
     {
-        [SectionHeader("Fly Effect", 0.95f, 0.7f, 0.3f)]
+        [Title("Fly Effect")]
         [SerializeField] private Image _flyIcon;
         [SerializeField] private float _duration = 0.6f;
         [SerializeField] private float _curveHeight = 150f;

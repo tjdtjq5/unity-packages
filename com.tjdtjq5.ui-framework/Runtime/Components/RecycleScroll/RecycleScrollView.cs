@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using LitMotion;
-using Tjdtjq5.EditorToolkit;
+using Alchemy.Inspector;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -16,7 +16,7 @@ namespace Tjdtjq5.UIFramework
     [RequireComponent(typeof(ScrollRect))]
     public class RecycleScrollView : MonoBehaviour, IBeginDragHandler, IEndDragHandler
     {
-        [SectionHeader("RecycleScrollView", 0.3f, 0.8f, 0.6f)]
+        [Title("RecycleScrollView")]
         [SerializeField] private GameObject _cellPrefab;
         [SerializeField] private ScrollDirection _direction = ScrollDirection.Vertical;
 

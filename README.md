@@ -58,7 +58,7 @@ GameCI 기반 Unity CI/CD 파이프라인 자동 생성
 
 ---
 
-### Codemagic `v0.1.0`
+### Codemagic `v1.0.0`
 
 Codemagic 기반 Unity CI/CD 자동화 — `cicd` 후속 (Linux X2 + GameCI Docker, Personal license 호환)
 
@@ -71,7 +71,7 @@ Codemagic 기반 Unity CI/CD 자동화 — `cicd` 후속 (Linux X2 + GameCI Dock
 | CodemagicBuildScript | Unity `-batchmode -executeMethod` 진입점 (패키지 asmdef로 cp 회피) |
 
 ```json
-"com.tjdtjq5.codemagic": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.codemagic#codemagic/v0.1.0"
+"com.tjdtjq5.codemagic": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.codemagic#codemagic/v1.0.0"
 ```
 
 > 의존: `editor-toolkit >= 1.3.3`, UniTask
@@ -106,7 +106,7 @@ Unity Gaming Services CLI 래핑 에디터 윈도우 (`Tools > UGS Manager` 또�
 
 ---
 
-### UI Toolkit `v3.5.0`
+### UI Toolkit `v5.0.0`
 
 범용 UI 도구 모음 — Components + Screen 시스템(Page/Modal/Sheet) + Default 자산. **LitMotion 기반** (DOTween 의존성 제거 완료, v3.0+).
 
@@ -138,7 +138,7 @@ Unity Gaming Services CLI 래핑 에디터 윈도우 (`Tools > UGS Manager` 또�
 - `Runtime/DefaultAssets/Transitions/` — 8개 preset (Fade/Scale/Slide × in/out 방향)
 
 ```json
-"com.tjdtjq5.ui-framework": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ui-framework#ui-framework/v3.5.0"
+"com.tjdtjq5.ui-framework": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ui-framework#ui-framework/v5.0.0"
 ```
 
 > 의존: `editor-toolkit >= 1.1.0`, `addrx >= 0.1.7`, LitMotion ≥2.0, UniTask ≥2.5, R3 ≥1.0, VContainer ≥1.17
@@ -152,7 +152,7 @@ Unity Gaming Services CLI 래핑 에디터 윈도우 (`Tools > UGS Manager` 또�
 
 ---
 
-### AddrX `v0.3.0`
+### AddrX `v1.0.0`
 
 Unity Addressables 안전 래퍼 — SafeHandle 기반 자동 해제, 누수 감지, 에디터 분석 도구
 
@@ -168,14 +168,14 @@ Unity Addressables 안전 래퍼 — SafeHandle 기반 자동 해제, 누수 감
 | AddrX Manager | Setup / Tracker / Analysis 3탭 에디터 윈도우 (`Alt+Shift+A`) |
 
 ```json
-"com.tjdtjq5.addrx": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.addrx#addrx/v0.3.0"
+"com.tjdtjq5.addrx": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.addrx#addrx/v1.0.0"
 ```
 
 > 의존: `editor-toolkit >= 1.3.0`, `com.unity.addressables >= 2.2.2`
 
 ---
 
-### Terminal `v1.0.3`
+### Terminal `v2.0.0`
 
 Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바로 여는 런처 — `claude` 패키지 후속 (전면 재설계)
 
@@ -188,7 +188,7 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 | 기본 지원 | Win: Windows Terminal / Warp / PowerShell / winghostty / orchterm / Git Bash / Alacritty / WezTerm / Tabby / cmder · Mac: Terminal / iTerm2 / Warp / Ghostty / Alacritty / WezTerm / Tabby |
 
 ```json
-"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v1.0.3"
+"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v2.0.0"
 ```
 
 > 의존: `editor-toolkit >= 1.0.0`
@@ -196,7 +196,7 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 
 ---
 
-### SupaRun `v0.11.0`
+### SupaRun `v1.0.0`
 
 Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. Supabase + Cloud Run 자동 배포.
 
@@ -216,7 +216,7 @@ Unity Editor에서 게임 서버 인프라를 관리하는 올인원 패키지. 
 | MPPM | Multiplayer Play Mode Virtual Player 자동 분리 (인스턴스별 게스트 계정) |
 
 ```json
-"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v0.11.0"
+"com.tjdtjq5.suparun": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.suparun#suparun/v1.0.0"
 ```
 
 > 의존: `editor-toolkit >= 1.1.0`

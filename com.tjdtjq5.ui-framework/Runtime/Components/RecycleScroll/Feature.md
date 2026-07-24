@@ -8,7 +8,7 @@ stable
 
 ## 의존성
 - LitMotion — 스냅 애니메이션
-- com.tjdtjq5.editor-toolkit — Inspector Attribute (SectionHeader, BoxGroup)
+- com.annulusgames.alchemy — Inspector Attribute (Title, BoxGroup)
 
 ## 구조
 - IScrollCell.cs — 셀 인터페이스 (OnUpdateCell, OnRecycled)

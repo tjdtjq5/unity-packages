@@ -1,7 +1,7 @@
 using System;
 using LitMotion;
 using LitMotion.Extensions;
-using Tjdtjq5.EditorToolkit;
+using Alchemy.Inspector;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -42,14 +42,14 @@ namespace Tjdtjq5.UIFramework
     /// </summary>
     public class UITutorialMask : MonoBehaviour
     {
-        [SectionHeader("References", 0.4f, 0.75f, 0.95f)]
+        [Title("References")]
         [Required] [SerializeField] private Image _overlay;
         [Required] [SerializeField] private Image _holePunch;
         [SerializeField] private TMP_Text _guideText;
         [SerializeField] private Image _arrow;
         [Required] [SerializeField] private Button _overlayButton;
 
-        [SectionHeader("Settings", 0.95f, 0.7f, 0.3f)]
+        [Title("Settings")]
         [SerializeField] private float _padding = 20f;
         [SerializeField] private float _fadeDuration = 0.3f;
         [SerializeField] private float _arrowOffset = 30f;

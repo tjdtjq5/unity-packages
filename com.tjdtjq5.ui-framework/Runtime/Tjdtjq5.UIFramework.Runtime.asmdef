@@ -7,7 +7,7 @@
         "Unity.TextMeshPro",
         "Unity.Addressables",
         "Unity.ResourceManager",
-        "Tjdtjq5.EditorToolkit.Runtime",
+        "Alchemy",
         "Tjdtjq5.AddrX.Runtime",
         "UniTask",
         "R3",

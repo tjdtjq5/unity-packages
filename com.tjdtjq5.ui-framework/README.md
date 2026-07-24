@@ -5,7 +5,7 @@
 ## 설치
 
 ```json
-"com.tjdtjq5.ui-framework": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ui-framework#ui-framework/v3.5.0"
+"com.tjdtjq5.ui-framework": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.ui-framework#ui-framework/v5.0.0"
 ```
 
 ## 의존성
@@ -16,7 +16,7 @@
 - [R3](https://github.com/Cysharp/R3) v1.0+ (Observable)
 - [VContainer](https://github.com/hadashiA/VContainer) v1.17+ (DI)
 - [com.tjdtjq5.addrx](https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.addrx) v0.1.7+ (Addressable)
-- [com.tjdtjq5.editor-toolkit](https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.editor-toolkit) v1.1.0+
+- [Alchemy](https://github.com/annulusgames/Alchemy) v2.0+ (Inspector Attribute — 소비 프로젝트에 git UPM으로 설치 필요)
 - TextMeshPro
 
 ## 컴포넌트

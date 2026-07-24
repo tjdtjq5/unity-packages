@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.0.0] - 2026-07-24
+
+### Breaking Changes
+- **Inspector 어트리뷰트를 `com.tjdtjq5.editor-toolkit` → Alchemy(`com.annulusgames.alchemy`)로 전환** — RecycleScrollView/UITutorialMask/UIFlyEffect의 [SectionHeader]→[Title] 등. asmdef가 `Alchemy`를 참조하므로 **소비 프로젝트는 Alchemy를 git UPM으로 설치해야 한다** (git 패키지라 package.json dependencies에 선언 불가):
+  ```json
+  "com.annulusgames.alchemy": "https://github.com/annulusgames/Alchemy.git?path=/Alchemy/Assets/Alchemy"
+  ```
+
 ## [4.0.0] - 2026-06-14
 
 ### Breaking Changes
