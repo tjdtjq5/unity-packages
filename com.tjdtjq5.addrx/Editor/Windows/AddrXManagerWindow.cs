@@ -2,16 +2,13 @@
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
-using Tjdtjq5.EditorToolkit.Editor;
 using Tjdtjq5.AddrX.Editor.Update;
 namespace Tjdtjq5.AddrX.Editor
 {
     /// <summary>AddrX 통합 매니저 윈도우. Setup + Tracker + Analysis 탭. 톱니바퀴 → Settings 패널.</summary>
     public class AddrXManagerWindow : EditorWindow
     {
-        static readonly Color Accent = new(0.3f, 0.75f, 0.95f);
-
-        EditorTabBase[] _tabs;
+        AddrXTabBase[] _tabs;
         int _activeTab;
         bool _showSettings;
         SettingsPanel _settingsPanel;
@@ -25,7 +22,7 @@ namespace Tjdtjq5.AddrX.Editor
 
         void OnEnable()
         {
-            _tabs = new EditorTabBase[]
+            _tabs = new AddrXTabBase[]
             {
                 new SetupTab(Repaint),
                 new TrackerTab(Repaint),
@@ -43,8 +40,6 @@ namespace Tjdtjq5.AddrX.Editor
 
         void OnGUI()
         {
-            EditorUI.DrawWindowBackground(position);
-
             var badges = new (string, int)[]
             {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -53,27 +48,34 @@ namespace Tjdtjq5.AddrX.Editor
 #endif
             };
 
-            if (EditorUI.DrawWindowHeaderWithGear("AddrX", "0.1", Accent, badges))
+            // ── 헤더: 타이틀 + 상태 뱃지 + 톱니 버튼 ──
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Label("AddrX 0.1", EditorStyles.largeLabel);
+            GUILayout.Label(
+                string.Join("   ", badges.Select(b => $"{b.Item1}: {(b.Item2 == 1 ? "On" : "Off")}")),
+                EditorStyles.miniLabel);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button(EditorGUIUtility.IconContent("_Popup"), EditorStyles.miniButton,
+                    GUILayout.Width(28)))
                 _showSettings = !_showSettings;
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.Space();
 
             if (_showSettings)
             {
                 _settingsPanel ??= new SettingsPanel(() => _showSettings = false);
-                EditorUI.BeginBody();
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 _settingsPanel.OnDraw();
-                EditorUI.EndBody();
+                EditorGUILayout.EndVertical();
             }
             else
             {
-                _activeTab = EditorUI.DrawTabBar(
-                    _tabs.Select(t => t.TabName).ToArray(),
-                    _activeTab,
-                    _tabs.Select(t => t.TabColor).ToArray(),
-                    EditorUI.COL_MUTED);
+                _activeTab = GUILayout.Toolbar(_activeTab,
+                    _tabs.Select(t => t.TabName).ToArray());
 
-                EditorUI.BeginBody();
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 _tabs[_activeTab].OnDraw();
-                EditorUI.EndBody();
+                EditorGUILayout.EndVertical();
             }
         }
 

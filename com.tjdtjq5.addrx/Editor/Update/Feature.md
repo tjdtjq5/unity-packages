@@ -9,7 +9,7 @@
 |------|------|------|
 | AddrXLog | `../../Runtime/` | 로그 출력 |
 | Windows/AddrXManagerWindow | `../Windows/AddrXManagerWindow.cs` | UpdateTab을 탭으로 호스팅 |
-| EditorToolkit | 외부 패키지 `Tjdtjq5.EditorToolkit.Editor` | EditorTabBase 상속, EditorUI 유틸 |
+| Windows/AddrXTabBase | `../Windows/AddrXTabBase.cs` | AddrXTabBase 상속, AddrXGui 유틸 |
 
 ## 구조
 
@@ -74,7 +74,7 @@ Editor/Update/
 | `appVersion` | `string` | 앱 버전 (시맨틱 버전) |
 | `catalogFile` | `string` | 카탈로그 파일명 |
 
-### UpdateTab (EditorTabBase)
+### UpdateTab (AddrXTabBase)
 
 3개 서브탭 구성:
 

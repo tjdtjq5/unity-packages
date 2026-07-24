@@ -6,24 +6,19 @@ using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
-using Tjdtjq5.EditorToolkit.Editor;
 
 namespace Tjdtjq5.AddrX.Editor
 {
     /// <summary>Setup 탭. 스텝 위자드(초기 설정) + 대시보드(일상 사용).</summary>
-    public class SetupTab : EditorTabBase
+    internal class SetupTab : AddrXTabBase
     {
         static readonly string[] StepLabels = { "Package", "Addressables", "Folders", "AddrX" };
-        static readonly Color COL_LOCAL = new(0.4f, 0.7f, 0.95f);
-        static readonly Color COL_REMOTE = new(0.95f, 0.6f, 0.3f);
 
         static GUIStyle _boldStyle;
         static GUIStyle BoldStyle => _boldStyle ??= new GUIStyle(EditorStyles.label) { fontStyle = FontStyle.Bold };
 
         readonly Action _repaint;
         Vector2 _scroll;
-        new string _notification;
-        new EditorUI.NotificationType _notificationType;
 
         // Step 3 — 그룹 편집
         int _editGroupIdx = -1;
@@ -84,9 +79,9 @@ namespace Tjdtjq5.AddrX.Editor
 
         public override void OnDraw()
         {
-            EditorUI.DrawNotificationBar(ref _notification, _notificationType);
+            AddrXGui.DrawNotificationBar(ref _notification, _notificationType);
 
-            EditorUI.DrawStepIndicator(StepLabels, GetStepStates());
+            DrawStepIndicator(StepLabels, GetStepStates());
             EditorGUILayout.Space(8);
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
@@ -97,6 +92,29 @@ namespace Tjdtjq5.AddrX.Editor
                 DrawWizardStep(GetCurrentStep());
 
             EditorGUILayout.EndScrollView();
+        }
+
+        /// <summary>스텝 진행 표시. 상태 기호: 0=○, 1=●, 2=✓, 3=△ (구 DrawStepIndicator와 동일 매핑)</summary>
+        static void DrawStepIndicator(string[] labels, int[] stepStates)
+        {
+            var parts = new string[labels.Length];
+            for (int i = 0; i < labels.Length; i++)
+            {
+                string dot = stepStates[i] switch
+                {
+                    2 => "✓",
+                    3 => "△",
+                    1 => "●",
+                    _ => "○"
+                };
+                parts[i] = $"{dot} {labels[i]}";
+            }
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            GUILayout.Label(string.Join("  ━  ", parts), EditorStyles.boldLabel);
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
         }
 
         void DrawWizardStep(int step)
@@ -115,13 +133,14 @@ namespace Tjdtjq5.AddrX.Editor
 
         void DrawStep_Addressables()
         {
-            EditorUI.DrawSectionHeader("Step 2: Addressables Settings", TabColor);
+            EditorGUILayout.LabelField("Step 2: Addressables Settings", EditorStyles.boldLabel);
             EditorGUILayout.Space(8);
 
             var pkgInfo = UnityEditor.PackageManager.PackageInfo
                 .FindForAssembly(typeof(AddressableAssetSettings).Assembly);
             if (pkgInfo != null)
-                EditorUI.DrawDescription($"\u2713 Addressables {pkgInfo.version} installed");
+                EditorGUILayout.LabelField($"✓ Addressables {pkgInfo.version} installed",
+                    EditorStyles.wordWrappedMiniLabel);
 
             EditorGUILayout.Space(8);
             EditorGUILayout.HelpBox(
@@ -129,7 +148,7 @@ namespace Tjdtjq5.AddrX.Editor
                 MessageType.Info);
             EditorGUILayout.Space(8);
 
-            if (EditorUI.DrawColorButton("Addressables Settings 생성", TabColor, 32))
+            if (GUILayout.Button("Addressables Settings 생성", GUILayout.Height(32)))
             {
                 AddressableAssetSettingsDefaultObject.Settings =
                     AddressableAssetSettings.Create(
@@ -137,7 +156,7 @@ namespace Tjdtjq5.AddrX.Editor
                         AddressableAssetSettingsDefaultObject.kDefaultConfigAssetName,
                         true, true);
                 _notification = "Addressables Settings 생성 완료";
-                _notificationType = EditorUI.NotificationType.Success;
+                _notificationType = NotificationType.Success;
                 _repaint?.Invoke();
             }
         }
@@ -148,7 +167,7 @@ namespace Tjdtjq5.AddrX.Editor
 
         void DrawStep_Folders()
         {
-            EditorUI.DrawSectionHeader("Step 3: 폴더 구조", TabColor);
+            EditorGUILayout.LabelField("Step 3: 폴더 구조", EditorStyles.boldLabel);
             EditorGUILayout.Space(8);
 
             EditorGUILayout.HelpBox(
@@ -157,17 +176,17 @@ namespace Tjdtjq5.AddrX.Editor
                 MessageType.Info);
             EditorGUILayout.Space(8);
 
-            if (EditorUI.DrawColorButton("생성", TabColor, 32))
+            if (GUILayout.Button("생성", GUILayout.Height(32)))
             {
                 if (FolderTemplateGenerator.Generate())
                 {
                     _notification = "폴더 구조 생성 완료";
-                    _notificationType = EditorUI.NotificationType.Success;
+                    _notificationType = NotificationType.Success;
                 }
                 else
                 {
                     _notification = "생성 실패 — 콘솔 확인";
-                    _notificationType = EditorUI.NotificationType.Error;
+                    _notificationType = NotificationType.Error;
                 }
                 _repaint?.Invoke();
             }
@@ -180,18 +199,18 @@ namespace Tjdtjq5.AddrX.Editor
 
             if (folders.Length == 0)
             {
-                EditorUI.DrawDescription("  Assets/Addressables/ 에 폴더가 없습니다.");
+                EditorGUILayout.LabelField("  Assets/Addressables/ 에 폴더가 없습니다.",
+                    EditorStyles.wordWrappedMiniLabel);
                 return;
             }
 
             foreach (var folderName in folders)
             {
                 bool isRemote = rules.IsGroupRemote(folderName);
-                Color groupColor = isRemote ? COL_REMOTE : COL_LOCAL;
 
                 EditorGUILayout.BeginHorizontal();
 
-                EditorUI.DrawCellLabel("\u25CF", 14, groupColor);
+                EditorGUILayout.LabelField("●", GUILayout.Width(14));
                 GUILayout.Label(folderName, BoldStyle, GUILayout.ExpandWidth(true));
                 GUILayout.FlexibleSpace();
 
@@ -223,12 +242,12 @@ namespace Tjdtjq5.AddrX.Editor
 
         void DrawStep_AddrX()
         {
-            EditorUI.DrawSectionHeader("Step 4: AddrX Settings", TabColor);
+            EditorGUILayout.LabelField("Step 4: AddrX Settings", EditorStyles.boldLabel);
             EditorGUILayout.Space(8);
 
             EditorGUILayout.HelpBox(
                 "AddrX 기본 설정을 확인하고 완료하세요.\n" +
-                "나중에 톱니바퀴(\u2699)에서 변경 가능합니다.\n" +
+                "나중에 톱니바퀴(⚙)에서 변경 가능합니다.\n" +
                 "그룹/라벨 관리는 대시보드에서 할 수 있습니다.",
                 MessageType.Info);
             EditorGUILayout.Space(8);
@@ -239,21 +258,21 @@ namespace Tjdtjq5.AddrX.Editor
 
             _addrxSo.Update();
 
-            EditorUI.DrawProperty(_addrxSo, "_logLevel", "Log Level");
+            AddrXGui.DrawProperty(_addrxSo, "_logLevel", "Log Level");
             EditorGUILayout.Space(4);
-            EditorUI.DrawProperty(_addrxSo, "_enableTracking", "Enable Tracking");
-            EditorUI.DrawProperty(_addrxSo, "_enableLeakDetection", "Enable Leak Detection");
+            AddrXGui.DrawProperty(_addrxSo, "_enableTracking", "Enable Tracking");
+            AddrXGui.DrawProperty(_addrxSo, "_enableLeakDetection", "Enable Leak Detection");
             EditorGUILayout.Space(4);
-            EditorUI.DrawProperty(_addrxSo, "_autoInitialize", "Auto Initialize");
+            AddrXGui.DrawProperty(_addrxSo, "_autoInitialize", "Auto Initialize");
 
             if (_addrxSo.ApplyModifiedProperties())
                 settings.Apply();
 
             EditorGUILayout.Space(12);
-            if (EditorUI.DrawColorButton("완료", TabColor, 32))
+            if (GUILayout.Button("완료", GUILayout.Height(32)))
             {
                 _notification = "AddrX 초기 설정 완료!";
-                _notificationType = EditorUI.NotificationType.Success;
+                _notificationType = NotificationType.Success;
                 UpdateDashboardCounts();
                 _repaint?.Invoke();
             }
@@ -320,7 +339,7 @@ namespace Tjdtjq5.AddrX.Editor
                 }
                 else
                 {
-                    EditorUI.DrawSectionHeader(cat.categoryName, EditorUI.COL_INFO);
+                    EditorGUILayout.LabelField(cat.categoryName, EditorStyles.boldLabel);
 
                     var headerRect = GUILayoutUtility.GetLastRect();
                     var e = Event.current;
@@ -369,7 +388,7 @@ namespace Tjdtjq5.AddrX.Editor
                     }
                     else
                     {
-                        var chipLabel = isDefault ? $"\u2605 {cat.options[oi]}" : cat.options[oi];
+                        var chipLabel = isDefault ? $"★ {cat.options[oi]}" : cat.options[oi];
                         var chipStyle = isDefault ? ChipDefaultStyle : ChipStyle;
 
                         // 칩 Rect 확보
@@ -454,7 +473,7 @@ namespace Tjdtjq5.AddrX.Editor
             }
 
             // + Category 버튼
-            if (EditorUI.DrawColorButton("+ Category", EditorUI.COL_INFO))
+            if (GUILayout.Button("+ Category"))
             {
                 rules.LabelCategories.Add(new LabelCategory
                 {
@@ -512,7 +531,7 @@ namespace Tjdtjq5.AddrX.Editor
         void DrawDashboard()
         {
             // ── 상태 요약 ──
-            EditorUI.DrawSectionHeader("Status", EditorUI.COL_SUCCESS);
+            EditorGUILayout.LabelField("Status", EditorStyles.boldLabel);
             EditorGUILayout.Space(4);
 
             var pkgInfo = UnityEditor.PackageManager.PackageInfo
@@ -526,84 +545,85 @@ namespace Tjdtjq5.AddrX.Editor
                 else localCount++;
             }
 
-            EditorUI.BeginRow();
-            EditorUI.DrawStatCard("Addressables", pkgInfo?.version ?? "?", EditorUI.COL_SUCCESS);
-            EditorUI.DrawStatCard("Local", localCount.ToString(), COL_LOCAL);
-            EditorUI.DrawStatCard("Remote", remoteCount.ToString(), COL_REMOTE);
-            EditorUI.DrawStatCard("Labels", rules?.LabelCategories.Count.ToString() ?? "0", EditorUI.COL_INFO);
-            EditorUI.EndRow();
+            EditorGUILayout.BeginHorizontal();
+            AddrXGui.DrawStatCard("Addressables", pkgInfo?.version ?? "?");
+            AddrXGui.DrawStatCard("Local", localCount.ToString());
+            AddrXGui.DrawStatCard("Remote", remoteCount.ToString());
+            AddrXGui.DrawStatCard("Labels", rules?.LabelCategories.Count.ToString() ?? "0");
+            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(8);
 
             // ── 그룹 관리 ──
-            if (EditorUI.DrawSectionFoldout(ref _showGroups,
-                    $"Groups ({folders.Length})", COL_LOCAL))
+            _showGroups = EditorGUILayout.Foldout(_showGroups, $"Groups ({folders.Length})", true);
+            if (_showGroups)
             {
-                EditorUI.BeginSubBox();
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 DrawGroupEditor();
-                EditorUI.EndSubBox();
+                EditorGUILayout.EndVertical();
             }
             EditorGUILayout.Space(8);
 
             // ── 라벨 관리 ──
-            if (EditorUI.DrawSectionFoldout(ref _showLabels,
-                    $"Label Categories ({rules.LabelCategories.Count})", EditorUI.COL_INFO))
+            _showLabels = EditorGUILayout.Foldout(_showLabels,
+                $"Label Categories ({rules.LabelCategories.Count})", true);
+            if (_showLabels)
             {
-                EditorUI.BeginSubBox();
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 DrawLabelCategoryEditor();
-                EditorUI.EndSubBox();
+                EditorGUILayout.EndVertical();
             }
             EditorGUILayout.Space(8);
 
             // ── 에셋 상태 ──
-            EditorUI.DrawSectionHeader("Assets", EditorUI.COL_INFO);
+            EditorGUILayout.LabelField("Assets", EditorStyles.boldLabel);
             EditorGUILayout.Space(4);
 
-            EditorUI.BeginRow();
-            EditorUI.DrawStatCard("Registered", _registeredCount.ToString(), EditorUI.COL_SUCCESS);
-            EditorUI.DrawStatCard("Unregistered", _unregisteredCount.ToString(),
-                _unregisteredCount > 0 ? EditorUI.COL_WARN : EditorUI.COL_MUTED);
-            EditorUI.DrawStatCard("Conflicts", _conflicts.Count.ToString(),
-                _conflicts.Count > 0 ? EditorUI.COL_ERROR : EditorUI.COL_MUTED);
-            EditorUI.EndRow();
+            EditorGUILayout.BeginHorizontal();
+            AddrXGui.DrawStatCard("Registered", _registeredCount.ToString());
+            AddrXGui.DrawStatCard("Unregistered", _unregisteredCount.ToString());
+            AddrXGui.DrawStatCard("Conflicts", _conflicts.Count.ToString());
+            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(8);
 
             // ── 액션 ──
-            EditorUI.DrawActionBar(new (string, Color, Action)[]
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("전체 동기화", GUILayout.Height(22)))
             {
-                ("전체 동기화", EditorUI.COL_SUCCESS, () =>
-                {
-                    SyncAll();
-                    UpdateDashboardCounts();
-                    _repaint?.Invoke();
-                }),
-                ("상태 갱신", EditorUI.COL_INFO, () =>
-                {
-                    UpdateDashboardCounts();
-                    _notification = "상태 갱신 완료";
-                    _notificationType = EditorUI.NotificationType.Success;
-                    _repaint?.Invoke();
-                })
-            }, $"{_registeredCount} registered");
+                SyncAll();
+                UpdateDashboardCounts();
+                _repaint?.Invoke();
+            }
+            if (GUILayout.Button("상태 갱신", GUILayout.Height(22)))
+            {
+                UpdateDashboardCounts();
+                _notification = "상태 갱신 완료";
+                _notificationType = NotificationType.Success;
+                _repaint?.Invoke();
+            }
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.LabelField($"{_registeredCount} registered",
+                EditorStyles.miniLabel, GUILayout.Width(80));
+            EditorGUILayout.EndHorizontal();
 
             // ── 충돌 목록 ──
             if (_conflicts.Count > 0)
             {
                 EditorGUILayout.Space(8);
-                _showConflicts = EditorUI.DrawToggleRow(
-                    $"충돌 목록 ({_conflicts.Count}건)", _showConflicts, EditorUI.COL_ERROR);
+                _showConflicts = EditorGUILayout.Foldout(_showConflicts,
+                    $"충돌 목록 ({_conflicts.Count}건)", true);
 
                 if (_showConflicts)
                 {
-                    EditorUI.BeginSubBox();
+                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                     foreach (var (address, paths) in _conflicts)
                     {
-                        EditorUI.DrawCellLabel($"  {address}", color: EditorUI.COL_ERROR);
+                        EditorGUILayout.LabelField($"  {address}");
                         foreach (var p in paths)
-                            EditorUI.DrawDescription($"    \u2192 {p}");
+                            EditorGUILayout.LabelField($"    → {p}", EditorStyles.wordWrappedMiniLabel);
                     }
-                    EditorUI.EndSubBox();
+                    EditorGUILayout.EndVertical();
                 }
             }
         }
@@ -685,8 +705,8 @@ namespace Tjdtjq5.AddrX.Editor
             _notification = $"동기화 완료: {registered}개 등록"
                 + (skipped > 0 ? $", {skipped}개 충돌 스킵" : "");
             _notificationType = skipped > 0
-                ? EditorUI.NotificationType.Error
-                : EditorUI.NotificationType.Success;
+                ? NotificationType.Error
+                : NotificationType.Success;
         }
     }
 }

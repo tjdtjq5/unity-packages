@@ -9,7 +9,7 @@
 |------|------|------|
 | AddrXLog | `../../Runtime/` | 로그 출력 |
 | Windows/AnalysisTab | `../Windows/AnalysisTab.cs` | UI 진입점 (전체 분석 실행 + 결과 시각화) |
-| EditorToolkit | 외부 패키지 `Tjdtjq5.EditorToolkit.Editor` | AnalysisTab UI 렌더링 유틸 |
+| Windows/AddrXTabBase | `../Windows/AddrXTabBase.cs` | AnalysisTab UI 렌더링 유틸 (AddrXGui) |
 
 ## 구조
 

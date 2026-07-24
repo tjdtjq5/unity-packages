@@ -11,7 +11,7 @@
 | AddrXSettings | `../../Runtime/Settings/AddrXSettings.cs` | 위자드 Step 4에서 설정 편집 |
 | Windows/AddrXManagerWindow | `../Windows/AddrXManagerWindow.cs` | SetupTab을 탭으로 호스팅 |
 | Settings/AddrXSettingsProvider | `../Settings/AddrXSettingsProvider.cs` | Project Settings에 AddrX 탭 등록 (AddrXSettings 편집) |
-| EditorToolkit | 외부 패키지 `Tjdtjq5.EditorToolkit.Editor` | EditorTabBase 상속, EditorUI 유틸 |
+| Windows/AddrXTabBase | `../Windows/AddrXTabBase.cs` | AddrXTabBase 상속, AddrXGui 유틸 |
 
 ## 구조
 
@@ -83,7 +83,7 @@ Editor/Setup/
 
 `[InitializeOnLoad]` 자동 활성화. 루트 하위 에셋의 Inspector 헤더에 Label Category별 드롭다운을 표시. 디폴트와 다른 오버라이드는 Bold 표시. 변경 시 Addressables 라벨도 자동 동기화.
 
-### SetupTab (EditorTabBase)
+### SetupTab (AddrXTabBase)
 
 스텝 위자드(초기 설정 4단계) + 대시보드(그룹 관리, 라벨 관리, 에셋 상태, 충돌 감지). `AddrXManagerWindow`에서 탭으로 사용.
 

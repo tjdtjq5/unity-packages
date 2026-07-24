@@ -3,7 +3,6 @@ using System;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEngine;
-using Tjdtjq5.EditorToolkit.Editor;
 
 namespace Tjdtjq5.AddrX.Editor
 {
@@ -27,7 +26,12 @@ namespace Tjdtjq5.AddrX.Editor
 
         public void OnDraw()
         {
-            if (EditorUI.DrawBackButton("← 돌아가기"))
+            EditorGUILayout.BeginHorizontal();
+            bool back = GUILayout.Button("← 돌아가기", EditorStyles.miniButton,
+                GUILayout.ExpandWidth(false));
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+            if (back)
             {
                 _onBack?.Invoke();
                 return;
@@ -49,20 +53,20 @@ namespace Tjdtjq5.AddrX.Editor
             if (_so == null || _so.targetObject == null) Refresh();
             _so.Update();
 
-            EditorUI.DrawSectionHeader("AddrX", EditorUI.COL_INFO);
+            EditorGUILayout.LabelField("AddrX", EditorStyles.boldLabel);
             EditorGUILayout.Space(4);
 
-            EditorUI.DrawProperty(_so, "_logLevel", "Log Level",
+            AddrXGui.DrawProperty(_so, "_logLevel", "Log Level",
                 "이 레벨 미만의 로그는 출력되지 않습니다.");
 
             EditorGUILayout.Space(8);
-            EditorUI.DrawProperty(_so, "_enableTracking", "Enable Tracking",
+            AddrXGui.DrawProperty(_so, "_enableTracking", "Enable Tracking",
                 "Handle Tracker 활성화");
-            EditorUI.DrawProperty(_so, "_enableLeakDetection", "Enable Leak Detection",
+            AddrXGui.DrawProperty(_so, "_enableLeakDetection", "Enable Leak Detection",
                 "씬 전환 시 미해제 핸들 경고");
 
             EditorGUILayout.Space(8);
-            EditorUI.DrawProperty(_so, "_autoInitialize", "Auto Initialize",
+            AddrXGui.DrawProperty(_so, "_autoInitialize", "Auto Initialize",
                 "RuntimeInitializeOnLoadMethod로 자동 초기화");
 
             if (_so.ApplyModifiedProperties())
@@ -73,38 +77,40 @@ namespace Tjdtjq5.AddrX.Editor
 
         void DrawAddressablesSection()
         {
-            EditorUI.DrawSectionHeader("Addressables", EditorUI.COL_WARN);
+            EditorGUILayout.LabelField("Addressables", EditorStyles.boldLabel);
             EditorGUILayout.Space(4);
 
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
-                EditorUI.DrawPlaceholder("Addressables Settings 없음");
+                EditorGUILayout.LabelField("Addressables Settings 없음",
+                    EditorStyles.centeredGreyMiniLabel);
                 return;
             }
 
             var profile = settings.profileSettings;
             var activeId = settings.activeProfileId;
-            EditorUI.DrawDescription($"Profile: {profile.GetProfileName(activeId)}");
+            EditorGUILayout.LabelField($"Profile: {profile.GetProfileName(activeId)}",
+                EditorStyles.wordWrappedMiniLabel);
 
             EditorGUILayout.Space(4);
-            EditorUI.BeginSubBox();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             try
             {
-                EditorUI.DrawCellLabel($"Build: {profile.GetValueByName(activeId, "LocalBuildPath")}");
-                EditorUI.DrawCellLabel($"Load: {profile.GetValueByName(activeId, "LocalLoadPath")}");
+                EditorGUILayout.LabelField($"Build: {profile.GetValueByName(activeId, "LocalBuildPath")}");
+                EditorGUILayout.LabelField($"Load: {profile.GetValueByName(activeId, "LocalLoadPath")}");
             }
             catch (System.Exception)
             {
-                EditorUI.DrawCellLabel("(Profile 변수를 읽을 수 없음)");
+                EditorGUILayout.LabelField("(Profile 변수를 읽을 수 없음)");
             }
-            EditorUI.EndSubBox();
+            EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(8);
 
-            if (EditorUI.DrawLinkButton("Open Addressables Groups"))
+            if (EditorGUILayout.LinkButton("Open Addressables Groups"))
                 EditorApplication.ExecuteMenuItem("Window/Asset Management/Addressables/Groups");
-            if (EditorUI.DrawLinkButton("Open Addressables Profiles"))
+            if (EditorGUILayout.LinkButton("Open Addressables Profiles"))
                 EditorApplication.ExecuteMenuItem("Window/Asset Management/Addressables/Profiles");
         }
     }

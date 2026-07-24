@@ -5,9 +5,7 @@
         "Tjdtjq5.AddrX.Runtime",
         "Tjdtjq5.AddrX.Debug",
         "Unity.Addressables",
-        "Unity.Addressables.Editor",
-        "Tjdtjq5.EditorToolkit.Runtime",
-        "Tjdtjq5.EditorToolkit.Editor"
+        "Unity.Addressables.Editor"
     ],
     "includePlatforms": [
         "Editor"

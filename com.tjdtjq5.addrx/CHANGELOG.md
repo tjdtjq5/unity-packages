@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.0] - 2026-07-24
+
+### Breaking Changes
+- **`com.tjdtjq5.editor-toolkit` 의존 완전 제거** — 매니저 윈도우/탭의 EditorUI 호출 243곳을 바닐라 IMGUI로 치환 (내부 `AddrXTabBase`/`AddrXGui` 신설). Tracker 테이블 컬럼 드래그 리사이즈는 고정폭으로 다운그레이드.
+
+### Fixed
+- Setup 충돌 목록 토글이 1프레임만 열리던 버그 (Foldout 치환 과정에서 해소)
+- Analysis InfoBox의 null 인자 NRE 가능성 (HelpBox 치환으로 null-safe)
+
 ## [0.3.0] - 2026-06-07
 
 ### Added — 인스턴스화 확장 (Pool/DI 플러그인 + 인스턴스 핸들)

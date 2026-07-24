@@ -2,37 +2,24 @@
 using System;
 using UnityEditor;
 using UnityEngine;
-using Tjdtjq5.EditorToolkit.Editor;
 using Tjdtjq5.AddrX.Debug;
 
 namespace Tjdtjq5.AddrX.Editor
 {
-    /// <summary>핸들 추적 탭. 활성 핸들 목록 + 리사이징 테이블 + 누수 체크.</summary>
-    public class TrackerTab : EditorTabBase
+    /// <summary>핸들 추적 탭. 활성 핸들 목록 + 고정폭 테이블 + 누수 체크.</summary>
+    internal class TrackerTab : AddrXTabBase
     {
         readonly Action _repaint;
-        EditorUI.ResizableColumns _columns;
         string _search = "";
         Vector2 _scroll;
-        new string _notification;
-        new EditorUI.NotificationType _notificationType;
 
         public TrackerTab(Action repaint) => _repaint = repaint;
 
         public override string TabName => "Tracker";
-        public override Color TabColor => EditorUI.COL_WARN;
+        public override Color TabColor => new(0.95f, 0.75f, 0.20f);
 
         public override void OnEnable()
         {
-            _columns = new EditorUI.ResizableColumns("AddrX_Tracker", new[]
-            {
-                new EditorUI.ColumnDef { Name = "ID", DefaultWidth = 50, Resizable = true, MinWidth = 30 },
-                new EditorUI.ColumnDef { Name = "Address", DefaultWidth = 0, Resizable = true, MinWidth = 100 },
-                new EditorUI.ColumnDef { Name = "Type", DefaultWidth = 80, Resizable = true, MinWidth = 50 },
-                new EditorUI.ColumnDef { Name = "Age", DefaultWidth = 60, Resizable = false, MinWidth = 40 },
-                new EditorUI.ColumnDef { Name = "", DefaultWidth = 50, Resizable = false, MinWidth = 50 }
-            }, _repaint);
-
             HandleTracker.OnHandleCreated += OnChanged;
             HandleTracker.OnHandleReleased += OnChanged;
         }
@@ -47,36 +34,42 @@ namespace Tjdtjq5.AddrX.Editor
 
         public override void OnDraw()
         {
-            EditorUI.DrawNotificationBar(ref _notification, _notificationType);
+            AddrXGui.DrawNotificationBar(ref _notification, _notificationType);
 
             // ─── Stats ───
-            EditorUI.BeginRow();
-            EditorUI.DrawStatCard("Active", HandleTracker.ActiveCount.ToString(),
-                HandleTracker.ActiveCount > 0 ? EditorUI.COL_INFO : EditorUI.COL_MUTED);
-            EditorUI.DrawStatCard("Loaded", HandleTracker.TotalLoaded.ToString(), EditorUI.COL_SUCCESS);
-            EditorUI.DrawStatCard("Released", HandleTracker.TotalReleased.ToString(), EditorUI.COL_MUTED);
-            EditorUI.EndRow();
+            EditorGUILayout.BeginHorizontal();
+            AddrXGui.DrawStatCard("Active", HandleTracker.ActiveCount.ToString());
+            AddrXGui.DrawStatCard("Loaded", HandleTracker.TotalLoaded.ToString());
+            AddrXGui.DrawStatCard("Released", HandleTracker.TotalReleased.ToString());
+            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(8);
 
             // ─── Search + Actions ───
-            EditorUI.BeginRow();
-            _search = EditorUI.DrawTextField("", _search, "주소 또는 타입으로 검색");
-            EditorUI.FlexSpace();
-            if (EditorUI.DrawColorButton("Check Leaks", EditorUI.COL_WARN))
+            EditorGUILayout.BeginHorizontal();
+            _search = EditorGUILayout.TextField(
+                new GUIContent("", "주소 또는 타입으로 검색"), _search);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Check Leaks"))
             {
                 var report = LeakDetector.CheckForLeaks();
                 _notification = $"누수 체크: {report.LeakCount}개 활성 핸들";
                 _notificationType = report.LeakCount > 0
-                    ? EditorUI.NotificationType.Error
-                    : EditorUI.NotificationType.Success;
+                    ? NotificationType.Error
+                    : NotificationType.Success;
             }
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(4);
 
-            // ─── Table ───
-            _columns.DrawHeader();
+            // ─── Table (고정폭 헤더: ID 50 / Address 유동 / Type 80 / Age 60 / 버튼 50) ───
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("ID", EditorStyles.boldLabel, GUILayout.Width(50));
+            EditorGUILayout.LabelField("Address", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Type", EditorStyles.boldLabel, GUILayout.Width(80));
+            EditorGUILayout.LabelField("Age", EditorStyles.boldLabel, GUILayout.Width(60));
+            EditorGUILayout.LabelField("", EditorStyles.boldLabel, GUILayout.Width(50));
+            EditorGUILayout.EndHorizontal();
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
 
@@ -95,24 +88,24 @@ namespace Tjdtjq5.AddrX.Editor
                         continue;
                 }
 
-                EditorUI.BeginRow();
-                EditorUI.DrawCellLabel(h.Id.ToString(), _columns.GetWidth(0));
-                EditorUI.DrawCellLabel(h.Address ?? "(null)", _columns.GetWidth(1));
-                EditorUI.DrawCellLabel(h.AssetType?.Name ?? "?", _columns.GetWidth(2));
-                EditorUI.DrawCellLabel($"{h.Age:F1}s", _columns.GetWidth(3), EditorUI.COL_MUTED);
-                if (EditorUI.DrawMiniButton("Stack"))
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField(h.Id.ToString(), GUILayout.Width(50));
+                EditorGUILayout.LabelField(h.Address ?? "(null)");
+                EditorGUILayout.LabelField(h.AssetType?.Name ?? "?", GUILayout.Width(80));
+                EditorGUILayout.LabelField($"{h.Age:F1}s", GUILayout.Width(60));
+                if (GUILayout.Button("Stack", EditorStyles.miniButton, GUILayout.Width(50)))
                 {
                     var msg = !string.IsNullOrEmpty(h.StackTrace)
                         ? $"[AddrX] Handle [{h.Id}] {h.Address} 할당 스택:\n{h.StackTrace}"
                         : $"[AddrX] Handle [{h.Id}] 스택 없음 (Tracking 비활성)";
                     UnityEngine.Debug.Log(msg);
                 }
-                EditorUI.EndRow();
+                EditorGUILayout.EndHorizontal();
                 shown++;
             }
 
             if (shown == 0)
-                EditorUI.DrawPlaceholder("활성 핸들이 없습니다");
+                EditorGUILayout.LabelField("활성 핸들이 없습니다", EditorStyles.centeredGreyMiniLabel);
 
             EditorGUILayout.EndScrollView();
         }

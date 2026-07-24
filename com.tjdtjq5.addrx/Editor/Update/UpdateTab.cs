@@ -6,24 +6,18 @@ using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
-using Tjdtjq5.EditorToolkit.Editor;
 
 namespace Tjdtjq5.AddrX.Editor.Update
 {
     /// <summary>Content Update 탭. 워크플로우 가이드 + 해시 비교 + 버전 라우팅.</summary>
-    public class UpdateTab : EditorTabBase
+    internal class UpdateTab : AddrXTabBase
     {
         static readonly string[] SubNames = { "Workflow", "Hash Compare", "Version Route" };
         static readonly Color COL_UPDATE = new(0.4f, 0.75f, 0.95f);
-        static readonly Color COL_HASH = new(0.95f, 0.6f, 0.3f);
-        static readonly Color COL_ROUTE = new(0.7f, 0.5f, 0.9f);
-        static readonly Color[] SubColors = { COL_UPDATE, COL_HASH, COL_ROUTE };
 
         readonly Action _repaint;
         int _subTab;
         Vector2 _scroll;
-        new string _notification;
-        new EditorUI.NotificationType _notificationType;
 
         // Workflow
         string _contentStatePath = "";
@@ -50,16 +44,17 @@ namespace Tjdtjq5.AddrX.Editor.Update
 
         public override void OnDraw()
         {
-            EditorUI.DrawNotificationBar(ref _notification, _notificationType);
+            AddrXGui.DrawNotificationBar(ref _notification, _notificationType);
 
             if (AddressableAssetSettingsDefaultObject.Settings == null)
             {
                 EditorGUILayout.Space(20);
-                EditorUI.DrawPlaceholder("Addressables Settings가 필요합니다");
+                EditorGUILayout.LabelField("Addressables Settings가 필요합니다",
+                    EditorStyles.centeredGreyMiniLabel);
                 return;
             }
 
-            _subTab = EditorUI.DrawTabBar(SubNames, _subTab, SubColors, EditorUI.COL_MUTED);
+            _subTab = GUILayout.Toolbar(_subTab, SubNames);
             EditorGUILayout.Space(4);
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
@@ -78,7 +73,7 @@ namespace Tjdtjq5.AddrX.Editor.Update
 
         void DrawWorkflow()
         {
-            EditorUI.DrawSectionHeader("Content Update Workflow", COL_UPDATE);
+            EditorGUILayout.LabelField("Content Update Workflow", EditorStyles.boldLabel);
             EditorGUILayout.Space(8);
 
             // 현재 상태 (캐싱)
@@ -91,18 +86,19 @@ namespace Tjdtjq5.AddrX.Editor.Update
                         .BundledAssetGroupSchema>() != null);
             }
 
-            EditorUI.BeginRow();
-            EditorUI.DrawStatCard("Profile", _cachedProfile ?? "?", EditorUI.COL_INFO);
-            EditorUI.DrawStatCard("Groups", _cachedGroupCount.ToString(), EditorUI.COL_INFO);
-            EditorUI.EndRow();
+            EditorGUILayout.BeginHorizontal();
+            AddrXGui.DrawStatCard("Profile", _cachedProfile ?? "?");
+            AddrXGui.DrawStatCard("Groups", _cachedGroupCount.ToString());
+            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(12);
 
             // Step 1: Content State 파일 선택
-            EditorUI.DrawSectionHeader("Step 1: 이전 빌드 상태 파일", EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField("Step 1: 이전 빌드 상태 파일", EditorStyles.boldLabel);
             EditorGUILayout.Space(4);
-            EditorUI.DrawDescription(
-                "Full Build 시 생성된 addressables_content_state.bin 파일을 선택합니다.");
+            EditorGUILayout.LabelField(
+                "Full Build 시 생성된 addressables_content_state.bin 파일을 선택합니다.",
+                EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space(4);
 
             EditorGUILayout.BeginHorizontal();
@@ -128,8 +124,9 @@ namespace Tjdtjq5.AddrX.Editor.Update
                 if (_autoDetectedPath != null)
                 {
                     EditorGUILayout.Space(4);
-                    EditorUI.DrawDescription($"자동 감지: {_autoDetectedPath}");
-                    if (EditorUI.DrawMiniButton("사용"))
+                    EditorGUILayout.LabelField($"자동 감지: {_autoDetectedPath}",
+                        EditorStyles.wordWrappedMiniLabel);
+                    if (GUILayout.Button("사용", EditorStyles.miniButton))
                         _contentStatePath = _autoDetectedPath;
                 }
             }
@@ -137,14 +134,15 @@ namespace Tjdtjq5.AddrX.Editor.Update
             EditorGUILayout.Space(12);
 
             // Step 2: 변경 감지
-            EditorUI.DrawSectionHeader("Step 2: 변경 감지 + 빌드", EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField("Step 2: 변경 감지 + 빌드", EditorStyles.boldLabel);
             EditorGUILayout.Space(4);
-            EditorUI.DrawDescription(
-                "이전 빌드 이후 변경된 에셋을 감지하고 업데이트 빌드를 실행합니다.");
+            EditorGUILayout.LabelField(
+                "이전 빌드 이후 변경된 에셋을 감지하고 업데이트 빌드를 실행합니다.",
+                EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space(4);
 
             EditorGUI.BeginDisabledGroup(string.IsNullOrEmpty(_contentStatePath));
-            if (EditorUI.DrawColorButton("Check & Build Content Update", COL_UPDATE, 32))
+            if (GUILayout.Button("Check & Build Content Update", GUILayout.Height(32)))
             {
                 BuildContentUpdate();
             }
@@ -153,26 +151,29 @@ namespace Tjdtjq5.AddrX.Editor.Update
             EditorGUILayout.Space(12);
 
             // Step 3: 업로드 안내
-            EditorUI.DrawSectionHeader("Step 3: 서버 업로드", EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField("Step 3: 서버 업로드", EditorStyles.boldLabel);
             EditorGUILayout.Space(4);
 
             var buildPath = GetRemoteBuildPath(AddressableAssetSettingsDefaultObject.Settings);
             if (!string.IsNullOrEmpty(buildPath))
             {
-                EditorUI.DrawDescription($"빌드 출력 경로: {buildPath}");
+                EditorGUILayout.LabelField($"빌드 출력 경로: {buildPath}",
+                    EditorStyles.wordWrappedMiniLabel);
                 EditorGUILayout.Space(4);
-                if (EditorUI.DrawMiniButton("폴더 열기"))
+                if (GUILayout.Button("폴더 열기", EditorStyles.miniButton))
                     EditorUtility.RevealInFinder(buildPath);
             }
             else
             {
-                EditorUI.DrawDescription("Remote Build Path가 설정되지 않았습니다.");
+                EditorGUILayout.LabelField("Remote Build Path가 설정되지 않았습니다.",
+                    EditorStyles.wordWrappedMiniLabel);
             }
 
             EditorGUILayout.Space(4);
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField(
                 "빌드된 번들 + 카탈로그 파일을 CDN/서버에 업로드하세요.\n" +
-                "Hash Compare 탭에서 변경된 번들을 확인할 수 있습니다.");
+                "Hash Compare 탭에서 변경된 번들을 확인할 수 있습니다.",
+                EditorStyles.wordWrappedMiniLabel);
         }
 
         void BuildContentUpdate()
@@ -180,13 +181,13 @@ namespace Tjdtjq5.AddrX.Editor.Update
             if (!File.Exists(_contentStatePath))
             {
                 _notification = "Content State 파일을 찾을 수 없습니다.";
-                _notificationType = EditorUI.NotificationType.Error;
+                _notificationType = NotificationType.Error;
                 return;
             }
 
             AddrXLog.Info("Update", "Content Update 빌드 시작...");
             _notification = "Content Update 빌드 실행 중...";
-            _notificationType = EditorUI.NotificationType.Info;
+            _notificationType = NotificationType.Info;
             _repaint?.Invoke();
 
             var result = UnityEditor.AddressableAssets.Build.ContentUpdateScript
@@ -197,13 +198,13 @@ namespace Tjdtjq5.AddrX.Editor.Update
             if (result != null && string.IsNullOrEmpty(result.Error))
             {
                 _notification = "Content Update 빌드 완료!";
-                _notificationType = EditorUI.NotificationType.Success;
+                _notificationType = NotificationType.Success;
                 AddrXLog.Info("Update", "Content Update 빌드 성공");
             }
             else
             {
                 _notification = $"빌드 실패: {result?.Error ?? "알 수 없는 오류"}";
-                _notificationType = EditorUI.NotificationType.Error;
+                _notificationType = NotificationType.Error;
                 AddrXLog.Error("Update", $"Content Update 빌드 실패: {result?.Error}");
             }
         }
@@ -248,10 +249,11 @@ namespace Tjdtjq5.AddrX.Editor.Update
 
         void DrawHashCompare()
         {
-            EditorUI.DrawSectionHeader("Build Hash Compare", COL_HASH);
+            EditorGUILayout.LabelField("Build Hash Compare", EditorStyles.boldLabel);
             EditorGUILayout.Space(8);
-            EditorUI.DrawDescription(
-                "두 빌드의 카탈로그 JSON을 비교하여 변경된 번들을 추적합니다.");
+            EditorGUILayout.LabelField(
+                "두 빌드의 카탈로그 JSON을 비교하여 변경된 번들을 추적합니다.",
+                EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space(8);
 
             // 이전 카탈로그
@@ -280,7 +282,7 @@ namespace Tjdtjq5.AddrX.Editor.Update
 
             EditorGUI.BeginDisabledGroup(
                 string.IsNullOrEmpty(_oldCatalogPath) || string.IsNullOrEmpty(_newCatalogPath));
-            if (EditorUI.DrawColorButton("Compare", COL_HASH, 30))
+            if (GUILayout.Button("Compare", GUILayout.Height(30)))
             {
                 _compareReport = BuildHashComparer.Compare(_oldCatalogPath, _newCatalogPath);
                 var r = _compareReport.Value;
@@ -288,8 +290,8 @@ namespace Tjdtjq5.AddrX.Editor.Update
                     ? "변경 없음 — 동일한 빌드"
                     : $"변경 발견: 추가 {r.Added.Count}, 변경 {r.Changed.Count}, 제거 {r.Removed.Count}";
                 _notificationType = r.IsEmpty
-                    ? EditorUI.NotificationType.Success
-                    : EditorUI.NotificationType.Info;
+                    ? NotificationType.Success
+                    : NotificationType.Info;
             }
             EditorGUI.EndDisabledGroup();
 
@@ -297,7 +299,7 @@ namespace Tjdtjq5.AddrX.Editor.Update
             if (_compareReport.Value.IsEmpty)
             {
                 EditorGUILayout.Space(8);
-                EditorUI.DrawPlaceholder("변경된 번들이 없습니다");
+                EditorGUILayout.LabelField("변경된 번들이 없습니다", EditorStyles.centeredGreyMiniLabel);
                 return;
             }
 
@@ -305,33 +307,33 @@ namespace Tjdtjq5.AddrX.Editor.Update
             var report = _compareReport.Value;
 
             // 요약 카드
-            EditorUI.BeginRow();
-            EditorUI.DrawStatCard("Added", report.Added.Count.ToString(), EditorUI.COL_SUCCESS);
-            EditorUI.DrawStatCard("Changed", report.Changed.Count.ToString(), COL_HASH);
-            EditorUI.DrawStatCard("Removed", report.Removed.Count.ToString(), EditorUI.COL_ERROR);
-            EditorUI.DrawStatCard("Unchanged", report.Unchanged.Count.ToString(), EditorUI.COL_MUTED);
-            EditorUI.EndRow();
+            EditorGUILayout.BeginHorizontal();
+            AddrXGui.DrawStatCard("Added", report.Added.Count.ToString());
+            AddrXGui.DrawStatCard("Changed", report.Changed.Count.ToString());
+            AddrXGui.DrawStatCard("Removed", report.Removed.Count.ToString());
+            AddrXGui.DrawStatCard("Unchanged", report.Unchanged.Count.ToString());
+            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(8);
 
             // 변경 목록
             if (report.Changed.Count > 0)
             {
-                EditorUI.DrawSubLabel("Changed Bundles");
+                EditorGUILayout.LabelField("Changed Bundles", EditorStyles.miniLabel);
                 foreach (var c in report.Changed)
-                    EditorUI.DrawCellLabel($"  {c.BundleName}  ({c.OldHash} → {c.NewHash})");
+                    EditorGUILayout.LabelField($"  {c.BundleName}  ({c.OldHash} → {c.NewHash})");
             }
             if (report.Added.Count > 0)
             {
-                EditorUI.DrawSubLabel("Added Bundles");
+                EditorGUILayout.LabelField("Added Bundles", EditorStyles.miniLabel);
                 foreach (var c in report.Added)
-                    EditorUI.DrawCellLabel($"  {c.BundleName}", color: EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField($"  {c.BundleName}");
             }
             if (report.Removed.Count > 0)
             {
-                EditorUI.DrawSubLabel("Removed Bundles");
+                EditorGUILayout.LabelField("Removed Bundles", EditorStyles.miniLabel);
                 foreach (var c in report.Removed)
-                    EditorUI.DrawCellLabel($"  {c.BundleName}", color: EditorUI.COL_ERROR);
+                    EditorGUILayout.LabelField($"  {c.BundleName}");
             }
         }
 
@@ -341,11 +343,12 @@ namespace Tjdtjq5.AddrX.Editor.Update
 
         void DrawVersionRoute()
         {
-            EditorUI.DrawSectionHeader("Version Route Manager", COL_ROUTE);
+            EditorGUILayout.LabelField("Version Route Manager", EditorStyles.boldLabel);
             EditorGUILayout.Space(8);
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField(
                 "앱 버전별로 어떤 카탈로그를 사용할지 매핑합니다.\n" +
-                "고정 이름 방식이면 이 기능은 불필요합니다.");
+                "고정 이름 방식이면 이 기능은 불필요합니다.",
+                EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space(8);
 
             // 파일 선택
@@ -378,7 +381,8 @@ namespace Tjdtjq5.AddrX.Editor.Update
 
             if (_route == null)
             {
-                EditorUI.DrawPlaceholder("Route 파일을 선택하거나 새로 생성하세요");
+                EditorGUILayout.LabelField("Route 파일을 선택하거나 새로 생성하세요",
+                    EditorStyles.centeredGreyMiniLabel);
                 return;
             }
 
@@ -401,31 +405,28 @@ namespace Tjdtjq5.AddrX.Editor.Update
             var cleanable = VersionRouteManager.GetCleanableEntries(_route);
             int uniqueCatalogs = VersionRouteManager.GetUniqueCatalogCount(_route);
 
-            EditorUI.BeginRow();
-            EditorUI.DrawStatCard("Routes", _route.routes.Count.ToString(), COL_ROUTE);
-            EditorUI.DrawStatCard("Catalogs", uniqueCatalogs.ToString(), EditorUI.COL_INFO);
-            EditorUI.DrawStatCard("Cleanable",
-                cleanable.Count.ToString(),
-                cleanable.Count > 0 ? EditorUI.COL_WARN : EditorUI.COL_MUTED);
-            EditorUI.EndRow();
+            EditorGUILayout.BeginHorizontal();
+            AddrXGui.DrawStatCard("Routes", _route.routes.Count.ToString());
+            AddrXGui.DrawStatCard("Catalogs", uniqueCatalogs.ToString());
+            AddrXGui.DrawStatCard("Cleanable", cleanable.Count.ToString());
+            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(8);
 
             // 라우트 목록
-            EditorUI.DrawSubLabel("Routes");
+            EditorGUILayout.LabelField("Routes", EditorStyles.miniLabel);
             for (int i = 0; i < _route.routes.Count; i++)
             {
                 var entry = _route.routes[i];
                 bool isCleanable = cleanable.Contains(entry);
-                Color rowColor = isCleanable ? EditorUI.COL_WARN : EditorUI.COL_MUTED;
 
                 EditorGUILayout.BeginHorizontal();
-                EditorUI.DrawCellLabel($"  v{entry.appVersion}", 80, rowColor);
-                EditorUI.DrawCellLabel($"→ {entry.catalogFile}", color: EditorUI.COL_INFO);
+                EditorGUILayout.LabelField($"  v{entry.appVersion}", GUILayout.Width(80));
+                EditorGUILayout.LabelField($"→ {entry.catalogFile}");
                 GUILayout.FlexibleSpace();
                 if (isCleanable)
-                    EditorUI.DrawCellLabel("cleanable", 60, EditorUI.COL_WARN);
-                if (EditorUI.DrawRemoveButton())
+                    EditorGUILayout.LabelField("cleanable", GUILayout.Width(60));
+                if (GUILayout.Button("x", EditorStyles.miniButton, GUILayout.Width(20)))
                 {
                     _route.routes.RemoveAt(i);
                     VersionRouteManager.Save(_route, _routeFilePath);
@@ -437,7 +438,7 @@ namespace Tjdtjq5.AddrX.Editor.Update
             EditorGUILayout.Space(8);
 
             // 새 라우트 추가
-            EditorUI.DrawSubLabel("Add Route");
+            EditorGUILayout.LabelField("Add Route", EditorStyles.miniLabel);
             EditorGUILayout.BeginHorizontal();
             GUILayout.Label("App Version", GUILayout.Width(80));
             _newAppVersion = EditorGUILayout.TextField(_newAppVersion, GUILayout.Width(80));
@@ -464,14 +465,13 @@ namespace Tjdtjq5.AddrX.Editor.Update
             if (cleanable.Count > 0)
             {
                 EditorGUILayout.Space(8);
-                if (EditorUI.DrawColorButton(
-                        $"최소 버전 미만 {cleanable.Count}건 정리", EditorUI.COL_WARN, 24))
+                if (GUILayout.Button($"최소 버전 미만 {cleanable.Count}건 정리", GUILayout.Height(24)))
                 {
                     foreach (var entry in cleanable)
                         _route.routes.Remove(entry);
                     VersionRouteManager.Save(_route, _routeFilePath);
                     _notification = $"{cleanable.Count}건 정리 완료";
-                    _notificationType = EditorUI.NotificationType.Success;
+                    _notificationType = NotificationType.Success;
                 }
             }
         }
