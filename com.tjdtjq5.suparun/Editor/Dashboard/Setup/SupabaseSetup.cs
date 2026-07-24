@@ -1,5 +1,4 @@
 using Cysharp.Threading.Tasks;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -57,42 +56,44 @@ namespace Tjdtjq5.SupaRun.Editor
             GUILayout.Space(6);
 
             // ⑤ 연결 테스트
-            EditorUI.DrawSubLabel("⑤ 연결 테스트");
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("⑤ 연결 테스트", EditorStyles.miniLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             DrawConnectionTest(settings);
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── ① 가입 ──
 
         void DrawStep1_SignUp()
         {
-            EditorUI.DrawSubLabel("① Supabase 가입 + 프로젝트 만들기");
-            EditorUI.BeginBody();
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField("① Supabase 가입 + 프로젝트 만들기", EditorStyles.miniLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
                 "계정이 없다면 가입 후 새 프로젝트를 만드세요.\n" +
                 "· 리전: Northeast Asia 추천\n" +
-                "· DB 비밀번호: 기억해두세요 (④에서 입력)");
+                "· DB 비밀번호: 기억해두세요 (④에서 입력)",
+                EditorStyles.wordWrappedMiniLabel);
             GUILayout.Space(4);
-            if (EditorUI.DrawLinkButton("Supabase 가입/로그인", SupaRunDashboard.COL_SUPABASE))
+            if (EditorGUILayout.LinkButton("Supabase 가입/로그인"))
                 Application.OpenURL("https://supabase.com/dashboard");
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── ② Access Token ──
 
         void DrawStep2_AccessToken(SupaRunSettings settings)
         {
-            EditorUI.DrawSubLabel("② Access Token 입력");
-            EditorUI.BeginBody();
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField("② Access Token 입력", EditorStyles.miniLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
                 "Supabase > Account > Access Tokens에서 토큰을 생성하세요.\n" +
-                "이 토큰으로 Anon Key, Auth 설정이 자동 처리됩니다.");
-            if (EditorUI.DrawLinkButton("Access Token 발급", SupaRunDashboard.COL_SUPABASE))
+                "이 토큰으로 Anon Key, Auth 설정이 자동 처리됩니다.",
+                EditorStyles.wordWrappedMiniLabel);
+            if (EditorGUILayout.LinkButton("Access Token 발급"))
                 Application.OpenURL("https://supabase.com/dashboard/account/tokens");
 
             GUILayout.Space(4);
-            var token = EditorUI.DrawPasswordField("Access Token", SupaRunSettings.Instance.SupabaseAccessToken);
+            var token = EditorGUILayout.PasswordField("Access Token", SupaRunSettings.Instance.SupabaseAccessToken);
             if (token != SupaRunSettings.Instance.SupabaseAccessToken)
             {
                 SupaRunSettings.Instance.SupabaseAccessToken = token;
@@ -107,17 +108,17 @@ namespace Tjdtjq5.SupaRun.Editor
             if (!string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAccessToken) && _projects == null && !_loadingProjects)
             {
                 GUILayout.Space(4);
-                if (EditorUI.DrawColorButton("프로젝트 목록 조회", SupaRunDashboard.COL_SUPABASE, 28))
+                if (GUILayout.Button("프로젝트 목록 조회", GUILayout.Height(28)))
                     _ = FetchProjects();
             }
 
             if (_loadingProjects)
-                EditorUI.DrawLoading(true, "프로젝트 목록 조회 중...");
+                EditorGUILayout.HelpBox("프로젝트 목록 조회 중...", MessageType.Info);
 
             if (!string.IsNullOrEmpty(_projectsError))
-                EditorUI.DrawDescription($"✗ {_projectsError}", EditorUI.COL_ERROR);
+                EditorGUILayout.LabelField($"✗ {_projectsError}", EditorStyles.wordWrappedMiniLabel);
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── ③ 프로젝트 선택 ──
@@ -126,13 +127,13 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             var hasToken = !string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAccessToken);
 
-            EditorUI.DrawSubLabel("③ 프로젝트 선택");
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("③ 프로젝트 선택", EditorStyles.miniLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             if (!hasToken)
             {
-                EditorUI.DrawDescription("②에서 Access Token을 먼저 입력하세요.", EditorUI.COL_WARN);
-                EditorUI.EndBody();
+                EditorGUILayout.LabelField("②에서 Access Token을 먼저 입력하세요.", EditorStyles.wordWrappedMiniLabel);
+                EditorGUILayout.EndVertical();
                 return;
             }
 
@@ -149,70 +150,71 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (_selectedProjectIndex >= 0)
                 {
                     var p = _projects[_selectedProjectIndex];
-                    EditorUI.DrawCellLabel($"  URL: https://{p.id}.supabase.co", 0, EditorUI.COL_MUTED);
-                    EditorUI.DrawCellLabel($"  상태: {p.status}  |  리전: {p.region}", 0, EditorUI.COL_MUTED);
+                    EditorGUILayout.LabelField($"  URL: https://{p.id}.supabase.co");
+                    EditorGUILayout.LabelField($"  상태: {p.status}  |  리전: {p.region}");
 
                     // Anon Key 상태
                     GUILayout.Space(4);
                     switch (_anonKeyState)
                     {
                         case AnonKeyState.Loading:
-                            EditorUI.DrawLoading(true, "Anon Key 조회 중...");
+                            EditorGUILayout.HelpBox("Anon Key 조회 중...", MessageType.Info);
                             break;
                         case AnonKeyState.Done:
-                            EditorUI.DrawDescription("✓ Anon Key 자동 조회 완료", EditorUI.COL_SUCCESS);
+                            EditorGUILayout.LabelField("✓ Anon Key 자동 조회 완료", EditorStyles.wordWrappedMiniLabel);
                             break;
                         case AnonKeyState.Failed:
-                            EditorUI.DrawDescription($"✗ Anon Key 조회 실패: {_anonKeyError}", EditorUI.COL_ERROR);
-                            EditorUI.DrawDescription("③을 넘어갈 수 없습니다. 토큰과 프로젝트를 확인하세요.", EditorUI.COL_WARN);
+                            EditorGUILayout.LabelField($"✗ Anon Key 조회 실패: {_anonKeyError}", EditorStyles.wordWrappedMiniLabel);
+                            EditorGUILayout.LabelField("③을 넘어갈 수 없습니다. 토큰과 프로젝트를 확인하세요.", EditorStyles.wordWrappedMiniLabel);
                             break;
                     }
                 }
             }
             else if (_projects != null && _projects.Length == 0)
             {
-                EditorUI.DrawDescription("프로젝트가 없습니다. Supabase에서 먼저 프로젝트를 만드세요.", EditorUI.COL_WARN);
+                EditorGUILayout.LabelField("프로젝트가 없습니다. Supabase에서 먼저 프로젝트를 만드세요.", EditorStyles.wordWrappedMiniLabel);
             }
             else
             {
-                EditorUI.DrawDescription("②에서 [프로젝트 목록 조회]를 눌러주세요.", EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField("②에서 [프로젝트 목록 조회]를 눌러주세요.", EditorStyles.wordWrappedMiniLabel);
             }
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── ④ DB Password ──
 
         void DrawStep4_DbPassword(SupaRunSettings settings)
         {
-            EditorUI.DrawSubLabel("④ DB Password");
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("④ DB Password", EditorStyles.miniLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             // Anon Key 미완료 시 차단
             if (_anonKeyState != AnonKeyState.Done &&
                 string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAnonKey))
             {
-                EditorUI.DrawDescription("③에서 프로젝트를 선택하면 자동으로 Anon Key가 조회됩니다.", EditorUI.COL_WARN);
-                EditorUI.EndBody();
+                EditorGUILayout.LabelField("③에서 프로젝트를 선택하면 자동으로 Anon Key가 조회됩니다.", EditorStyles.wordWrappedMiniLabel);
+                EditorGUILayout.EndVertical();
                 return;
             }
 
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField(
                 "프로젝트 생성 시 설정한 비밀번호입니다.\n" +
-                "잊었다면 Settings > Database에서 리셋할 수 있습니다.");
+                "잊었다면 Settings > Database에서 리셋할 수 있습니다.",
+                EditorStyles.wordWrappedMiniLabel);
 
             if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
             {
-                if (EditorUI.DrawLinkButton("Database 설정 페이지", SupaRunDashboard.COL_SUPABASE))
+                if (EditorGUILayout.LinkButton("Database 설정 페이지"))
                     Application.OpenURL(settings.SupabaseDatabaseSettingsUrl);
             }
 
             GUILayout.Space(4);
-            var dbPw = EditorUI.DrawPasswordField("DB Password", SupaRunSettings.Instance.SupabaseDbPassword);
+            var dbPw = EditorGUILayout.PasswordField("DB Password", SupaRunSettings.Instance.SupabaseDbPassword);
             if (dbPw != SupaRunSettings.Instance.SupabaseDbPassword)
                 SupaRunSettings.Instance.SupabaseDbPassword = dbPw;
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 프로젝트 목록 조회 ──
@@ -334,32 +336,32 @@ namespace Tjdtjq5.SupaRun.Editor
                                    !string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAnonKey);
                     using (new EditorGUI.DisabledGroupScope(!canTest))
                     {
-                        if (EditorUI.DrawColorButton("연결 테스트", SupaRunDashboard.COL_SUPABASE, 28))
+                        if (GUILayout.Button("연결 테스트", GUILayout.Height(28)))
                             _ = RunConnectionTest(settings);
                     }
                     if (!canTest)
-                        EditorUI.DrawDescription("프로젝트를 선택하고 Anon Key가 조회되면 테스트할 수 있습니다.", EditorUI.COL_WARN);
+                        EditorGUILayout.LabelField("프로젝트를 선택하고 Anon Key가 조회되면 테스트할 수 있습니다.", EditorStyles.wordWrappedMiniLabel);
                     break;
 
                 case TestState.Testing:
-                    EditorUI.DrawLoading(true, _testDetail ?? "연결 테스트 중...");
+                    EditorGUILayout.HelpBox(_testDetail ?? "연결 테스트 중...", MessageType.Info);
                     break;
 
                 case TestState.Success:
                     if (!string.IsNullOrEmpty(_testDetail))
-                        EditorUI.DrawDescription(_testDetail, EditorUI.COL_SUCCESS);
-                    EditorUI.DrawDescription("✓ Supabase 연결 성공!", EditorUI.COL_SUCCESS);
+                        EditorGUILayout.LabelField(_testDetail, EditorStyles.wordWrappedMiniLabel);
+                    EditorGUILayout.LabelField("✓ Supabase 연결 성공!", EditorStyles.wordWrappedMiniLabel);
                     GUILayout.Space(4);
-                    if (EditorUI.DrawColorButton("다시 테스트", SupaRunDashboard.COL_SUPABASE))
+                    if (GUILayout.Button("다시 테스트"))
                         _ = RunConnectionTest(settings);
                     break;
 
                 case TestState.Failed:
                     if (!string.IsNullOrEmpty(_testDetail))
-                        EditorUI.DrawDescription(_testDetail, EditorUI.COL_MUTED);
-                    EditorUI.DrawDescription($"✗ {_testError}", EditorUI.COL_ERROR);
+                        EditorGUILayout.LabelField(_testDetail, EditorStyles.wordWrappedMiniLabel);
+                    EditorGUILayout.LabelField($"✗ {_testError}", EditorStyles.wordWrappedMiniLabel);
                     GUILayout.Space(4);
-                    if (EditorUI.DrawColorButton("다시 테스트", EditorUI.COL_ERROR))
+                    if (GUILayout.Button("다시 테스트"))
                         _ = RunConnectionTest(settings);
                     break;
             }

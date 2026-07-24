@@ -1,4 +1,3 @@
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -7,10 +6,6 @@ namespace Tjdtjq5.SupaRun.Editor
     public class SupaRunDashboard : EditorWindow
     {
         // ── 색상 ──
-        public static readonly Color COL_PRIMARY  = new(0.25f, 0.65f, 0.85f);
-        public static readonly Color COL_SUPABASE = new(0.24f, 0.80f, 0.56f);
-        public static readonly Color COL_GCP      = new(0.26f, 0.52f, 0.96f);
-        public static readonly Color COL_GITHUB   = new(0.95f, 0.95f, 0.95f);
         public static readonly Color COL_DOCKER   = new(0.13f, 0.59f, 0.95f);
 
         // ── 모드 ──
@@ -19,12 +14,6 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── 대시보드 탭 ──
         static readonly string[] DashboardTabs = { "Status", "Deploy", "Monitor" };
-        static readonly Color[] DashboardTabColors =
-        {
-            EditorUI.COL_SUCCESS,
-            EditorUI.COL_WARN,
-            EditorUI.COL_INFO
-        };
         int _activeTab;
         Vector2 _scrollPos;
 
@@ -37,7 +26,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── 알림 ──
         string _notification;
-        EditorUI.NotificationType _notificationType;
+        SupaRunUI.NotificationType _notificationType;
 
         [MenuItem("Tjdtjq/SupaRun/Dashboard %#q")]
         public static void Open()
@@ -83,12 +72,10 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void OnGUI()
         {
-            EditorUI.DrawWindowBackground(position);
-
             switch (_mode)
             {
                 case Mode.Setup:
-                    EditorUI.DrawWindowHeader("SupaRun", $"v{SupaRunSettings.VERSION}", COL_PRIMARY);
+                    DrawWindowHeader();
                     _setupWizard.OnDraw();
                     break;
 
@@ -102,21 +89,50 @@ namespace Tjdtjq5.SupaRun.Editor
             }
         }
 
+        static void DrawWindowHeader()
+        {
+            EditorGUILayout.LabelField($"SupaRun v{SupaRunSettings.VERSION}", EditorStyles.largeLabel);
+            EditorGUILayout.Space();
+        }
+
+        /// <summary>헤더 + 뱃지 + ⚙ 버튼. 반환: ⚙ 클릭 여부.</summary>
+        static bool DrawWindowHeaderWithGear((string name, int state)[] badges)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Label($"SupaRun v{SupaRunSettings.VERSION}", EditorStyles.largeLabel);
+
+            if (badges != null)
+            {
+                foreach (var (name, state) in badges)
+                {
+                    var icon = state == 1 ? "✓" : state == 2 ? "⚠" : "○";
+                    GUILayout.Label($"{icon} {name}", EditorStyles.miniLabel, GUILayout.ExpandWidth(false));
+                }
+            }
+
+            GUILayout.FlexibleSpace();
+            bool gearClicked = GUILayout.Button(EditorGUIUtility.IconContent("_Popup"),
+                EditorStyles.miniButton, GUILayout.Width(28));
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.Space();
+            return gearClicked;
+        }
+
         void DrawDashboardMode()
         {
             // 헤더 + 뱃지 + ⚙
             var badges = GetStatusBadges();
-            if (EditorUI.DrawWindowHeaderWithGear("SupaRun", $"v{SupaRunSettings.VERSION}", COL_PRIMARY, badges))
+            if (DrawWindowHeaderWithGear(badges))
                 _mode = Mode.Settings;
 
             // Access Token 만료 경고 (상단 고정)
             DrawTokenWarning();
 
             // 탭 바
-            _activeTab = EditorUI.DrawTabBar(DashboardTabs, _activeTab, DashboardTabColors, COL_PRIMARY);
+            _activeTab = GUILayout.Toolbar(_activeTab, DashboardTabs);
 
             // 알림
-            EditorUI.DrawNotificationBar(ref _notification, _notificationType);
+            SupaRunUI.DrawNotificationBar(ref _notification, _notificationType);
 
             // 탭 내용
             _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
@@ -133,12 +149,12 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawSettingsMode()
         {
-            EditorUI.DrawWindowHeader("SupaRun", $"v{SupaRunSettings.VERSION}", COL_PRIMARY);
-            if (EditorUI.DrawBackButton("← 대시보드로 돌아가기"))
+            DrawWindowHeader();
+            if (GUILayout.Button("← 대시보드로 돌아가기", EditorStyles.miniButton))
                 _mode = Mode.Dashboard;
 
             DrawTokenWarning();
-            EditorUI.DrawNotificationBar(ref _notification, _notificationType);
+            SupaRunUI.DrawNotificationBar(ref _notification, _notificationType);
             _settingsView.OnDraw();
         }
 
@@ -151,7 +167,7 @@ namespace Tjdtjq5.SupaRun.Editor
             EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
             GUI.backgroundColor = prev;
 
-            EditorUI.DrawCellLabel("  ⚠ Access Token이 만료되었습니다. Settings > Supabase에서 재발급하세요.", 0, EditorUI.COL_ERROR);
+            EditorGUILayout.LabelField("  ⚠ Access Token이 만료되었습니다. Settings > Supabase에서 재발급하세요.");
 
             if (GUILayout.Button("Settings", GUILayout.Width(70)))
                 _mode = Mode.Settings;
@@ -183,7 +199,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── Public API ──
 
-        public void ShowNotification(string message, EditorUI.NotificationType type)
+        public void ShowNotification(string message, SupaRunUI.NotificationType type)
         {
             _notification = message;
             _notificationType = type;

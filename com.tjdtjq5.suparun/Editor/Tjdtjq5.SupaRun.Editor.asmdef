@@ -3,8 +3,6 @@
     "rootNamespace": "Tjdtjq5.SupaRun.Editor",
     "references": [
         "Tjdtjq5.SupaRun.Runtime",
-        "Tjdtjq5.EditorToolkit.Editor",
-        "Tjdtjq5.EditorToolkit.Runtime",
         "UniTask",
         "Unity.Addressables.Editor"
     ],

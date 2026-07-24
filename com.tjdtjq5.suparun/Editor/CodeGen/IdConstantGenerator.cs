@@ -271,8 +271,13 @@ namespace Tjdtjq5.SupaRun.Editor
 
         static string Esc(string s) => s?.Replace("\\", "\\\\").Replace("\"", "\\\"") ?? "";
 
-        static string StripConfigSuffix(string name) =>
-            name.EndsWith("Config") ? name.Substring(0, name.Length - "Config".Length) : name;
+        /// <summary>테이블 클래스명의 Config/Data 접미사 제거 — SkillData → SkillIds 처럼 짧은 상수 클래스명을 만든다.</summary>
+        static string StripConfigSuffix(string name)
+        {
+            if (name.EndsWith("Config")) return name.Substring(0, name.Length - "Config".Length);
+            if (name.EndsWith("Data")) return name.Substring(0, name.Length - "Data".Length);
+            return name;
+        }
 
         static string ToSnakeCase(string name)
         {

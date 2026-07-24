@@ -1684,10 +1684,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
                 parts.Add($"\"enumValues\":[{string.Join(",", names.Select(n => $"\"{n}\""))}]");
             }
 
-            // ForeignKey
+            // ForeignKey — ReferenceType이 List<T>면 리스트 FK (TEXT 컬럼에 JSON 배열, 어드민 리스트 에디터)
             var fk = member.GetCustomAttribute<ForeignKeyAttribute>();
             if (fk != null)
-                parts.Add($"\"foreignKey\":\"{fk.ReferenceType.Name}\"");
+            {
+                var refType = fk.ReferenceType;
+                if (refType.IsGenericType && refType.GetGenericTypeDefinition() == typeof(List<>))
+                    parts.Add($"\"foreignKeyList\":\"{refType.GetGenericArguments()[0].Name}\"");
+                else
+                    parts.Add($"\"foreignKey\":\"{refType.Name}\"");
+            }
 
             // Icon → SpriteAtlas sprite 이름 드롭다운 (썸네일). 값은 여전히 string.
             var iconAttr = member.GetCustomAttribute<IconAttribute>();

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -35,7 +34,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         public void OnDraw()
         {
-            EditorUI.DrawSectionHeader("Monitor", EditorUI.COL_INFO);
+            EditorGUILayout.LabelField("Monitor", EditorStyles.boldLabel);
             GUILayout.Space(8);
 
             var settings = SupaRunSettings.Instance;
@@ -59,36 +58,37 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawNotConfigured()
         {
-            EditorUI.BeginBody();
-            EditorUI.DrawDescription(
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
                 "Supabase 연결이 필요합니다.\n" +
-                "Settings > Supabase에서 설정하세요.");
+                "Settings > Supabase에서 설정하세요.",
+                EditorStyles.wordWrappedMiniLabel);
             GUILayout.Space(8);
-            if (EditorUI.DrawColorButton("지금 설정하기", SupaRunDashboard.COL_PRIMARY, 28))
+            if (GUILayout.Button("지금 설정하기", GUILayout.Height(28)))
                 _dashboard.OpenSettings();
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 툴바 (필터 + 새로고침) ──
 
         void DrawToolbar(SupaRunSettings settings)
         {
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             using (new EditorGUILayout.HorizontalScope())
             {
                 DrawFilterButton("All", LevelFilter.All);
                 DrawFilterButton("Error", LevelFilter.Error);
                 DrawFilterButton("Warn", LevelFilter.Warn);
 
-                EditorUI.FlexSpace();
+                GUILayout.FlexibleSpace();
 
                 if (_state == FetchState.Loading)
                 {
-                    EditorUI.DrawCellLabel("조회 중...", 80, EditorUI.COL_MUTED);
+                    EditorGUILayout.LabelField("조회 중...", GUILayout.Width(80));
                 }
                 else
                 {
-                    if (EditorUI.DrawMiniButton("새로고침"))
+                    if (GUILayout.Button("새로고침", EditorStyles.miniButton))
                     {
                         _logs.Clear();
                         _expanded.Clear();
@@ -97,23 +97,20 @@ namespace Tjdtjq5.SupaRun.Editor
                     }
                 }
             }
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         void DrawFilterButton(string label, LevelFilter filter)
         {
             var isActive = _filter == filter;
-            var color = isActive ? EditorUI.COL_INFO : EditorUI.COL_MUTED;
-            if (EditorUI.DrawColorButton(label, color, 22))
+            // 활성 필터는 눌린 상태로 표시 (토글 버튼)
+            if (GUILayout.Toggle(isActive, label, EditorStyles.miniButton, GUILayout.Height(22)) && !isActive)
             {
-                if (_filter != filter)
-                {
-                    _filter = filter;
-                    _logs.Clear();
-                    _expanded.Clear();
-                    _limit = 50;
-                    _ = FetchLogs(SupaRunSettings.Instance);
-                }
+                _filter = filter;
+                _logs.Clear();
+                _expanded.Clear();
+                _limit = 50;
+                _ = FetchLogs(SupaRunSettings.Instance);
             }
             GUILayout.Space(2);
         }
@@ -124,36 +121,38 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             if (_state == FetchState.Failed)
             {
-                EditorUI.BeginBody();
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 if (_isTableMissing)
                 {
-                    EditorUI.DrawDescription(
+                    EditorGUILayout.LabelField(
                         "server_log 테이블이 아직 생성되지 않았습니다.\n\n" +
                         "Deploy 탭 > DB 동기화를 실행하면\n" +
-                        "테이블이 자동으로 생성됩니다.", EditorUI.COL_WARN);
+                        "테이블이 자동으로 생성됩니다.",
+                        EditorStyles.wordWrappedMiniLabel);
                 }
                 else
                 {
-                    EditorUI.DrawDescription($"조회 실패: {_errorMessage}", EditorUI.COL_ERROR);
+                    EditorGUILayout.LabelField($"조회 실패: {_errorMessage}", EditorStyles.wordWrappedMiniLabel);
                 }
-                EditorUI.EndBody();
+                EditorGUILayout.EndVertical();
                 return;
             }
 
             if (_state == FetchState.Loading && _logs.Count == 0)
             {
-                EditorUI.DrawLoading(true, "서버 로그 조회 중...");
+                EditorGUILayout.HelpBox("서버 로그 조회 중...", MessageType.Info);
                 return;
             }
 
             if (_logs.Count == 0)
             {
-                EditorUI.BeginBody();
-                EditorUI.DrawDescription(
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUILayout.LabelField(
                     "기록된 로그가 없습니다.\n\n" +
                     "서버에서 에러/경고 발생 시\n" +
-                    "자동으로 여기에 표시됩니다.");
-                EditorUI.EndBody();
+                    "자동으로 여기에 표시됩니다.",
+                    EditorStyles.wordWrappedMiniLabel);
+                EditorGUILayout.EndVertical();
                 return;
             }
 
@@ -168,9 +167,9 @@ namespace Tjdtjq5.SupaRun.Editor
             GUILayout.Space(4);
             using (new EditorGUILayout.HorizontalScope())
             {
-                EditorUI.DrawCellLabel($"  {_logs.Count}개 표시 중", 0, EditorUI.COL_MUTED);
-                EditorUI.FlexSpace();
-                if (_hasMore && EditorUI.DrawMiniButton("더 불러오기"))
+                EditorGUILayout.LabelField($"  {_logs.Count}개 표시 중");
+                GUILayout.FlexibleSpace();
+                if (_hasMore && GUILayout.Button("더 불러오기", EditorStyles.miniButton))
                 {
                     _limit += 50;
                     _ = FetchLogs(SupaRunSettings.Instance);
@@ -182,34 +181,32 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawLogCard(int index, LogEntry log)
         {
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             // 1줄: 레벨 아이콘 + endpoint + 시간
             using (new EditorGUILayout.HorizontalScope())
             {
                 var levelIcon = log.level == "error" ? "●" : "▲";
-                var levelColor = log.level == "error" ? EditorUI.COL_ERROR : EditorUI.COL_WARN;
-                EditorUI.DrawCellLabel($"  {levelIcon} {log.endpoint ?? "unknown"}", 0, levelColor);
-                EditorUI.FlexSpace();
-                EditorUI.DrawCellLabel(FormatRelativeTime(log.createdat), 80, EditorUI.COL_MUTED,
-                    TextAnchor.MiddleRight);
+                EditorGUILayout.LabelField($"  {levelIcon} {log.endpoint ?? "unknown"}");
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.LabelField(FormatRelativeTime(log.createdat), GUILayout.Width(80));
             }
 
             // 2줄: 메시지 (한 줄로 잘라서)
             var shortMsg = log.message != null && log.message.Length > 80
                 ? log.message.Substring(0, 80) + "..."
                 : log.message;
-            EditorUI.DrawCellLabel($"    {shortMsg}", 0, EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField($"    {shortMsg}");
 
             // 3줄: 메타 정보
             var meta = BuildMetaLine(log);
             if (!string.IsNullOrEmpty(meta))
-                EditorUI.DrawCellLabel($"    {meta}", 0, EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField($"    {meta}");
 
             // 접기/펼치기
             bool isExpanded = _expanded.Contains(index);
             var toggleLabel = isExpanded ? "    ▼ 접기" : "    ▶ 상세보기";
-            if (EditorUI.DrawLinkButton(toggleLabel))
+            if (EditorGUILayout.LinkButton(toggleLabel))
             {
                 if (isExpanded) _expanded.Remove(index);
                 else _expanded.Add(index);
@@ -219,45 +216,45 @@ namespace Tjdtjq5.SupaRun.Editor
             if (isExpanded)
                 DrawLogDetail(log);
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         void DrawLogDetail(LogEntry log)
         {
             GUILayout.Space(4);
-            EditorUI.BeginSubBox();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             // Stack Trace
             if (!string.IsNullOrEmpty(log.stack))
             {
-                EditorUI.DrawCellLabel("  Stack Trace", 0, EditorUI.COL_INFO);
+                EditorGUILayout.LabelField("  Stack Trace", EditorStyles.boldLabel);
                 GUILayout.Space(2);
                 var stackLines = log.stack.Length > 500
                     ? log.stack.Substring(0, 500) + "\n  ..."
                     : log.stack;
-                EditorUI.DrawDescription(stackLines);
+                EditorGUILayout.LabelField(stackLines, EditorStyles.wordWrappedMiniLabel);
             }
 
             // Request Body
             if (!string.IsNullOrEmpty(log.request_body))
             {
                 GUILayout.Space(4);
-                EditorUI.DrawCellLabel("  Request Body", 0, EditorUI.COL_INFO);
+                EditorGUILayout.LabelField("  Request Body", EditorStyles.boldLabel);
                 GUILayout.Space(2);
-                EditorUI.DrawDescription(log.request_body);
+                EditorGUILayout.LabelField(log.request_body, EditorStyles.wordWrappedMiniLabel);
             }
 
-            EditorUI.EndSubBox();
+            EditorGUILayout.EndVertical();
 
             // 로그 복사 버튼
             GUILayout.Space(4);
             using (new EditorGUILayout.HorizontalScope())
             {
-                EditorUI.FlexSpace();
-                if (EditorUI.DrawMiniButton("로그 복사"))
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("로그 복사", EditorStyles.miniButton))
                 {
                     GUIUtility.systemCopyBuffer = FormatLogForCopy(log);
-                    _dashboard.ShowNotification("클립보드에 복사됨", EditorUI.NotificationType.Info);
+                    _dashboard.ShowNotification("클립보드에 복사됨", SupaRunUI.NotificationType.Info);
                 }
             }
         }

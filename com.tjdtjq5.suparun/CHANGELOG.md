@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0] - 2026-07-24
+
+### Breaking Changes
+- **`com.tjdtjq5.editor-toolkit` 의존 완전 제거** — 대시보드/Setup 위저드/FeaturesWindow의 EditorUI 호출 519곳을 바닐라 IMGUI로 치환. 다크 커스텀 테마 → Unity 기본 스타일 (기능 동일, 상태는 ✓/⚠/✗ 텍스트 마커로 표시). 내부 공용 헬퍼 `Editor/Dashboard/UI/SupaRunUI.cs` 신설.
+
+### Added
+- **`[ForeignKey(typeof(List<T>))]` 리스트 FK 지원** — 소스젠이 List 원소 타입 FK를 인식 (어드민 nested 드롭다운용). SourceGen DLL 재빌드 포함.
+
+### Changed
+- **`IdConstantGenerator.StripConfigSuffix`** — "Config"에 더해 "Data" 접미사도 제거. 테이블 클래스 명명이 `*Config` → `*Data`로 통일되어도 생성 상수 클래스명(`SkillIds` 등)이 유지되도록. (SurvivorsDuo Config→Data 리네임 대응, 2026-07-21)
+
 ## [0.11.0] - 2026-07-05
 
 ### Added — [SpecData] PK 상수 codegen + 인스펙터 드롭다운

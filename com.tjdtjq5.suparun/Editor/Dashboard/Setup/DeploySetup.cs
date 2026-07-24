@@ -1,4 +1,4 @@
-using Tjdtjq5.EditorToolkit.Editor;
+using UnityEditor;
 using UnityEngine;
 
 namespace Tjdtjq5.SupaRun.Editor
@@ -15,7 +15,7 @@ namespace Tjdtjq5.SupaRun.Editor
             var settings = SupaRunSettings.Instance;
 
             // 설정하면?/안하면?
-            EditorUI.DrawInfoBox(
+            SupaRunUI.DrawInfoBox(
                 new[]
                 {
                     "서버를 인터넷에 배포 가능",
@@ -31,18 +31,18 @@ namespace Tjdtjq5.SupaRun.Editor
             GUILayout.Space(8);
 
             // ── GitHub ──
-            EditorUI.DrawSectionHeader("GitHub", SupaRunDashboard.COL_GITHUB);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("GitHub", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             GitHubSetupUI.Draw(_dashboard, settings);
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
 
             GUILayout.Space(8);
 
             // ── Google Cloud ──
-            EditorUI.DrawSectionHeader("Google Cloud", SupaRunDashboard.COL_GCP);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("Google Cloud", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             GcpSetupUI.Draw(_dashboard, settings);
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         public void OnSkip() => IsSkipped = true;

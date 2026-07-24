@@ -37,7 +37,7 @@ namespace Tjdtjq5.SupaRun.SourceGen
         {
             if (ctx.TargetSymbol is not INamedTypeSymbol cls) return null;
 
-            var info = new DataInfo { Name = cls.Name };
+            var info = new DataInfo { Name = cls.Name, FullName = cls.ToDisplayString() };   // FullName = 네임스페이스 포함
 
             foreach (var m in cls.GetMembers().OfType<IFieldSymbol>())
             {
@@ -186,7 +186,7 @@ namespace Tjdtjq5.SupaRun.SourceGen
 
             foreach (var info in allInfos)
             {
-                string respType = $"Tjdtjq5.SupaRun.ServerResponse<List<global::{info.Name}>>";
+                string respType = $"Tjdtjq5.SupaRun.ServerResponse<List<global::{info.FullName}>>";
 
                 pw.Line($"public static async UniTask<{respType}> Query{info.Name}s(Func<{info.Name}Query, {info.Name}Query> queryBuilder)");
                 pw.Open();
@@ -195,7 +195,7 @@ namespace Tjdtjq5.SupaRun.SourceGen
                 pw.Line($"var __db = Tjdtjq5.SupaRun.SupaRun.LocalDB;");
                 pw.Line($"var __q = new {info.Name}Query();");
                 pw.Line("__q = queryBuilder(__q);");
-                pw.Line($"var __result = await __db.Query<global::{info.Name}>(__q._options);");
+                pw.Line($"var __result = await __db.Query<global::{info.FullName}>(__q._options);");
                 pw.Line($"return new {respType} {{ success = true, data = __result, statusCode = 200 }};");
                 pw.Close();
                 pw.Line("catch (Exception __ex)");
@@ -216,6 +216,7 @@ namespace Tjdtjq5.SupaRun.SourceGen
     class DataInfo
     {
         public string Name;
+        public string FullName;
         public List<FieldDef> Fields = new List<FieldDef>();
     }
 

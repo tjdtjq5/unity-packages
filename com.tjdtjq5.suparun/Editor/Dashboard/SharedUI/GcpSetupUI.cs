@@ -1,5 +1,4 @@
 using System.Linq;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -29,14 +28,14 @@ namespace Tjdtjq5.SupaRun.Editor
 
             // 완료된 단계 요약 (항상)
             if (phase > Phase.NoCli)
-                EditorUI.DrawCellLabel($"  \u2713 gcloud ({gcloud.Version})", 0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField($"  ✓ gcloud ({gcloud.Version})");
             if (phase > Phase.NotLoggedIn)
-                EditorUI.DrawCellLabel($"  \u2713 {gcloud.Account}", 0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField($"  ✓ {gcloud.Account}");
             if (phase > Phase.NoProject)
-                EditorUI.DrawCellLabel($"  \u2713 {settings.gcpProjectId}", 0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField($"  ✓ {settings.gcpProjectId}");
             if (phase == Phase.Complete)
             {
-                EditorUI.DrawCellLabel("  \u2713 API \u2713 SA", 0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField("  ✓ API ✓ SA");
                 GUILayout.Space(2);
 
                 // 프로젝트 변경 가능
@@ -45,12 +44,11 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (changed) return; // 프로젝트 변경 시 리셋됨 → Complete 아닌 상태로 전환
 
                 // 요약
-                EditorUI.DrawCellLabel(
+                EditorGUILayout.LabelField(
                     $"  {settings.gcpRegion} | {settings.gcpServiceName} | " +
-                    (settings.gcpMinInstances == 0 ? "무료" : "항상 켜짐"),
-                    0, EditorUI.COL_MUTED);
+                    (settings.gcpMinInstances == 0 ? "무료" : "항상 켜짐"));
 
-                if (EditorUI.DrawLinkButton("Cloud Run 콘솔"))
+                if (EditorGUILayout.LinkButton("Cloud Run 콘솔"))
                     Application.OpenURL("https://console.cloud.google.com/run");
                 return;
             }
@@ -94,17 +92,17 @@ namespace Tjdtjq5.SupaRun.Editor
 
         static void DrawCliInstall()
         {
-            EditorUI.DrawDescription("gcloud CLI를 설치하세요.\n서버 배포에 필요한 도구입니다.");
+            EditorGUILayout.LabelField("gcloud CLI를 설치하세요.\n서버 배포에 필요한 도구입니다.", EditorStyles.wordWrappedMiniLabel);
             GUILayout.Space(4);
-            if (EditorUI.DrawLinkButton("gcloud CLI 설치하기", SupaRunDashboard.COL_GCP))
+            if (EditorGUILayout.LinkButton("gcloud CLI 설치하기"))
                 Application.OpenURL("https://cloud.google.com/sdk/docs/install");
         }
 
         static void DrawLogin()
         {
-            EditorUI.DrawDescription("Google 계정으로 로그인하세요.");
+            EditorGUILayout.LabelField("Google 계정으로 로그인하세요.", EditorStyles.wordWrappedMiniLabel);
             GUILayout.Space(4);
-            if (EditorUI.DrawColorButton("로그인", SupaRunDashboard.COL_GCP, 28))
+            if (GUILayout.Button("로그인", GUILayout.Height(28)))
                 PrerequisiteChecker.RunGcloudLogin();
         }
 
@@ -151,7 +149,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         static void DrawProjectSelector(SupaRunSettings settings)
         {
-            EditorUI.DrawDescription("프로젝트를 선택하세요.\n게임 1개당 프로젝트 1개 추천합니다.");
+            EditorGUILayout.LabelField("프로젝트를 선택하세요.\n게임 1개당 프로젝트 1개 추천합니다.", EditorStyles.wordWrappedMiniLabel);
             GUILayout.Space(4);
 
             var projects = PrerequisiteChecker.GetGcpProjects();
@@ -171,7 +169,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 }
                 if (currentIdx < 0) currentIdx = 0;
 
-                var newIdx = EditorUI.DrawPopup("Project", currentIdx, fullLabels);
+                var newIdx = EditorGUILayout.Popup("Project", currentIdx, fullLabels);
 
                 if (newIdx < projects.Length)
                 {
@@ -202,7 +200,7 @@ namespace Tjdtjq5.SupaRun.Editor
             }
 
             GUILayout.Space(2);
-            if (EditorUI.DrawLinkButton("새 프로젝트 만들기"))
+            if (EditorGUILayout.LinkButton("새 프로젝트 만들기"))
                 Application.OpenURL("https://console.cloud.google.com/projectcreate");
         }
 
@@ -260,23 +258,24 @@ namespace Tjdtjq5.SupaRun.Editor
             GUILayout.Space(8);
 
             // 자동 설정 버튼
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField(
                 "아래 버튼으로 한 번에 처리합니다:\n" +
-                "  \u2022 Cloud Run API 활성화\n" +
-                "  \u2022 Service Account 생성 + 권한 부여\n" +
-                "  \u2022 GitHub Secret 등록");
+                "  • Cloud Run API 활성화\n" +
+                "  • Service Account 생성 + 권한 부여\n" +
+                "  • GitHub Secret 등록",
+                EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(4);
 
             bool canAutoSetup = settings.IsGitHubConfigured && GitHubSetupUI.IsRepoReady;
             if (!settings.IsGitHubConfigured)
-                EditorUI.DrawDescription("GitHub 설정을 먼저 완료하세요.", EditorUI.COL_WARN);
+                EditorGUILayout.LabelField("GitHub 설정을 먼저 완료하세요.", EditorStyles.wordWrappedMiniLabel);
             else if (!GitHubSetupUI.IsRepoReady)
-                EditorUI.DrawDescription("GitHub 레포를 먼저 생성하세요.", EditorUI.COL_WARN);
+                EditorGUILayout.LabelField("GitHub 레포를 먼저 생성하세요.", EditorStyles.wordWrappedMiniLabel);
 
             using (new EditorGUI.DisabledGroupScope(!canAutoSetup))
             {
-                if (EditorUI.DrawColorButton("자동 설정 시작", SupaRunDashboard.COL_GCP, 32))
+                if (GUILayout.Button("자동 설정 시작", GUILayout.Height(32)))
                 {
                     var gh = PrerequisiteChecker.CheckGh();
                     var repo = $"{gh.Account}/{settings.githubRepoName}";
@@ -288,14 +287,14 @@ namespace Tjdtjq5.SupaRun.Editor
                         settings.gcpServiceAccountEmail = email;
                         settings.Save();
                         dashboard.ShowNotification("GCP 자동 설정 완료!",
-                            EditorUI.NotificationType.Success);
+                            SupaRunUI.NotificationType.Success);
                     }
                     else
                     {
                         // 결제 미활성 에러 감지 → 바로 링크 열기
                         if (err != null && err.Contains("결제"))
                             Application.OpenURL($"https://console.cloud.google.com/billing/linkedaccount?project={settings.gcpProjectId}");
-                        dashboard.ShowNotification(err, EditorUI.NotificationType.Error);
+                        dashboard.ShowNotification(err, SupaRunUI.NotificationType.Error);
                     }
                 }
             }

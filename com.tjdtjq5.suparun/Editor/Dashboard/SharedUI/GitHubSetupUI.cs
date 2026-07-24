@@ -1,5 +1,4 @@
 using System.Linq;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -34,9 +33,9 @@ namespace Tjdtjq5.SupaRun.Editor
 
             // 완료된 단계 요약
             if (phase > Phase.NoCli)
-                EditorUI.DrawCellLabel($"  \u2713 gh ({gh.Version})", 0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField($"  ✓ gh ({gh.Version})");
             if (phase > Phase.NotLoggedIn)
-                EditorUI.DrawCellLabel($"  \u2713 {gh.Account}", 0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField($"  ✓ {gh.Account}");
             if (phase == Phase.Complete)
             {
                 var repo = $"{gh.Account}/{settings.githubRepoName}";
@@ -47,27 +46,27 @@ namespace Tjdtjq5.SupaRun.Editor
                 }
                 if (_repoCreated)
                 {
-                    EditorUI.DrawCellLabel($"  \u2713 {settings.githubRepoName}", 0, EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField($"  ✓ {settings.githubRepoName}");
                     GUILayout.Space(2);
-                    if (EditorUI.DrawLinkButton($"GitHub ({repo})"))
+                    if (EditorGUILayout.LinkButton($"GitHub ({repo})"))
                         Application.OpenURL($"https://github.com/{repo}");
                 }
                 else
                 {
-                    EditorUI.DrawCellLabel($"  \u2713 {settings.githubRepoName} (레포 미생성)", 0, EditorUI.COL_WARN);
+                    EditorGUILayout.LabelField($"  ⚠ {settings.githubRepoName} (레포 미생성)");
                     GUILayout.Space(4);
-                    if (EditorUI.DrawColorButton($"'{settings.githubRepoName}' 레포 생성", SupaRunDashboard.COL_GITHUB, 28))
+                    if (GUILayout.Button($"'{settings.githubRepoName}' 레포 생성", GUILayout.Height(28)))
                     {
                         var (ok, existed, err) = PrerequisiteChecker.EnsureRepoExists(repo);
                         if (ok)
                         {
                             _repoCreated = true;
                             var msg = existed ? "GitHub 레포 확인 완료 (이미 존재)" : "GitHub 레포 생성 완료!";
-                            dashboard.ShowNotification(msg, EditorUI.NotificationType.Success);
+                            dashboard.ShowNotification(msg, SupaRunUI.NotificationType.Success);
                         }
                         else
                         {
-                            dashboard.ShowNotification(err, EditorUI.NotificationType.Error);
+                            dashboard.ShowNotification(err, SupaRunUI.NotificationType.Error);
                         }
                     }
                 }
@@ -92,17 +91,17 @@ namespace Tjdtjq5.SupaRun.Editor
 
         static void DrawCliInstall()
         {
-            EditorUI.DrawDescription("gh CLI를 설치하세요.\nGitHub 연동에 필요한 도구입니다.");
+            EditorGUILayout.LabelField("gh CLI를 설치하세요.\nGitHub 연동에 필요한 도구입니다.", EditorStyles.wordWrappedMiniLabel);
             GUILayout.Space(4);
-            if (EditorUI.DrawLinkButton("gh CLI 설치하기"))
+            if (EditorGUILayout.LinkButton("gh CLI 설치하기"))
                 Application.OpenURL("https://cli.github.com");
         }
 
         static void DrawLogin()
         {
-            EditorUI.DrawDescription("GitHub 계정으로 로그인하세요.");
+            EditorGUILayout.LabelField("GitHub 계정으로 로그인하세요.", EditorStyles.wordWrappedMiniLabel);
             GUILayout.Space(4);
-            if (EditorUI.DrawColorButton("로그인", EditorUI.COL_INFO, 28))
+            if (GUILayout.Button("로그인", GUILayout.Height(28)))
                 PrerequisiteChecker.RunGhLogin();
         }
 
@@ -110,19 +109,21 @@ namespace Tjdtjq5.SupaRun.Editor
             SupaRunSettings settings, PrerequisiteChecker.ToolStatus gh)
         {
             // Token
-            EditorUI.DrawDescription("Token을 생성하세요. 아래 링크는 권한이 미리 세팅됩니다.");
-            if (EditorUI.DrawLinkButton("토큰 생성 (권한 자동 세팅)"))
+            EditorGUILayout.LabelField("Token을 생성하세요. 아래 링크는 권한이 미리 세팅됩니다.", EditorStyles.wordWrappedMiniLabel);
+            if (EditorGUILayout.LinkButton("토큰 생성 (권한 자동 세팅)"))
                 Application.OpenURL(TOKEN_URL);
             GUILayout.Space(2);
-            var token = EditorUI.DrawPasswordField("Token", SupaRunSettings.Instance.GithubToken, "서버 레포 접근용");
+            var token = EditorGUILayout.PasswordField(
+                new GUIContent("Token", "서버 레포 접근용"),
+                SupaRunSettings.Instance.GithubToken);
             if (token != SupaRunSettings.Instance.GithubToken)
                 SupaRunSettings.Instance.GithubToken = token;
-            EditorUI.DrawCellLabel("  * 로컬에만 저장됩니다", 0, EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField("  * 로컬에만 저장됩니다");
 
             GUILayout.Space(6);
 
             // Repo — 드롭다운 or 새로 만들기
-            EditorUI.DrawDescription("서버 코드를 저장할 Repository를 선택하세요.");
+            EditorGUILayout.LabelField("서버 코드를 저장할 Repository를 선택하세요.", EditorStyles.wordWrappedMiniLabel);
             var repos = PrerequisiteChecker.GetGhRepos();
 
             if (repos.Length > 0)
@@ -147,7 +148,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 }
                 if (currentIdx < 0) currentIdx = repos.Length; // "새로 만들기" 선택
 
-                var newIdx = EditorUI.DrawPopup("Repository", currentIdx, repoLabels);
+                var newIdx = EditorGUILayout.Popup("Repository", currentIdx, repoLabels);
 
                 if (newIdx < repos.Length)
                 {
@@ -179,7 +180,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 settings.githubRepoName = newName;
                 settings.Save();
             }
-            EditorUI.DrawCellLabel("  * GitHub 설정 완료 후 레포 생성 버튼이 표시됩니다", 0, EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField("  * GitHub 설정 완료 후 레포 생성 버튼이 표시됩니다");
         }
     }
 }

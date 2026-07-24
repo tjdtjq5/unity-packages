@@ -39,6 +39,7 @@ namespace Tjdtjq5.SupaRun.SourceGen
             var info = new DefInfo
             {
                 ConfigName = configName,
+                ConfigFullName = cls.ToDisplayString(),   // 네임스페이스 포함 (전역이면 클래스명 그대로)
                 DefName = defName
             };
 
@@ -84,6 +85,25 @@ namespace Tjdtjq5.SupaRun.SourceGen
                         field.DefType = enumSymbol.ToDisplayString();
                         field.Kind = DefFieldKind.Enum;
                         info.HasEnumFields = true;
+                    }
+                }
+
+                // [ForeignKey(typeof(List<T>))] — 리스트 FK: string 컬럼(FK id JSON 배열) → List<string> 자동 파싱.
+                // [Json]/[EnumType]이 이미 Kind를 정했으면 그쪽 우선.
+                if (field.Kind == DefFieldKind.Normal && m.Type.SpecialType == SpecialType.System_String)
+                {
+                    var fkAttr = attrs.FirstOrDefault(a => a.AttributeClass?.Name == "ForeignKeyAttribute");
+                    if (fkAttr != null && fkAttr.ConstructorArguments.Length > 0)
+                    {
+                        var typeArg = fkAttr.ConstructorArguments[0];
+                        if (typeArg.Kind == TypedConstantKind.Type && typeArg.Value is INamedTypeSymbol listSymbol
+                            && listSymbol.IsGenericType && listSymbol.Name == "List"
+                            && listSymbol.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic")
+                        {
+                            field.DefType = "System.Collections.Generic.List<string>";
+                            field.Kind = DefFieldKind.Json;   // ParseJson<List<string>> 경로 재사용
+                            info.HasJsonFields = true;
+                        }
                     }
                 }
 
@@ -149,7 +169,7 @@ namespace Tjdtjq5.SupaRun.SourceGen
             }
 
             // FromConfig 정적 메서드
-            w.Line($"public static {def.DefName} FromConfig(global::{def.ConfigName} c)");
+            w.Line($"public static {def.DefName} FromConfig(global::{def.ConfigFullName} c)");
             w.Open();
             w.Line($"var d = new {def.DefName}();");
 
@@ -194,6 +214,7 @@ namespace Tjdtjq5.SupaRun.SourceGen
     class DefInfo
     {
         public string ConfigName;
+        public string ConfigFullName;
         public string DefName;
         public List<DefFieldInfo> Fields = new List<DefFieldInfo>();
         public bool HasJsonFields;

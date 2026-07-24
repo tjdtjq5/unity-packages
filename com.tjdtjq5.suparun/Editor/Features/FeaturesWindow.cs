@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -9,8 +8,6 @@ namespace Tjdtjq5.SupaRun.Editor
 {
     public class FeaturesWindow : EditorWindow
     {
-        static readonly Color COL_FEATURE = new(0.55f, 0.40f, 0.85f);
-
         List<FeatureInfo> _features;
         Vector2 _scrollPos;
         bool _showAddPopup;
@@ -22,7 +19,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // 알림
         string _notification;
-        EditorUI.NotificationType _notificationType;
+        SupaRunUI.NotificationType _notificationType;
 
         [MenuItem("Tjdtjq/SupaRun/Features %#f")]
         public static void Open()
@@ -44,9 +41,9 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void OnGUI()
         {
-            EditorUI.DrawWindowBackground(position);
-            EditorUI.DrawWindowHeader("Features", "", COL_FEATURE);
-            EditorUI.DrawNotificationBar(ref _notification, _notificationType);
+            EditorGUILayout.LabelField("Features", EditorStyles.largeLabel);
+            EditorGUILayout.Space();
+            SupaRunUI.DrawNotificationBar(ref _notification, _notificationType);
 
             if (_showAddPopup)
             {
@@ -67,16 +64,18 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawInstalledSection()
         {
-            EditorUI.DrawSectionHeader("설치된 Feature", EditorUI.COL_SUCCESS);
+            EditorGUILayout.LabelField("설치된 Feature", EditorStyles.boldLabel);
             GUILayout.Space(4);
 
             var installed = _features.Where(f => f.isInstalled).ToList();
 
             if (installed.Count == 0)
             {
-                EditorUI.BeginBody();
-                EditorUI.DrawDescription("설치된 Feature가 없습니다.\n[+ Feature 추가]로 게임 기능을 추가하세요.");
-                EditorUI.EndBody();
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUILayout.LabelField(
+                    "설치된 Feature가 없습니다.\n[+ Feature 추가]로 게임 기능을 추가하세요.",
+                    EditorStyles.wordWrappedMiniLabel);
+                EditorGUILayout.EndVertical();
                 return;
             }
 
@@ -86,19 +85,19 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawInstalledCard(FeatureInfo feature)
         {
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             using (new EditorGUILayout.HorizontalScope())
             {
                 var label = feature.isCustom ? $"{feature.name} (커스텀)" : feature.name;
-                EditorUI.DrawCellLabel(label, 0, COL_FEATURE);
+                EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
 
                 GUILayout.FlexibleSpace();
 
                 // 코드 보기 버튼
                 if (!string.IsNullOrEmpty(feature.installPath))
                 {
-                    if (EditorUI.DrawMiniButton("코드 보기"))
+                    if (GUILayout.Button("코드 보기", EditorStyles.miniButton))
                     {
                         var csFiles = Directory.GetFiles(feature.installPath, "*.cs");
                         if (csFiles.Length > 0)
@@ -112,16 +111,16 @@ namespace Tjdtjq5.SupaRun.Editor
 
             // 설명 (전체 너비 사용)
             if (!string.IsNullOrEmpty(feature.description))
-                EditorUI.DrawCellLabel($"  {feature.description}", 0, EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField($"  {feature.description}");
 
             // 의존성 표시
             if (feature.dependencies != null && feature.dependencies.Length > 0)
             {
                 var depNames = string.Join(", ", feature.dependencies);
-                EditorUI.DrawCellLabel($"  의존: {depNames}", 0, EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField($"  의존: {depNames}");
             }
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
             GUILayout.Space(2);
         }
 
@@ -131,7 +130,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (EditorUI.DrawColorButton("+ Feature 추가", COL_FEATURE, 32))
+                if (GUILayout.Button("+ Feature 추가", GUILayout.Height(32)))
                 {
                     _showAddPopup = true;
                     _showCreateCustom = false;
@@ -140,7 +139,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
                 GUILayout.Space(8);
 
-                if (EditorUI.DrawColorButton("+ 커스텀 Feature 만들기", EditorUI.COL_MUTED, 32))
+                if (GUILayout.Button("+ 커스텀 Feature 만들기", GUILayout.Height(32)))
                 {
                     _showCreateCustom = true;
                     _showAddPopup = true;
@@ -154,7 +153,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawAddPopup()
         {
-            if (EditorUI.DrawBackButton("← 돌아가기"))
+            if (GUILayout.Button("← 돌아가기", EditorStyles.miniButton))
             {
                 _showAddPopup = false;
                 _showCreateCustom = false;
@@ -168,16 +167,16 @@ namespace Tjdtjq5.SupaRun.Editor
                 return;
             }
 
-            EditorUI.DrawSectionHeader("Feature 추가", COL_FEATURE);
+            EditorGUILayout.LabelField("Feature 추가", EditorStyles.boldLabel);
             GUILayout.Space(4);
 
             var available = _features.Where(f => !f.isInstalled && !f.isCustom).ToList();
 
             if (available.Count == 0)
             {
-                EditorUI.BeginBody();
-                EditorUI.DrawDescription("모든 Feature가 설치되어 있습니다.");
-                EditorUI.EndBody();
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUILayout.LabelField("모든 Feature가 설치되어 있습니다.", EditorStyles.wordWrappedMiniLabel);
+                EditorGUILayout.EndVertical();
                 return;
             }
 
@@ -185,7 +184,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 DrawAvailableCard(feature);
 
             GUILayout.Space(12);
-            if (EditorUI.DrawColorButton("+ 커스텀 Feature 만들기", EditorUI.COL_MUTED, 28))
+            if (GUILayout.Button("+ 커스텀 Feature 만들기", GUILayout.Height(28)))
             {
                 _showCreateCustom = true;
                 _customId = "";
@@ -195,20 +194,20 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawAvailableCard(FeatureInfo feature)
         {
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             using (new EditorGUILayout.HorizontalScope())
             {
-                EditorUI.DrawCellLabel(feature.name, 0, COL_FEATURE);
+                EditorGUILayout.LabelField(feature.name, EditorStyles.boldLabel);
 
                 GUILayout.FlexibleSpace();
 
-                if (EditorUI.DrawColorButton("추가", COL_FEATURE, 24))
+                if (GUILayout.Button("추가", GUILayout.Height(24)))
                     InstallFeature(feature);
             }
 
             // 설명 (전체 너비 사용)
-            EditorUI.DrawCellLabel($"  {feature.description}", 0, EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField($"  {feature.description}");
 
             if (feature.dependencies != null && feature.dependencies.Length > 0)
             {
@@ -216,11 +215,11 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (!ok)
                 {
                     var missingNames = string.Join(", ", missing);
-                    EditorUI.DrawCellLabel($"  필요: {missingNames} (함께 설치됩니다)", 0, EditorUI.COL_WARN);
+                    EditorGUILayout.LabelField($"  필요: {missingNames} (함께 설치됩니다)");
                 }
             }
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
             GUILayout.Space(2);
         }
 
@@ -228,37 +227,40 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawCreateCustom()
         {
-            EditorUI.DrawSectionHeader("커스텀 Feature 만들기", EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField("커스텀 Feature 만들기", EditorStyles.boldLabel);
             GUILayout.Space(4);
 
-            EditorUI.BeginBody();
-            EditorUI.DrawDescription(
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
                 "폴더와 feature.json이 자동 생성됩니다.\n" +
-                "생성 후 [UserData], [Service] 클래스를 직접 작성하세요.");
+                "생성 후 [UserData], [Service] 클래스를 직접 작성하세요.",
+                EditorStyles.wordWrappedMiniLabel);
             GUILayout.Space(8);
 
-            _customId = EditorUI.DrawTextField("ID (영문, 폴더명)", _customId, "예: daily-mission");
-            _customName = EditorUI.DrawTextField("표시 이름", _customName, "예: 일일미션");
+            _customId = EditorGUILayout.TextField(
+                new GUIContent("ID (영문, 폴더명)", "예: daily-mission"), _customId);
+            _customName = EditorGUILayout.TextField(
+                new GUIContent("표시 이름", "예: 일일미션"), _customName);
 
             GUILayout.Space(8);
 
             var valid = !string.IsNullOrEmpty(_customId) && !string.IsNullOrEmpty(_customName);
-            EditorUI.BeginDisabled(!valid);
-            if (EditorUI.DrawColorButton("만들기", COL_FEATURE, 28))
+            EditorGUI.BeginDisabledGroup(!valid);
+            if (GUILayout.Button("만들기", GUILayout.Height(28)))
             {
                 var path = FeatureInstaller.CreateCustom(_customId, _customName);
                 if (path != null)
                 {
                     _notification = $"'{_customName}' 생성 완료!";
-                    _notificationType = EditorUI.NotificationType.Success;
+                    _notificationType = SupaRunUI.NotificationType.Success;
                     _showAddPopup = false;
                     _showCreateCustom = false;
                     Refresh();
                 }
             }
-            EditorUI.EndDisabled();
+            EditorGUI.EndDisabledGroup();
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 설치 실행 ──
@@ -283,7 +285,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
             var names = string.Join(", ", installed);
             _notification = $"설치 완료: {names}";
-            _notificationType = EditorUI.NotificationType.Success;
+            _notificationType = SupaRunUI.NotificationType.Success;
             _showAddPopup = false;
             Refresh();
         }

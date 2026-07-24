@@ -1,4 +1,3 @@
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -31,7 +30,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
 
-            EditorUI.DrawSectionHeader("시작하기", SupaRunDashboard.COL_PRIMARY);
+            EditorGUILayout.LabelField("시작하기", EditorStyles.boldLabel);
             GUILayout.Space(8);
 
             if (_showCompletion)
@@ -64,7 +63,15 @@ namespace Tjdtjq5.SupaRun.Editor
                 else
                     states[i] = 0; // 미진행
             }
-            EditorUI.DrawStepIndicator(StepLabels, states);
+
+            // 상태 기호: 2=완료(✓), 3=건너뜀(△), 1=현재(●), 0=미진행(○)
+            var parts = new string[STEP_COUNT];
+            for (int i = 0; i < STEP_COUNT; i++)
+            {
+                var dot = states[i] switch { 2 => "✓", 3 => "△", 1 => "●", _ => "○" };
+                parts[i] = $"{dot} {StepLabels[i]}";
+            }
+            EditorGUILayout.LabelField(string.Join("  ─  ", parts), EditorStyles.boldLabel);
         }
 
         bool IsStepCompleted(int step) => step switch
@@ -93,39 +100,43 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawDotnetStep()
         {
-            EditorUI.DrawSubLabel($"Step 1/{STEP_COUNT}: .NET SDK");
-            EditorUI.DrawDescription("서버 코드 빌드 검증에 사용됩니다.\n설치하면 배포 전에 에러를 미리 잡을 수 있습니다.");
+            EditorGUILayout.LabelField($"Step 1/{STEP_COUNT}: .NET SDK", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(
+                "서버 코드 빌드 검증에 사용됩니다.\n설치하면 배포 전에 에러를 미리 잡을 수 있습니다.",
+                EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(8);
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             if (PrerequisiteChecker.IsDotnetInstalled())
             {
                 var ver = PrerequisiteChecker.GetDotnetMajorVersion();
-                EditorUI.DrawCellLabel($"  .NET SDK {ver}.0 설치됨", 0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField($"  ✓ .NET SDK {ver}.0 설치됨");
             }
             else
             {
-                EditorUI.DrawCellLabel("  .NET SDK 미설치", 0, EditorUI.COL_WARN);
+                EditorGUILayout.LabelField("  ⚠ .NET SDK 미설치");
                 GUILayout.Space(4);
-                if (EditorUI.DrawLinkButton(".NET SDK 설치하기", SupaRunDashboard.COL_PRIMARY))
+                if (EditorGUILayout.LinkButton(".NET SDK 설치하기"))
                     Application.OpenURL("https://dotnet.microsoft.com/download");
 
                 GUILayout.Space(4);
-                EditorUI.DrawDescription(
-                    "설치 후 [새로고침]을 눌러주세요.", EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField(
+                    "설치 후 [새로고침]을 눌러주세요.", EditorStyles.wordWrappedMiniLabel);
 
-                if (EditorUI.DrawColorButton("새로고침", EditorUI.COL_MUTED))
+                if (GUILayout.Button("새로고침"))
                     PrerequisiteChecker.InvalidateCache();
             }
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         void DrawSupabaseStep()
         {
-            EditorUI.DrawSubLabel($"Step 2/{STEP_COUNT}: Supabase 연결 (필수)");
-            EditorUI.DrawDescription("게임 데이터를 저장할 데이터베이스입니다.\n무료로 시작할 수 있습니다.");
+            EditorGUILayout.LabelField($"Step 2/{STEP_COUNT}: Supabase 연결 (필수)", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(
+                "게임 데이터를 저장할 데이터베이스입니다.\n무료로 시작할 수 있습니다.",
+                EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(8);
             _supabaseSetup.OnDraw();
@@ -133,84 +144,86 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawGhStep()
         {
-            EditorUI.DrawSubLabel($"Step 3/{STEP_COUNT}: GitHub CLI");
-            EditorUI.DrawDescription("서버 코드를 GitHub에 push할 때 필요합니다.");
+            EditorGUILayout.LabelField($"Step 3/{STEP_COUNT}: GitHub CLI", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("서버 코드를 GitHub에 push할 때 필요합니다.", EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(8);
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             var gh = PrerequisiteChecker.CheckGh();
 
             if (gh.LoggedIn)
             {
-                EditorUI.DrawCellLabel($"  gh {gh.Version} 설치됨", 0, EditorUI.COL_SUCCESS);
-                EditorUI.DrawCellLabel($"  {gh.Account} 로그인됨", 0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField($"  ✓ gh {gh.Version} 설치됨");
+                EditorGUILayout.LabelField($"  ✓ {gh.Account} 로그인됨");
             }
             else if (gh.Installed)
             {
-                EditorUI.DrawCellLabel($"  gh {gh.Version} 설치됨", 0, EditorUI.COL_SUCCESS);
-                EditorUI.DrawCellLabel("  로그인 필요", 0, EditorUI.COL_WARN);
+                EditorGUILayout.LabelField($"  ✓ gh {gh.Version} 설치됨");
+                EditorGUILayout.LabelField("  ⚠ 로그인 필요");
                 GUILayout.Space(4);
-                if (EditorUI.DrawColorButton("GitHub 로그인", SupaRunDashboard.COL_GITHUB, 28))
+                if (GUILayout.Button("GitHub 로그인", GUILayout.Height(28)))
                     PrerequisiteChecker.RunGhLogin();
             }
             else
             {
-                EditorUI.DrawCellLabel("  gh CLI 미설치", 0, EditorUI.COL_WARN);
+                EditorGUILayout.LabelField("  ⚠ gh CLI 미설치");
                 GUILayout.Space(4);
-                if (EditorUI.DrawLinkButton("GitHub CLI 설치하기", SupaRunDashboard.COL_GITHUB))
+                if (EditorGUILayout.LinkButton("GitHub CLI 설치하기"))
                     Application.OpenURL("https://cli.github.com");
             }
 
             GUILayout.Space(4);
-            if (EditorUI.DrawColorButton("새로고침", EditorUI.COL_MUTED))
+            if (GUILayout.Button("새로고침"))
                 PrerequisiteChecker.InvalidateCache();
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         void DrawGcloudStep()
         {
-            EditorUI.DrawSubLabel($"Step 4/{STEP_COUNT}: Google Cloud CLI");
-            EditorUI.DrawDescription("Cloud Run 서버 배포에 필요합니다.");
+            EditorGUILayout.LabelField($"Step 4/{STEP_COUNT}: Google Cloud CLI", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("Cloud Run 서버 배포에 필요합니다.", EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(8);
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             var gcloud = PrerequisiteChecker.CheckGcloud();
 
             if (gcloud.LoggedIn)
             {
-                EditorUI.DrawCellLabel($"  gcloud {gcloud.Version} 설치됨", 0, EditorUI.COL_SUCCESS);
-                EditorUI.DrawCellLabel($"  {gcloud.Account} 로그인됨", 0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField($"  ✓ gcloud {gcloud.Version} 설치됨");
+                EditorGUILayout.LabelField($"  ✓ {gcloud.Account} 로그인됨");
             }
             else if (gcloud.Installed)
             {
-                EditorUI.DrawCellLabel($"  gcloud {gcloud.Version} 설치됨", 0, EditorUI.COL_SUCCESS);
-                EditorUI.DrawCellLabel("  로그인 필요", 0, EditorUI.COL_WARN);
+                EditorGUILayout.LabelField($"  ✓ gcloud {gcloud.Version} 설치됨");
+                EditorGUILayout.LabelField("  ⚠ 로그인 필요");
                 GUILayout.Space(4);
-                if (EditorUI.DrawColorButton("Google 로그인", SupaRunDashboard.COL_GCP, 28))
+                if (GUILayout.Button("Google 로그인", GUILayout.Height(28)))
                     PrerequisiteChecker.RunGcloudLogin();
             }
             else
             {
-                EditorUI.DrawCellLabel("  gcloud CLI 미설치", 0, EditorUI.COL_WARN);
+                EditorGUILayout.LabelField("  ⚠ gcloud CLI 미설치");
                 GUILayout.Space(4);
-                if (EditorUI.DrawLinkButton("gcloud CLI 설치하기", SupaRunDashboard.COL_GCP))
+                if (EditorGUILayout.LinkButton("gcloud CLI 설치하기"))
                     Application.OpenURL("https://cloud.google.com/sdk/docs/install");
             }
 
             GUILayout.Space(4);
-            if (EditorUI.DrawColorButton("새로고침", EditorUI.COL_MUTED))
+            if (GUILayout.Button("새로고침"))
                 PrerequisiteChecker.InvalidateCache();
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         void DrawDeployStep()
         {
-            EditorUI.DrawSubLabel($"Step 5/{STEP_COUNT}: 배포 설정 (선택)");
-            EditorUI.DrawDescription("서버를 Cloud Run에 배포할 때 필요합니다.\n개발은 LocalGameDB로 가능합니다.");
+            EditorGUILayout.LabelField($"Step 5/{STEP_COUNT}: 배포 설정 (선택)", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(
+                "서버를 Cloud Run에 배포할 때 필요합니다.\n개발은 LocalGameDB로 가능합니다.",
+                EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(8);
             _deploySetup.OnDraw();
@@ -220,45 +233,45 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawNavigation()
         {
-            EditorUI.BeginRow();
+            EditorGUILayout.BeginHorizontal();
 
             // ← 이전
             if (_currentStep > 0)
             {
-                if (EditorUI.DrawColorButton("이전", EditorUI.COL_MUTED, 28))
+                if (GUILayout.Button("이전", GUILayout.Height(28)))
                 {
                     _currentStep--;
                     GUIUtility.ExitGUI();
                 }
             }
 
-            EditorUI.FlexSpace();
+            GUILayout.FlexibleSpace();
 
             if (_currentStep == 1)
             {
                 // Supabase: 연결 테스트 통과 필요
                 using (new EditorGUI.DisabledGroupScope(!_supabaseSetup.IsCompleted))
                 {
-                    if (EditorUI.DrawColorButton("다음", SupaRunDashboard.COL_PRIMARY, 28))
+                    if (GUILayout.Button("다음", GUILayout.Height(28)))
                     {
                         _currentStep++;
                         GUIUtility.ExitGUI();
                     }
                 }
                 if (!_supabaseSetup.IsCompleted)
-                    EditorUI.DrawDescription("연결 테스트를 통과해야 합니다.", EditorUI.COL_WARN);
+                    EditorGUILayout.LabelField("연결 테스트를 통과해야 합니다.", EditorStyles.wordWrappedMiniLabel);
             }
             else if (_currentStep == STEP_COUNT - 1)
             {
                 // 마지막 스텝: 건너뛰기 + 완료
-                if (EditorUI.DrawColorButton("건너뛰기", EditorUI.COL_WARN, 28))
+                if (GUILayout.Button("건너뛰기", GUILayout.Height(28)))
                 {
                     _deploySetup.OnSkip();
                     _showCompletion = true;
                     GUIUtility.ExitGUI();
                 }
                 GUILayout.Space(8);
-                if (EditorUI.DrawColorButton("완료", EditorUI.COL_SUCCESS, 28))
+                if (GUILayout.Button("완료", GUILayout.Height(28)))
                 {
                     _showCompletion = true;
                     GUIUtility.ExitGUI();
@@ -269,21 +282,21 @@ namespace Tjdtjq5.SupaRun.Editor
                 // 나머지: 건너뛰기 + 다음
                 if (!IsStepCompleted(_currentStep))
                 {
-                    if (EditorUI.DrawColorButton("건너뛰기", EditorUI.COL_WARN, 28))
+                    if (GUILayout.Button("건너뛰기", GUILayout.Height(28)))
                     {
                         _currentStep++;
                         GUIUtility.ExitGUI();
                     }
                     GUILayout.Space(8);
                 }
-                if (EditorUI.DrawColorButton("다음", SupaRunDashboard.COL_PRIMARY, 28))
+                if (GUILayout.Button("다음", GUILayout.Height(28)))
                 {
                     _currentStep++;
                     GUIUtility.ExitGUI();
                 }
             }
 
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
         }
 
         // ── 완료 화면 ──
@@ -295,10 +308,10 @@ namespace Tjdtjq5.SupaRun.Editor
             var gcloud = PrerequisiteChecker.CheckGcloud();
 
             GUILayout.Space(20);
-            EditorUI.DrawSectionHeader("설정 완료!", EditorUI.COL_SUCCESS);
+            EditorGUILayout.LabelField("설정 완료!", EditorStyles.boldLabel);
             GUILayout.Space(12);
 
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             DrawCompletionRow(".NET SDK",
                 PrerequisiteChecker.IsDotnetInstalled()
                     ? $"{PrerequisiteChecker.GetDotnetMajorVersion()}.0" : "건너뜀",
@@ -311,36 +324,37 @@ namespace Tjdtjq5.SupaRun.Editor
             DrawCompletionRow("배포 설정",
                 settings.IsGitHubConfigured ? settings.githubRepoName : "건너뜀",
                 settings.IsGitHubConfigured);
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
 
             GUILayout.Space(4);
-            EditorUI.DrawDescription("건너뛴 항목은 설정에서 언제든 설정할 수 있습니다.");
+            EditorGUILayout.LabelField("건너뛴 항목은 설정에서 언제든 설정할 수 있습니다.", EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(8);
-            EditorUI.BeginBody();
-            EditorUI.DrawDescription(
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
                 "지금 바로 Unity Play를 눌러보세요!\n" +
                 "[UserData]와 [Service]를 작성하면\n" +
-                "LocalGameDB로 즉시 테스트됩니다.", EditorUI.COL_INFO);
-            EditorUI.EndBody();
+                "LocalGameDB로 즉시 테스트됩니다.",
+                EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.EndVertical();
 
             GUILayout.Space(16);
-            EditorUI.BeginRow();
-            EditorUI.FlexSpace();
-            if (EditorUI.DrawColorButton("  대시보드 열기  ", SupaRunDashboard.COL_PRIMARY, 32))
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("  대시보드 열기  ", GUILayout.Height(32)))
                 _dashboard.OnSetupCompleted();
-            EditorUI.FlexSpace();
-            EditorUI.EndRow();
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
         }
 
         static void DrawCompletionRow(string name, string status, bool ok)
         {
-            EditorUI.BeginRow();
-            EditorUI.DrawCellLabel(
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(
                 ok ? $"  ✓ {name}" : $"  - {name}",
-                150, ok ? EditorUI.COL_SUCCESS : EditorUI.COL_WARN);
-            EditorUI.DrawCellLabel(status, 0, EditorUI.COL_MUTED);
-            EditorUI.EndRow();
+                GUILayout.Width(150));
+            EditorGUILayout.LabelField(status);
+            EditorGUILayout.EndHorizontal();
         }
     }
 }

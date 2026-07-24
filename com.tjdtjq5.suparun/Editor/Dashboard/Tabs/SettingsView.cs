@@ -1,6 +1,4 @@
-using System;
 using Cysharp.Threading.Tasks;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -35,6 +33,28 @@ namespace Tjdtjq5.SupaRun.Editor
 
         public SettingsView(SupaRunDashboard dashboard) => _dashboard = dashboard;
 
+        // ── 공용 그리기 헬퍼 ──
+
+        /// <summary>상태 아이콘: 1=설정됨(✓), 2=일부/진행 중(⚠), 0=미설정(○)</summary>
+        static string StateIcon(int state) => state == 1 ? "✓" : state == 2 ? "⚠" : "○";
+
+        /// <summary>서비스 카드 시작. 폴드아웃 헤더(이름 + 상태), 접힘 시 요약 표시. 반환: expanded.</summary>
+        static bool BeginServiceCard(string name, string status, int statusState,
+            string summaryLine, ref bool expanded)
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            expanded = EditorGUILayout.Foldout(expanded, $"{name} — {StateIcon(statusState)} {status}", true);
+            if (!expanded)
+                EditorGUILayout.LabelField(summaryLine ?? "", EditorStyles.miniLabel);
+            return expanded;
+        }
+
+        /// <summary>서비스 카드 끝.</summary>
+        static void EndServiceCard()
+        {
+            EditorGUILayout.EndVertical();
+        }
+
         public void OnDraw()
         {
             _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
@@ -44,13 +64,17 @@ namespace Tjdtjq5.SupaRun.Editor
             var gcloud = PrerequisiteChecker.CheckGcloud();
 
             // 상태 요약 바
-            EditorUI.DrawStatusBar(new[]
+            var statusItems = new (string name, int state)[]
             {
                 ("Supabase", settings.IsSupabaseConfigured ? 1 : 0),
                 ("GitHub", gh.LoggedIn && settings.IsGitHubConfigured ? 1 : gh.Installed ? 2 : 0),
                 ("GCP", gcloud.LoggedIn && settings.gcpCloudRunApiEnabled ? 1
                     : gcloud.Installed ? 2 : 0),
-            });
+            };
+            var statusParts = new string[statusItems.Length];
+            for (int i = 0; i < statusItems.Length; i++)
+                statusParts[i] = $"{StateIcon(statusItems[i].state)} {statusItems[i].name}";
+            EditorGUILayout.LabelField(string.Join("   |   ", statusParts), EditorStyles.miniLabel);
 
             // 시크릿 저장 위치 안내 — private repo 전용 가정
             GUILayout.Space(4);
@@ -71,24 +95,24 @@ namespace Tjdtjq5.SupaRun.Editor
             DrawLogSection(settings);
 
             GUILayout.Space(8);
-            EditorUI.DrawActionBar(new (string, Color, Action)[]
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("저장", GUILayout.Height(22)))
             {
-                ("저장", EditorUI.COL_SUCCESS, () =>
+                settings.Save();
+                _dashboard.ShowNotification("설정 저장 완료", SupaRunUI.NotificationType.Success);
+            }
+            if (GUILayout.Button("초기 설정 다시 실행", GUILayout.Height(22)))
+            {
+                if (EditorUtility.DisplayDialog("초기 설정",
+                    "Setup Wizard를 처음부터 다시 시작합니다.\n기존 설정은 유지됩니다.", "확인", "취소"))
                 {
+                    settings.setupCompleted = false;
                     settings.Save();
-                    _dashboard.ShowNotification("설정 저장 완료", EditorUI.NotificationType.Success);
-                }),
-                ("초기 설정 다시 실행", EditorUI.COL_WARN, () =>
-                {
-                    if (EditorUtility.DisplayDialog("초기 설정",
-                        "Setup Wizard를 처음부터 다시 시작합니다.\n기존 설정은 유지됩니다.", "확인", "취소"))
-                    {
-                        settings.setupCompleted = false;
-                        settings.Save();
-                        _dashboard.OpenSetup();
-                    }
-                }),
-            });
+                    _dashboard.OpenSetup();
+                }
+            }
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.EndScrollView();
         }
@@ -109,8 +133,7 @@ namespace Tjdtjq5.SupaRun.Editor
             var state = allInstalled ? 1 : 2;
             var summary = allInstalled ? ".NET SDK, gh CLI, gcloud CLI" : "설치가 필요한 도구가 있습니다";
 
-            EditorUI.BeginServiceCard("Tools", EditorUI.COL_INFO,
-                status, state, summary, ref _toolsExpanded);
+            BeginServiceCard("Tools", status, state, summary, ref _toolsExpanded);
 
             if (_toolsExpanded)
             {
@@ -118,65 +141,65 @@ namespace Tjdtjq5.SupaRun.Editor
 
                 // .NET SDK
                 if (dotnet)
-                    EditorUI.DrawCellLabel(
-                        $"  .NET SDK {PrerequisiteChecker.GetDotnetMajorVersion()}.0", 0, EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField(
+                        $"  ✓ .NET SDK {PrerequisiteChecker.GetDotnetMajorVersion()}.0");
                 else
                 {
-                    EditorUI.BeginRow();
-                    EditorUI.DrawCellLabel("  .NET SDK 미설치", 0, EditorUI.COL_WARN);
-                    if (EditorUI.DrawLinkButton("설치하기"))
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField("  ⚠ .NET SDK 미설치");
+                    if (EditorGUILayout.LinkButton("설치하기"))
                         Application.OpenURL("https://dotnet.microsoft.com/download");
-                    EditorUI.EndRow();
+                    EditorGUILayout.EndHorizontal();
                 }
 
                 // gh CLI
                 if (gh.LoggedIn)
-                    EditorUI.DrawCellLabel(
-                        $"  gh CLI {gh.Version} ({gh.Account})", 0, EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField(
+                        $"  ✓ gh CLI {gh.Version} ({gh.Account})");
                 else if (gh.Installed)
                 {
-                    EditorUI.BeginRow();
-                    EditorUI.DrawCellLabel($"  gh CLI {gh.Version} (로그인 필요)", 0, EditorUI.COL_WARN);
-                    if (EditorUI.DrawLinkButton("로그인"))
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField($"  ⚠ gh CLI {gh.Version} (로그인 필요)");
+                    if (EditorGUILayout.LinkButton("로그인"))
                         PrerequisiteChecker.RunGhLogin();
-                    EditorUI.EndRow();
+                    EditorGUILayout.EndHorizontal();
                 }
                 else
                 {
-                    EditorUI.BeginRow();
-                    EditorUI.DrawCellLabel("  gh CLI 미설치", 0, EditorUI.COL_WARN);
-                    if (EditorUI.DrawLinkButton("설치하기"))
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField("  ⚠ gh CLI 미설치");
+                    if (EditorGUILayout.LinkButton("설치하기"))
                         Application.OpenURL("https://cli.github.com");
-                    EditorUI.EndRow();
+                    EditorGUILayout.EndHorizontal();
                 }
 
                 // gcloud CLI
                 if (gcloud.LoggedIn)
-                    EditorUI.DrawCellLabel(
-                        $"  gcloud CLI {gcloud.Version} ({gcloud.Account})", 0, EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField(
+                        $"  ✓ gcloud CLI {gcloud.Version} ({gcloud.Account})");
                 else if (gcloud.Installed)
                 {
-                    EditorUI.BeginRow();
-                    EditorUI.DrawCellLabel($"  gcloud CLI {gcloud.Version} (로그인 필요)", 0, EditorUI.COL_WARN);
-                    if (EditorUI.DrawLinkButton("로그인"))
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField($"  ⚠ gcloud CLI {gcloud.Version} (로그인 필요)");
+                    if (EditorGUILayout.LinkButton("로그인"))
                         PrerequisiteChecker.RunGcloudLogin();
-                    EditorUI.EndRow();
+                    EditorGUILayout.EndHorizontal();
                 }
                 else
                 {
-                    EditorUI.BeginRow();
-                    EditorUI.DrawCellLabel("  gcloud CLI 미설치", 0, EditorUI.COL_WARN);
-                    if (EditorUI.DrawLinkButton("설치하기"))
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField("  ⚠ gcloud CLI 미설치");
+                    if (EditorGUILayout.LinkButton("설치하기"))
                         Application.OpenURL("https://cloud.google.com/sdk/docs/install");
-                    EditorUI.EndRow();
+                    EditorGUILayout.EndHorizontal();
                 }
 
                 GUILayout.Space(4);
-                if (EditorUI.DrawColorButton("새로고침", EditorUI.COL_MUTED))
+                if (GUILayout.Button("새로고침"))
                     PrerequisiteChecker.InvalidateCache();
             }
 
-            EditorUI.EndServiceCard(ref _toolsExpanded);
+            EndServiceCard();
         }
 
         // ── Supabase 카드 ──
@@ -189,15 +212,15 @@ namespace Tjdtjq5.SupaRun.Editor
                 ? settings.supabaseUrl : "Supabase 설정이 필요합니다";
             var hasToken = !string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAccessToken);
 
-            var expanded = EditorUI.BeginServiceCard("Supabase", SupaRunDashboard.COL_SUPABASE,
-                status, state, summary, ref _supabaseExpanded);
+            var expanded = BeginServiceCard("Supabase", status, state, summary, ref _supabaseExpanded);
 
             if (expanded)
             {
                 // ── Access Token (최상단) ──
                 GUILayout.Space(4);
-                var token = EditorUI.DrawPasswordField("Access Token", SupaRunSettings.Instance.SupabaseAccessToken,
-                    "자동 설정용");
+                var token = EditorGUILayout.PasswordField(
+                    new GUIContent("Access Token", "자동 설정용"),
+                    SupaRunSettings.Instance.SupabaseAccessToken);
                 if (token != SupaRunSettings.Instance.SupabaseAccessToken)
                 {
                     SupaRunSettings.Instance.SupabaseAccessToken = token;
@@ -205,22 +228,22 @@ namespace Tjdtjq5.SupaRun.Editor
                     _settingsProjectIndex = -1;
                     AuthUrlSyncManager.InvalidateCache();
                 }
-                EditorUI.BeginRow();
-                if (EditorUI.DrawLinkButton("Access Token 발급"))
+                EditorGUILayout.BeginHorizontal();
+                if (EditorGUILayout.LinkButton("Access Token 발급"))
                     Application.OpenURL("https://supabase.com/dashboard/account/tokens");
-                EditorUI.FlexSpace();
+                GUILayout.FlexibleSpace();
                 if (hasToken && _settingsProjects == null && !_settingsLoadingProjects)
                 {
-                    if (EditorUI.DrawColorButton("프로젝트 조회", SupaRunDashboard.COL_SUPABASE))
+                    if (GUILayout.Button("프로젝트 조회"))
                         _ = FetchSettingsProjects();
                 }
-                EditorUI.EndRow();
+                EditorGUILayout.EndHorizontal();
 
                 if (_settingsLoadingProjects)
-                    EditorUI.DrawLoading(true, "프로젝트 목록 조회 중...");
+                    EditorGUILayout.HelpBox("프로젝트 목록 조회 중...", MessageType.Info);
 
                 GUILayout.Space(6);
-                EditorUI.DrawCellLabel("── 프로젝트 설정 ──", 0, EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField("── 프로젝트 설정 ──");
                 GUILayout.Space(2);
 
                 // ── Project URL (드롭다운 또는 수동) ──
@@ -259,41 +282,44 @@ namespace Tjdtjq5.SupaRun.Editor
                         : SupaRunSettings.Instance.SupabaseAnonKey.Length > 20
                             ? SupaRunSettings.Instance.SupabaseAnonKey.Substring(0, 20) + "..."
                             : SupaRunSettings.Instance.SupabaseAnonKey;
-                    EditorUI.DrawCellLabel($"  Anon Key: {anonDisplay}", 0,
-                        string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAnonKey) ? EditorUI.COL_MUTED : EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField($"  Anon Key: {anonDisplay}");
                 }
                 else
                 {
-                    var anonKey = EditorUI.DrawTextField("Anon Key", SupaRunSettings.Instance.SupabaseAnonKey, "수동 입력");
+                    var anonKey = EditorGUILayout.TextField(
+                        new GUIContent("Anon Key", "수동 입력"),
+                        SupaRunSettings.Instance.SupabaseAnonKey);
                     if (anonKey != SupaRunSettings.Instance.SupabaseAnonKey)
                         SupaRunSettings.Instance.SupabaseAnonKey = anonKey;
                     if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
                     {
-                        if (EditorUI.DrawLinkButton("API Keys 페이지에서 복사"))
+                        if (EditorGUILayout.LinkButton("API Keys 페이지에서 복사"))
                             Application.OpenURL(settings.SupabaseApiSettingsUrl);
                     }
                 }
 
                 // ── DB Password ──
                 GUILayout.Space(2);
-                var dbPw = EditorUI.DrawPasswordField("DB Password", SupaRunSettings.Instance.SupabaseDbPassword, "프로젝트 생성 시 비밀번호");
+                var dbPw = EditorGUILayout.PasswordField(
+                    new GUIContent("DB Password", "프로젝트 생성 시 비밀번호"),
+                    SupaRunSettings.Instance.SupabaseDbPassword);
                 if (dbPw != SupaRunSettings.Instance.SupabaseDbPassword)
                     SupaRunSettings.Instance.SupabaseDbPassword = dbPw;
             }
 
             GUILayout.Space(4);
-            EditorUI.BeginRow();
-            if (EditorUI.DrawColorButton("연결 테스트", SupaRunDashboard.COL_SUPABASE))
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("연결 테스트"))
                 _ = RunConnectionTest(settings);
-            EditorUI.FlexSpace();
+            GUILayout.FlexibleSpace();
             if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
             {
-                if (EditorUI.DrawLinkButton("대시보드"))
+                if (EditorGUILayout.LinkButton("대시보드"))
                     Application.OpenURL(settings.SupabaseDashboardUrl);
             }
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
-            EditorUI.EndServiceCard(ref _supabaseExpanded);
+            EndServiceCard();
         }
 
         // ── GitHub 카드 (공용 UI) ──
@@ -307,8 +333,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 ? $"{gh.Account}/{settings.githubRepoName}"
                 : "서버 코드 저장 + 자동 배포에 필요";
 
-            EditorUI.BeginServiceCard("GitHub", SupaRunDashboard.COL_GITHUB,
-                status, state, summary, ref _githubExpanded);
+            BeginServiceCard("GitHub", status, state, summary, ref _githubExpanded);
 
             if (_githubExpanded)
             {
@@ -316,7 +341,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 GitHubSetupUI.Draw(_dashboard, settings);
             }
 
-            EditorUI.EndServiceCard(ref _githubExpanded);
+            EndServiceCard();
         }
 
         // ── Auth 카드 ──
@@ -327,8 +352,7 @@ namespace Tjdtjq5.SupaRun.Editor
             var status = $"{count}개 활성";
             var summary = string.Join(", ", settings.enabledAuthProviders);
 
-            EditorUI.BeginServiceCard("Auth", SupaRunDashboard.COL_PRIMARY,
-                status, 1, summary, ref _authExpanded);
+            BeginServiceCard("Auth", status, 1, summary, ref _authExpanded);
 
             if (_authExpanded)
             {
@@ -357,24 +381,24 @@ namespace Tjdtjq5.SupaRun.Editor
                     var isExpanded = _providerExpanded[provider];
 
                     GUILayout.Space(2);
-                    EditorUI.BeginSubBox();
+                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-                    EditorUI.BeginRow();
+                    EditorGUILayout.BeginHorizontal();
 
                     // > / v + 이름 + Supabase 상태
                     var supabaseStatus = GetProviderSupabaseStatus(provider);
                     var label = supabaseStatus != null
                         ? $"{guide.displayName}  {supabaseStatus}"
                         : guide.displayName;
-                    if (EditorUI.DrawToggleRow(label, isExpanded, EditorUI.COL_INFO))
+                    if (GUILayout.Button($"  {(isExpanded ? "v " : "> ")}{label}", EditorStyles.label))
                     {
                         _providerExpanded[provider] = !isExpanded;
                         GUI.FocusControl(null);
                     }
 
                     // [x] 제거
-                    EditorUI.FlexSpace();
-                    if (EditorUI.DrawRemoveButton())
+                    GUILayout.FlexibleSpace();
+                    if (GUILayout.Button("x", EditorStyles.miniButton, GUILayout.Width(20)))
                     {
                         var msg = provider == "Guest"
                             ? "Guest를 제거하면 자동 로그인이 비활성화됩니다.\n게임 시작 시 직접 로그인 UI를 구현해야 합니다."
@@ -382,13 +406,13 @@ namespace Tjdtjq5.SupaRun.Editor
                         if (EditorUtility.DisplayDialog("로그인 방식 제거", msg, "제거", "취소"))
                             toRemove = provider;
                     }
-                    EditorUI.EndRow();
+                    EditorGUILayout.EndHorizontal();
 
                     // 펼침 → 가이드
                     if (isExpanded)
                         DrawProviderGuide(settings, provider, guide);
 
-                    EditorUI.EndSubBox();
+                    EditorGUILayout.EndVertical();
                 }
 
                 // 제거 처리
@@ -405,7 +429,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 // [+ 로그인 방식 추가]
                 if (_showProviderDropdown)
                 {
-                    EditorUI.BeginBody();
+                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                     bool hasAvailable = false;
                     foreach (var p in AuthProviderGuide.AvailableProviders)
                     {
@@ -413,7 +437,7 @@ namespace Tjdtjq5.SupaRun.Editor
                         hasAvailable = true;
                         var guide = AuthProviderGuide.Get(p);
                         var label = guide.requiresSDK ? $"{guide.displayName} (SDK)" : guide.displayName;
-                        if (EditorUI.DrawMiniButton(label))
+                        if (GUILayout.Button(label, EditorStyles.miniButton))
                         {
                             settings.enabledAuthProviders.Add(p);
                             settings.Save();
@@ -422,25 +446,25 @@ namespace Tjdtjq5.SupaRun.Editor
                         }
                     }
                     if (!hasAvailable)
-                        EditorUI.DrawDescription("모든 로그인 방식이 추가되었습니다.", EditorUI.COL_MUTED);
+                        EditorGUILayout.LabelField("모든 로그인 방식이 추가되었습니다.", EditorStyles.wordWrappedMiniLabel);
                     GUILayout.Space(2);
-                    if (EditorUI.DrawColorButton("닫기", EditorUI.COL_MUTED))
+                    if (GUILayout.Button("닫기"))
                         _showProviderDropdown = false;
-                    EditorUI.EndBody();
+                    EditorGUILayout.EndVertical();
                 }
                 else
                 {
-                    if (EditorUI.DrawColorButton("+ 로그인 방식 추가", EditorUI.COL_MUTED))
+                    if (GUILayout.Button("+ 로그인 방식 추가"))
                         _showProviderDropdown = true;
                 }
             }
 
-            EditorUI.EndServiceCard(ref _authExpanded);
+            EndServiceCard();
         }
 
         void DrawProviderGuide(SupaRunSettings settings, string providerKey, GuideInfo guide)
         {
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             var projectId = settings.SupabaseProjectId;
             var hasToken = !string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAccessToken);
             var needsCredentials = AuthProviderGuide.RequiresClientCredentials(providerKey);
@@ -449,7 +473,7 @@ namespace Tjdtjq5.SupaRun.Editor
             if (IsProviderConfigured(providerKey))
             {
                 DrawProviderCompleted(settings, providerKey, guide);
-                EditorUI.EndBody();
+                EditorGUILayout.EndVertical();
                 return;
             }
 
@@ -457,9 +481,8 @@ namespace Tjdtjq5.SupaRun.Editor
             if (guide.requiresSDK)
             {
                 var installed = AuthProviderGuide.IsSDKInstalled(providerKey);
-                EditorUI.DrawCellLabel(
-                    installed ? $"  {guide.sdkName} 설치됨" : $"  {guide.sdkName} 미설치",
-                    0, installed ? EditorUI.COL_SUCCESS : EditorUI.COL_WARN);
+                EditorGUILayout.LabelField(
+                    installed ? $"  ✓ {guide.sdkName} 설치됨" : $"  ⚠ {guide.sdkName} 미설치");
                 GUILayout.Space(4);
             }
 
@@ -467,10 +490,10 @@ namespace Tjdtjq5.SupaRun.Editor
             if (providerKey == "Guest")
             {
                 if (hasToken)
-                    EditorUI.DrawDescription("✓ Access Token으로 자동 활성화됨", EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField("✓ Access Token으로 자동 활성화됨", EditorStyles.wordWrappedMiniLabel);
                 else
                     DrawStepBasedGuide(guide, providerKey, projectId);
-                EditorUI.EndBody();
+                EditorGUILayout.EndVertical();
                 return;
             }
 
@@ -478,7 +501,7 @@ namespace Tjdtjq5.SupaRun.Editor
             if (hasToken && needsCredentials)
             {
                 DrawAutoProviderSetup(settings, providerKey, guide, projectId);
-                EditorUI.EndBody();
+                EditorGUILayout.EndVertical();
                 return;
             }
 
@@ -486,13 +509,13 @@ namespace Tjdtjq5.SupaRun.Editor
             if (hasToken && providerKey == "GPGS")
             {
                 DrawGpgsAutoGuide(settings, providerKey, guide, projectId);
-                EditorUI.EndBody();
+                EditorGUILayout.EndVertical();
                 return;
             }
 
             // fallback: 기존 step 가이드
             DrawStepBasedGuide(guide, providerKey, projectId);
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 설정 완료 체크 ──
@@ -517,20 +540,20 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawProviderCompleted(SupaRunSettings settings, string providerKey, GuideInfo guide)
         {
-            EditorUI.DrawDescription("✓ Supabase 활성화됨", EditorUI.COL_SUCCESS);
+            EditorGUILayout.LabelField("✓ Supabase 활성화됨", EditorStyles.wordWrappedMiniLabel);
 
             if (AuthProviderGuide.RequiresClientCredentials(providerKey))
-                EditorUI.DrawDescription("✓ Client ID 설정됨", EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField("✓ Client ID 설정됨", EditorStyles.wordWrappedMiniLabel);
 
             // nonce skip 확인
             var prefix = AuthProviderGuide.GetApiFieldPrefix(providerKey);
             if (prefix != null && AuthConfigParser.IsFieldTrue(_authConfigJson, $"{prefix}_skip_nonce_check"))
-                EditorUI.DrawDescription("✓ nonce skip 활성화됨", EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField("✓ nonce skip 활성화됨", EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(4);
             if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
             {
-                if (EditorUI.DrawLinkButton("Supabase에서 확인"))
+                if (EditorGUILayout.LinkButton("Supabase에서 확인"))
                     Application.OpenURL($"https://supabase.com/dashboard/project/{settings.SupabaseProjectId}/auth/providers");
             }
         }
@@ -540,22 +563,24 @@ namespace Tjdtjq5.SupaRun.Editor
         void DrawAutoProviderSetup(SupaRunSettings settings, string providerKey, GuideInfo guide, string projectId)
         {
             // Step 1: 외부 서비스에서 Client ID/Secret 발급
-            EditorUI.DrawCellLabel("  ① 외부 서비스에서 OAuth 앱 등록", 0, EditorUI.COL_INFO);
+            EditorGUILayout.LabelField("  ① 외부 서비스에서 OAuth 앱 등록", EditorStyles.boldLabel);
             var providerLower = providerKey.ToLower();
-            EditorUI.DrawDescription($"  {guide.displayName} 개발자 콘솔에서 OAuth 앱을 만들고\n  Client ID와 Secret을 발급받으세요.");
-            if (EditorUI.DrawLinkButton("공식 설정 가이드"))
+            EditorGUILayout.LabelField(
+                $"  {guide.displayName} 개발자 콘솔에서 OAuth 앱을 만들고\n  Client ID와 Secret을 발급받으세요.",
+                EditorStyles.wordWrappedMiniLabel);
+            if (EditorGUILayout.LinkButton("공식 설정 가이드"))
                 Application.OpenURL($"https://supabase.com/docs/guides/auth/social-login/auth-{providerLower}");
 
             GUILayout.Space(8);
 
             // Step 2: Client ID/Secret 입력 + [Supabase에 적용]
-            EditorUI.DrawCellLabel("  ② Client ID / Secret 입력 → 자동 적용", 0, EditorUI.COL_INFO);
+            EditorGUILayout.LabelField("  ② Client ID / Secret 입력 → 자동 적용", EditorStyles.boldLabel);
 
             if (!_providerClientId.ContainsKey(providerKey)) _providerClientId[providerKey] = "";
             if (!_providerSecret.ContainsKey(providerKey)) _providerSecret[providerKey] = "";
 
-            _providerClientId[providerKey] = EditorUI.DrawTextField("Client ID", _providerClientId[providerKey]);
-            _providerSecret[providerKey] = EditorUI.DrawPasswordField("Client Secret", _providerSecret[providerKey]);
+            _providerClientId[providerKey] = EditorGUILayout.TextField("Client ID", _providerClientId[providerKey]);
+            _providerSecret[providerKey] = EditorGUILayout.PasswordField("Client Secret", _providerSecret[providerKey]);
 
             GUILayout.Space(4);
 
@@ -564,26 +589,28 @@ namespace Tjdtjq5.SupaRun.Editor
 
             if (state == "applying")
             {
-                EditorUI.DrawLoading(true, "Supabase에 적용 중...");
+                EditorGUILayout.HelpBox("Supabase에 적용 중...", MessageType.Info);
             }
             else if (state == "done")
             {
-                EditorUI.DrawDescription("✓ Supabase에 자동 적용 완료! (활성화 + nonce skip + email optional)", EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField(
+                    "✓ Supabase에 자동 적용 완료! (활성화 + nonce skip + email optional)",
+                    EditorStyles.wordWrappedMiniLabel);
             }
             else
             {
                 if (state.StartsWith("error:"))
-                    EditorUI.DrawDescription($"✗ {state.Substring(6)}", EditorUI.COL_ERROR);
+                    EditorGUILayout.LabelField($"✗ {state.Substring(6)}", EditorStyles.wordWrappedMiniLabel);
 
                 var canApply = !string.IsNullOrEmpty(_providerClientId[providerKey]) &&
                                !string.IsNullOrEmpty(_providerSecret[providerKey]);
                 using (new EditorGUI.DisabledGroupScope(!canApply))
                 {
-                    if (EditorUI.DrawColorButton("Supabase에 적용", SupaRunDashboard.COL_SUPABASE, 28))
+                    if (GUILayout.Button("Supabase에 적용", GUILayout.Height(28)))
                         _ = ApplyProviderToSupabase(settings, providerKey);
                 }
                 if (!canApply)
-                    EditorUI.DrawDescription("  Client ID와 Secret을 입력하세요.", EditorUI.COL_MUTED);
+                    EditorGUILayout.LabelField("  Client ID와 Secret을 입력하세요.", EditorStyles.wordWrappedMiniLabel);
             }
         }
 
@@ -603,14 +630,16 @@ namespace Tjdtjq5.SupaRun.Editor
             else
             {
                 // Step 4: Client ID/Secret → 자동 적용 (Google provider 경유)
-                EditorUI.DrawCellLabel("  Step 4/4: Supabase 자동 설정", 0, EditorUI.COL_INFO);
-                EditorUI.DrawDescription("  GPGS는 Google OAuth 기반입니다.\n  Google Cloud Console의 Client ID/Secret을 입력하세요.");
+                EditorGUILayout.LabelField("  Step 4/4: Supabase 자동 설정", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(
+                    "  GPGS는 Google OAuth 기반입니다.\n  Google Cloud Console의 Client ID/Secret을 입력하세요.",
+                    EditorStyles.wordWrappedMiniLabel);
 
                 if (!_providerClientId.ContainsKey(providerKey)) _providerClientId[providerKey] = "";
                 if (!_providerSecret.ContainsKey(providerKey)) _providerSecret[providerKey] = "";
 
-                _providerClientId[providerKey] = EditorUI.DrawTextField("Client ID", _providerClientId[providerKey]);
-                _providerSecret[providerKey] = EditorUI.DrawPasswordField("Client Secret", _providerSecret[providerKey]);
+                _providerClientId[providerKey] = EditorGUILayout.TextField("Client ID", _providerClientId[providerKey]);
+                _providerSecret[providerKey] = EditorGUILayout.PasswordField("Client Secret", _providerSecret[providerKey]);
 
                 GUILayout.Space(4);
 
@@ -619,25 +648,26 @@ namespace Tjdtjq5.SupaRun.Editor
 
                 if (state == "done")
                 {
-                    EditorUI.DrawDescription("✓ Google provider 자동 적용 완료!", EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField("✓ Google provider 자동 적용 완료!", EditorStyles.wordWrappedMiniLabel);
                 }
                 else
                 {
-                    if (state == "applying") EditorUI.DrawLoading(true, "적용 중...");
-                    if (state.StartsWith("error:")) EditorUI.DrawDescription($"✗ {state.Substring(6)}", EditorUI.COL_ERROR);
+                    if (state == "applying") EditorGUILayout.HelpBox("적용 중...", MessageType.Info);
+                    if (state.StartsWith("error:"))
+                        EditorGUILayout.LabelField($"✗ {state.Substring(6)}", EditorStyles.wordWrappedMiniLabel);
 
                     var canApply = !string.IsNullOrEmpty(_providerClientId[providerKey]) &&
                                    !string.IsNullOrEmpty(_providerSecret[providerKey]);
                     using (new EditorGUI.DisabledGroupScope(!canApply || state == "applying"))
                     {
-                        if (EditorUI.DrawColorButton("Supabase에 적용", SupaRunDashboard.COL_SUPABASE, 28))
+                        if (GUILayout.Button("Supabase에 적용", GUILayout.Height(28)))
                             _ = ApplyProviderToSupabase(settings, providerKey);
                     }
                 }
 
                 // 이전 버튼
                 GUILayout.Space(4);
-                if (EditorUI.DrawColorButton("< 이전", EditorUI.COL_MUTED, 24))
+                if (GUILayout.Button("< 이전", GUILayout.Height(24)))
                 {
                     _providerStep[providerKey] = 2;
                     GUI.FocusControl(null);
@@ -662,45 +692,44 @@ namespace Tjdtjq5.SupaRun.Editor
             if (step >= guide.guideSteps.Length) step = guide.guideSteps.Length - 1;
             var current = guide.guideSteps[step];
 
-            EditorUI.DrawCellLabel($"  Step {step + 1}/{total}", 0, EditorUI.COL_INFO);
+            EditorGUILayout.LabelField($"  Step {step + 1}/{total}", EditorStyles.boldLabel);
             GUILayout.Space(4);
 
             var desc = current.description
                 .Replace("{Supabase프로젝트ID}", projectId)
                 .Replace("{PROJECT_ID}", projectId);
             var lines = desc.Split('\n').Length;
-            EditorGUILayout.SelectableLabel(desc,
-                new GUIStyle(EditorStyles.label) { fontSize = 11, normal = { textColor = EditorUI.COL_MUTED }, wordWrap = true },
+            EditorGUILayout.SelectableLabel(desc, EditorStyles.wordWrappedLabel,
                 GUILayout.Height(18 * lines));
 
             GUILayout.Space(4);
             if (current.links != null)
             {
-                EditorUI.BeginRow();
+                EditorGUILayout.BeginHorizontal();
                 foreach (var (label, url) in current.links)
                 {
-                    if (EditorUI.DrawLinkButton(label))
+                    if (EditorGUILayout.LinkButton(label))
                         Application.OpenURL(url.Replace("{PROJECT_ID}", projectId));
                 }
-                EditorUI.EndRow();
+                EditorGUILayout.EndHorizontal();
             }
 
             GUILayout.Space(4);
-            EditorUI.BeginRow();
-            if (step > 0 && EditorUI.DrawColorButton("< 이전", EditorUI.COL_MUTED, 24))
+            EditorGUILayout.BeginHorizontal();
+            if (step > 0 && GUILayout.Button("< 이전", GUILayout.Height(24)))
             {
                 _providerStep[providerKey] = step - 1;
                 GUI.FocusControl(null);
                 GUIUtility.ExitGUI();
             }
-            EditorUI.FlexSpace();
-            if (step < guide.guideSteps.Length - 1 && EditorUI.DrawColorButton("다음 >", EditorUI.COL_INFO, 24))
+            GUILayout.FlexibleSpace();
+            if (step < guide.guideSteps.Length - 1 && GUILayout.Button("다음 >", GUILayout.Height(24)))
             {
                 _providerStep[providerKey] = step + 1;
                 GUI.FocusControl(null);
                 GUIUtility.ExitGUI();
             }
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
         }
 
         // ── Provider Supabase 적용 ──
@@ -756,24 +785,24 @@ namespace Tjdtjq5.SupaRun.Editor
             var pcUrl = !string.IsNullOrEmpty(settings.cloudRunUrl)
                 ? $"{settings.cloudRunUrl.TrimEnd('/')}/auth/callback"
                 : null;
-            EditorUI.BeginSubBox();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             // 현재 값 표시
             GUILayout.Space(2);
-            EditorUI.DrawCellLabel($"  Site URL: {mobileUrl}", 0, EditorUI.COL_MUTED);
-            EditorUI.DrawCellLabel($"  Redirect: {mobileUrl}", 0, EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField($"  Site URL: {mobileUrl}");
+            EditorGUILayout.LabelField($"  Redirect: {mobileUrl}");
             if (pcUrl != null)
-                EditorUI.DrawCellLabel($"  Redirect: {pcUrl}", 0, EditorUI.COL_MUTED);
-            EditorUI.DrawCellLabel("  Redirect: http://localhost:*/**", 0, EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField($"  Redirect: {pcUrl}");
+            EditorGUILayout.LabelField("  Redirect: http://localhost:*/**");
 
             if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
             {
                 GUILayout.Space(2);
-                if (EditorUI.DrawLinkButton("Supabase에서 확인"))
+                if (EditorGUILayout.LinkButton("Supabase에서 확인"))
                     Application.OpenURL($"https://supabase.com/dashboard/project/{settings.SupabaseProjectId}/auth/url-configuration");
             }
 
-            EditorUI.EndSubBox();
+            EditorGUILayout.EndVertical();
         }
 
         // ── GCP 카드 (공용 UI) ──
@@ -793,8 +822,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 ? $"{settings.gcpProjectId} ({settings.gcpRegion})"
                 : "서버 배포에 필요합니다";
 
-            EditorUI.BeginServiceCard("GCP", SupaRunDashboard.COL_GCP,
-                status, state, summary, ref _gcpExpanded);
+            BeginServiceCard("GCP", status, state, summary, ref _gcpExpanded);
 
             if (_gcpExpanded)
             {
@@ -802,7 +830,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 GcpSetupUI.Draw(_dashboard, settings);
             }
 
-            EditorUI.EndServiceCard(ref _gcpExpanded);
+            EndServiceCard();
         }
 
         // ── Supabase API 연동 메서드 ──
@@ -882,11 +910,11 @@ namespace Tjdtjq5.SupaRun.Editor
             if (ok)
             {
                 SupaRunSettings.Instance.SupabaseAnonKey = anonKey;
-                _dashboard.ShowNotification("Anon Key 자동 조회 완료", EditorUI.NotificationType.Success);
+                _dashboard.ShowNotification("Anon Key 자동 조회 완료", SupaRunUI.NotificationType.Success);
             }
             else
             {
-                _dashboard.ShowNotification($"조회 실패: {error}", EditorUI.NotificationType.Error);
+                _dashboard.ShowNotification($"조회 실패: {error}", SupaRunUI.NotificationType.Error);
             }
         }
 
@@ -895,18 +923,18 @@ namespace Tjdtjq5.SupaRun.Editor
             var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token))
             {
-                _dashboard.ShowNotification("Access Token을 입력하면 상세 연결 테스트가 가능합니다", EditorUI.NotificationType.Info);
+                _dashboard.ShowNotification("Access Token을 입력하면 상세 연결 테스트가 가능합니다", SupaRunUI.NotificationType.Info);
                 return;
             }
 
             // Phase 1: Management API (프로젝트 상태)
-            _dashboard.ShowNotification("1/2 프로젝트 상태 확인 중...", EditorUI.NotificationType.Info);
+            _dashboard.ShowNotification("1/2 프로젝트 상태 확인 중...", SupaRunUI.NotificationType.Info);
 
             var (ok, name, status, region, error) = await SupabaseManagementApi.GetProjectInfo(
                 settings.SupabaseProjectId, token);
             if (!ok)
             {
-                _dashboard.ShowNotification($"연결 실패: {error}", EditorUI.NotificationType.Error);
+                _dashboard.ShowNotification($"연결 실패: {error}", SupaRunUI.NotificationType.Error);
                 return;
             }
 
@@ -914,7 +942,7 @@ namespace Tjdtjq5.SupaRun.Editor
             var dbPw = SupaRunSettings.Instance.SupabaseDbPassword;
             if (!string.IsNullOrEmpty(dbPw))
             {
-                _dashboard.ShowNotification("2/2 DB 비밀번호 검증 중...", EditorUI.NotificationType.Info);
+                _dashboard.ShowNotification("2/2 DB 비밀번호 검증 중...", SupaRunUI.NotificationType.Info);
 
                 var projectId = settings.SupabaseProjectId;
                 var (dbOk, dbError) = await PostgresConnectionTester.VerifyPassword(
@@ -922,15 +950,15 @@ namespace Tjdtjq5.SupaRun.Editor
 
                 if (!dbOk)
                 {
-                    _dashboard.ShowNotification($"DB 연결 실패: {dbError}", EditorUI.NotificationType.Error);
+                    _dashboard.ShowNotification($"DB 연결 실패: {dbError}", SupaRunUI.NotificationType.Error);
                     return;
                 }
 
-                _dashboard.ShowNotification($"{name} ({region}) — {status} + DB 연결 OK", EditorUI.NotificationType.Success);
+                _dashboard.ShowNotification($"{name} ({region}) — {status} + DB 연결 OK", SupaRunUI.NotificationType.Success);
             }
             else
             {
-                _dashboard.ShowNotification($"{name} ({region}) — {status} (DB 비밀번호 미입력)", EditorUI.NotificationType.Success);
+                _dashboard.ShowNotification($"{name} ({region}) — {status} (DB 비밀번호 미입력)", SupaRunUI.NotificationType.Success);
             }
         }
 
@@ -974,10 +1002,11 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawLogSection(SupaRunSettings settings)
         {
-            if (!EditorUI.DrawSectionFoldout(ref _foldLog, "서버 로그", EditorUI.COL_INFO))
+            _foldLog = EditorGUILayout.Foldout(_foldLog, "서버 로그", true);
+            if (!_foldLog)
                 return;
 
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             var newVal = EditorGUILayout.Toggle(
                 new GUIContent("Cloud Run 로그 -> Console", "배포된 서버 로그를 Unity Console에 표시"),
                 settings.serverLogToConsole);
@@ -986,7 +1015,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 settings.serverLogToConsole = newVal;
                 settings.Save();
             }
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
     }
 }

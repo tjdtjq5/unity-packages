@@ -1,7 +1,6 @@
 using System;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -36,14 +35,14 @@ namespace Tjdtjq5.SupaRun.Editor
 
         public void OnDraw()
         {
-            EditorUI.DrawSectionHeader("Status", EditorUI.COL_SUCCESS);
+            EditorGUILayout.LabelField("Status", EditorStyles.boldLabel);
             GUILayout.Space(8);
 
             var settings = SupaRunSettings.Instance;
 
             if (!settings.IsSupabaseConfigured)
             {
-                EditorUI.DrawDescription("Supabase 설정을 먼저 완료하세요.", EditorUI.COL_WARN);
+                EditorGUILayout.LabelField("Supabase 설정을 먼저 완료하세요.", EditorStyles.wordWrappedMiniLabel);
                 return;
             }
 
@@ -57,7 +56,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 GUILayout.Label(_lastFetchTime, EditorStyles.miniLabel);
             using (new EditorGUI.DisabledGroupScope(_state == FetchState.Loading))
             {
-                if (GUILayout.Button("\u21bb", EditorStyles.miniButton, GUILayout.Width(24), GUILayout.Height(18)))
+                if (GUILayout.Button("↻", EditorStyles.miniButton, GUILayout.Width(24), GUILayout.Height(18)))
                     _ = FetchAll(settings);
             }
             EditorGUILayout.EndHorizontal();
@@ -77,7 +76,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawServerSection(SupaRunSettings settings)
         {
-            EditorUI.BeginSubBox();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             // 헤더 + 링크
             EditorGUILayout.BeginHorizontal();
@@ -85,7 +84,7 @@ namespace Tjdtjq5.SupaRun.Editor
             GUILayout.FlexibleSpace();
             if (!string.IsNullOrEmpty(settings.cloudRunUrl))
             {
-                if (EditorUI.DrawLinkButton("Cloud Run"))
+                if (EditorGUILayout.LinkButton("Cloud Run"))
                     Application.OpenURL("https://console.cloud.google.com/run");
             }
             EditorGUILayout.EndHorizontal();
@@ -93,62 +92,59 @@ namespace Tjdtjq5.SupaRun.Editor
             var url = settings.cloudRunUrl;
             if (string.IsNullOrEmpty(url))
             {
-                EditorUI.DrawCellLabel("  아직 배포되지 않음", 0, EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField("  아직 배포되지 않음");
             }
             else
             {
-                EditorUI.DrawCellLabel($"  {url}", 0, EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField($"  {url}");
 
                 if (_state == FetchState.Loading)
-                    EditorUI.DrawCellLabel("  조회 중...", 0, EditorUI.COL_MUTED);
+                    EditorGUILayout.LabelField("  조회 중...");
                 else if (_serverOnline)
-                    EditorUI.DrawCellLabel($"  \u2713 온라인 ({_healthMs}ms)", 0, EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField($"  ✓ 온라인 ({_healthMs}ms)");
                 else if (_state == FetchState.Loaded)
-                    EditorUI.DrawCellLabel("  \u2717 응답 없음", 0, EditorUI.COL_ERROR);
+                    EditorGUILayout.LabelField("  ✗ 응답 없음");
             }
 
-            EditorUI.EndSubBox();
+            EditorGUILayout.EndVertical();
         }
 
         // ── DB 연결 ──
 
         void DrawDbConnectionSection()
         {
-            EditorUI.BeginSubBox();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("DB 연결", EditorStyles.boldLabel);
 
             if (_dbMaxConnections <= 0)
             {
                 if (_state == FetchState.Loading)
-                    EditorUI.DrawCellLabel("  조회 중...", 0, EditorUI.COL_MUTED);
+                    EditorGUILayout.LabelField("  조회 중...");
                 else if (_state == FetchState.Loaded)
-                    EditorUI.DrawCellLabel("  Access Token이 없거나 조회 실패", 0, EditorUI.COL_WARN);
-                EditorUI.EndSubBox();
+                    EditorGUILayout.LabelField("  Access Token이 없거나 조회 실패");
+                EditorGUILayout.EndVertical();
                 return;
             }
 
-            EditorUI.DrawCellLabel($"  max_connections: {_dbMaxConnections}", 0, EditorUI.COL_MUTED);
-            EditorUI.DrawCellLabel($"  안전 마진 80%: {_safeMaxConnections}", 0, EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField($"  max_connections: {_dbMaxConnections}");
+            EditorGUILayout.LabelField($"  안전 마진 80%: {_safeMaxConnections}");
 
             GUILayout.Space(2);
 
             var totalConn = _maxInstances * _poolSize;
             var safe = totalConn <= _safeMaxConnections;
-            var prevColor = GUI.color;
-            GUI.color = safe ? EditorUI.COL_SUCCESS : EditorUI.COL_ERROR;
             EditorGUILayout.LabelField(safe
-                ? $"  \u2713 Pool {_poolSize} \u00d7 Max {_maxInstances} = {totalConn} \u2014 배포 시 자동 적용"
-                : $"  \u2717 Pool {_poolSize} \u00d7 Max {_maxInstances} = {totalConn} \u2014 한도 초과");
-            GUI.color = prevColor;
+                ? $"  ✓ Pool {_poolSize} × Max {_maxInstances} = {totalConn} — 배포 시 자동 적용"
+                : $"  ✗ Pool {_poolSize} × Max {_maxInstances} = {totalConn} — 한도 초과");
 
-            EditorUI.EndSubBox();
+            EditorGUILayout.EndVertical();
         }
 
         // ── Supabase ──
 
         void DrawSupabaseSection(SupaRunSettings settings)
         {
-            EditorUI.BeginSubBox();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             // 헤더 + 링크
             EditorGUILayout.BeginHorizontal();
@@ -156,32 +152,31 @@ namespace Tjdtjq5.SupaRun.Editor
             GUILayout.FlexibleSpace();
             if (!string.IsNullOrEmpty(settings.SupabaseProjectId))
             {
-                if (EditorUI.DrawLinkButton("대시보드"))
+                if (EditorGUILayout.LinkButton("대시보드"))
                     Application.OpenURL(settings.SupabaseDashboardUrl);
-                if (EditorUI.DrawLinkButton("데이터"))
+                if (EditorGUILayout.LinkButton("데이터"))
                     Application.OpenURL($"https://supabase.com/dashboard/project/{settings.SupabaseProjectId}/editor");
             }
             EditorGUILayout.EndHorizontal();
 
             if (!string.IsNullOrEmpty(_projectName))
             {
-                EditorUI.DrawCellLabel($"  {_projectName} ({_projectRegion})", 0, EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField($"  {_projectName} ({_projectRegion})");
                 if (!string.IsNullOrEmpty(_dbVersion))
-                    EditorUI.DrawCellLabel($"  PostgreSQL {_dbVersion}", 0, EditorUI.COL_MUTED);
+                    EditorGUILayout.LabelField($"  PostgreSQL {_dbVersion}");
 
-                var statusColor = _projectStatus == "ACTIVE_HEALTHY" ? EditorUI.COL_SUCCESS : EditorUI.COL_WARN;
-                EditorUI.DrawCellLabel($"  {_projectStatus}", 0, statusColor);
+                EditorGUILayout.LabelField($"  {_projectStatus}");
             }
             else if (_state == FetchState.Loading)
             {
-                EditorUI.DrawCellLabel("  조회 중...", 0, EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField("  조회 중...");
             }
             else if (_state == FetchState.Loaded)
             {
-                EditorUI.DrawCellLabel("  Access Token이 없거나 조회 실패", 0, EditorUI.COL_WARN);
+                EditorGUILayout.LabelField("  Access Token이 없거나 조회 실패");
             }
 
-            EditorUI.EndSubBox();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 요금 ──
@@ -200,17 +195,17 @@ namespace Tjdtjq5.SupaRun.Editor
 
             if (!string.IsNullOrEmpty(projectId))
             {
-                if (EditorUI.DrawLinkButton("Supabase 요금"))
+                if (EditorGUILayout.LinkButton("Supabase 요금"))
                     Application.OpenURL($"https://supabase.com/dashboard/project/{projectId}/settings/billing/usage");
             }
             if (hasGcp)
             {
-                if (EditorUI.DrawLinkButton("GCP 요금"))
+                if (EditorGUILayout.LinkButton("GCP 요금"))
                     Application.OpenURL($"https://console.cloud.google.com/billing?project={settings.gcpProjectId}");
             }
             if (hasGh)
             {
-                if (EditorUI.DrawLinkButton("GitHub 요금"))
+                if (EditorGUILayout.LinkButton("GitHub 요금"))
                     Application.OpenURL($"https://github.com/{gh.Account}/{settings.githubRepoName}/settings/billing");
             }
 

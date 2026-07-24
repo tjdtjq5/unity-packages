@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -36,20 +35,21 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawEmpty()
         {
-            EditorUI.DrawSectionHeader("Services", SupaRunDashboard.COL_PRIMARY);
+            EditorGUILayout.LabelField("Services", EditorStyles.boldLabel);
             GUILayout.Space(20);
 
-            EditorUI.BeginBody();
-            EditorUI.DrawDescription(
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
                 "아직 서비스가 없습니다.\n\n" +
                 "[Service] 클래스를 작성하면\n" +
-                "여기에 자동으로 표시됩니다.");
-            EditorUI.EndBody();
+                "여기에 자동으로 표시됩니다.",
+                EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.EndVertical();
 
             GUILayout.Space(12);
 
-            EditorUI.BeginBody();
-            EditorUI.DrawDescription(
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
                 "예시:\n\n" +
                 "[Service]\n" +
                 "public class PlayerService\n" +
@@ -63,18 +63,19 @@ namespace Tjdtjq5.SupaRun.Editor
                 "        await _db.Save(player);\n" +
                 "        return player;\n" +
                 "    }\n" +
-                "}");
-            EditorUI.EndBody();
+                "}",
+                EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.EndVertical();
 
             GUILayout.Space(12);
 
-            if (EditorUI.DrawLinkButton("가이드 보기", SupaRunDashboard.COL_PRIMARY))
+            if (EditorGUILayout.LinkButton("가이드 보기"))
                 Application.OpenURL(GuideUrl);
         }
 
         void DrawList()
         {
-            EditorUI.DrawSectionHeader("Services", SupaRunDashboard.COL_PRIMARY);
+            EditorGUILayout.LabelField("Services", EditorStyles.boldLabel);
             GUILayout.Space(4);
 
             foreach (var info in _cachedInfos)
@@ -84,13 +85,13 @@ namespace Tjdtjq5.SupaRun.Editor
             }
 
             GUILayout.Space(8);
-            if (EditorUI.DrawLinkButton("가이드 보기", SupaRunDashboard.COL_PRIMARY))
+            if (EditorGUILayout.LinkButton("가이드 보기"))
                 Application.OpenURL(GuideUrl);
         }
 
         void DrawServiceInfo(ServiceInfo info)
         {
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             // 서비스 이름 + 배포 상태
             bool anyDeployed = info.Methods.Any(m =>
@@ -99,35 +100,30 @@ namespace Tjdtjq5.SupaRun.Editor
                 DeployRegistry.IsDeployed($"{info.ClassName}/{m}"));
 
             string status;
-            Color statusColor;
             if (allDeployed)
             {
                 status = "● 배포됨";
-                statusColor = EditorUI.COL_SUCCESS;
             }
             else if (anyDeployed)
             {
                 status = "◐ 일부 배포";
-                statusColor = EditorUI.COL_WARN;
             }
             else
             {
                 status = "○ 미배포 (로컬)";
-                statusColor = EditorUI.COL_MUTED;
             }
 
-            EditorUI.DrawCellLabel($"  {info.ClassName}  {status}", 0, statusColor);
+            EditorGUILayout.LabelField($"  {info.ClassName}  {status}");
 
             // 메서드 목록
             foreach (var method in info.Methods)
             {
                 bool deployed = DeployRegistry.IsDeployed($"{info.ClassName}/{method}");
                 string icon = deployed ? "  ✓" : "  ·";
-                Color col = deployed ? EditorUI.COL_SUCCESS : EditorUI.COL_MUTED;
-                EditorUI.DrawCellLabel($"    {icon} {method}", 0, col);
+                EditorGUILayout.LabelField($"    {icon} {method}");
             }
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         void ScanIfNeeded()

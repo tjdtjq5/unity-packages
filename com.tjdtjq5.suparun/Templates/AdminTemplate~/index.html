@@ -606,7 +606,9 @@ tbody tr { animation: rowStagger 0.2s linear both; }
   border-color: var(--green);
   box-shadow: 0 0 0 1px var(--green-glow);
 }
-.form-switch .form-check-input { border-radius: 0; }
+/* 스위치는 예외적으로 pill 유지 — 각진 트랙 + 원형 노브(SVG) 조합이 어색함.
+   !important: 아래 전역 리셋(input... { border-radius: 0 !important })을 이기기 위해 필수 */
+.form-switch .form-check-input { border-radius: 2em !important; }
 
 /* ── 버튼 ── */
 .btn {
@@ -1883,6 +1885,7 @@ async function loadRewardSources() {
   function collectFk(fields) {
     for (const f of fields || []) {
       if (f.foreignKey) fkTargets.add(f.foreignKey);
+      if (f.foreignKeyList) fkTargets.add(f.foreignKeyList);
       if (f.isJson && f.jsonSchema) collectFk(f.jsonSchema);
     }
   }
@@ -2023,7 +2026,7 @@ function renderTable(filter = '') {
     let icon = '';
     if (f.isPrimaryKey) icon = '<i class="ti ti-key text-yellow me-1" title="Primary Key"></i>';
     else if (f.isRequired) icon = '<span class="text-red me-1" title="필수">*</span>';
-    else if (f.foreignKey) icon = '<i class="ti ti-link text-cyan me-1" title="Foreign Key"></i>';
+    else if (f.foreignKey || f.foreignKeyList) icon = '<i class="ti ti-link text-cyan me-1" title="Foreign Key"></i>';
     html += `<th>${icon}${escHtml(f.name)}</th>`;
   }
   html += '<th style="width:80px"></th></tr></thead><tbody>';
@@ -2231,6 +2234,100 @@ function closeIconGrid() {
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && iconGridState) { e.preventDefault(); closeIconGrid(); } });
 
+// ── FK 리스트 에디터 (foreignKeyList — TEXT 컬럼에 FK id JSON 배열, 오버레이 모달) ──
+// 행 = FK 드롭다운 1개. 추가/삭제/위아래 이동 지원, 다른 행이 쓰는 id는 disabled(중복 차단).
+let fkListState = null;   // { rowId, fieldName, target, ids }
+function parseFkList(v) {
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a.map(String) : []; } catch { return []; }
+}
+function openFkList(rowId, fieldName) {
+  const field = currentType?.fields.find(f => f.name === fieldName);
+  const row = currentData.find(r => r.id === rowId);
+  if (!field || !row) return;
+  fkListState = { rowId, fieldName, target: field.foreignKeyList, ids: parseFkList(row[fieldName]) };
+  const ov = document.createElement('div');
+  ov.id = 'fk-list-overlay';
+  ov.className = 'icon-grid-overlay';
+  ov.onclick = e => { if (e.target === ov) closeFkList(); };
+  ov.innerHTML = '<div class="icon-grid-panel" style="max-width:480px">'
+    + `<div class="icon-grid-head"><span class="fw-bold px-2">${escHtml(fieldName)} — ${escHtml(fkListState.target)}</span><button class="icon-grid-close" title="닫기 (Esc)" onclick="closeFkList()">×</button></div>`
+    + '<div id="fk-list-body" style="padding:12px;max-height:60vh;overflow-y:auto"></div>'
+    + '</div>';
+  document.body.appendChild(ov);
+  renderFkListRows();
+}
+function renderFkListRows() {
+  const body = document.getElementById('fk-list-body');
+  if (!body || !fkListState) return;
+  const options = fkSources[fkListState.target] || [];
+  const ids = fkListState.ids;
+  let html = '<div id="fk-list-rows">';
+  ids.forEach((id, i) => {
+    let opts = options.map(o => {
+      const dup = ids.includes(String(o.id)) && String(o.id) !== id;   // 다른 행이 이미 사용 → 중복 차단
+      return `<option value="${escHtml(String(o.id))}" ${String(o.id)===id?'selected':''} ${dup?'disabled':''}>${escHtml(o.name ? `${o.id} — ${o.name}` : String(o.id))}</option>`;
+    }).join('');
+    if (id && !options.some(o => String(o.id) === id))
+      opts = `<option value="${escHtml(id)}" selected>${escHtml(id)} (없는 id)</option>` + opts;   // 옵션 밖 값도 보존
+    html += `<div class="d-flex gap-1 mb-1 align-items-center">`
+      + `<span class="fk-drag-handle" style="cursor:grab;color:#6c757d;padding:0 4px" title="드래그로 순서 변경"><i class="ti ti-grip-vertical"></i></span>`
+      + `<select class="form-select form-select-sm" onchange="fkListSet(${i}, this.value)">${opts}</select>`
+      + `<button class="btn btn-ghost-danger btn-icon btn-sm" onclick="fkListRemove(${i})" title="삭제"><i class="ti ti-trash"></i></button>`
+      + `</div>`;
+  });
+  html += '</div>';
+  const unused = options.find(o => !ids.includes(String(o.id)));
+  html += `<button class="btn btn-sm btn-outline-primary mt-2" ${unused?'':'disabled'} onclick="fkListAdd()"><i class="ti ti-plus me-1"></i>행 추가</button>`;
+  body.innerHTML = html;
+  initFkListSorting(document.getElementById('fk-list-rows'));
+}
+function fkListCommit() {
+  const s = fkListState; if (!s) return;
+  onFieldChange(s.rowId, s.fieldName, JSON.stringify(s.ids));   // row 갱신 + debounce 저장
+  renderFkListRows();
+}
+function fkListSet(i, v) { fkListState.ids[i] = String(v); fkListCommit(); }
+function fkListAdd() {
+  const options = fkSources[fkListState.target] || [];
+  const unused = options.find(o => !fkListState.ids.includes(String(o.id)));
+  if (!unused) return;
+  fkListState.ids.push(String(unused.id)); fkListCommit();
+}
+function fkListRemove(i) { fkListState.ids.splice(i, 1); fkListCommit(); }
+// 드래그로 순서 변경 — 재렌더(fkListCommit)마다 컨테이너가 새로 생기므로 매번 재생성
+function initFkListSorting(rows) {
+  if (!rows || typeof Sortable === 'undefined') return;
+  Sortable.create(rows, {
+    handle: '.fk-drag-handle',
+    animation: 150,
+    ghostClass: 'sortable-ghost',
+    forceFallback: true,
+    fallbackOnBody: true,
+    fallbackTolerance: 4,
+    onEnd: evt => {
+      if (evt.oldIndex === evt.newIndex || !fkListState) return;
+      const a = fkListState.ids;
+      const [moved] = a.splice(evt.oldIndex, 1);
+      a.splice(evt.newIndex, 0, moved);
+      fkListCommit();
+    }
+  });
+}
+function closeFkList() {
+  const ov = document.getElementById('fk-list-overlay');
+  if (ov) ov.remove();
+  if (fkListState) {
+    // 셀 배지 갱신 (저장은 fkListCommit의 onFieldChange 경유로 이미 진행)
+    const tr = document.querySelector(`tr[data-id="${CSS.escape(fkListState.rowId)}"]`);
+    const td = tr ? tr.querySelector(`td[data-field="${fkListState.fieldName}"]`) : null;
+    const row = currentData.find(r => r.id === fkListState.rowId);
+    const field = currentType?.fields.find(f => f.name === fkListState.fieldName);
+    if (td && row && field) td.innerHTML = renderCell(row, field);
+  }
+  fkListState = null;
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && fkListState) { e.preventDefault(); closeFkList(); } });
+
 function ssOpenPopup(input) {
   ssClosePopup(true);   // 다른 팝업 열려 있으면 되돌리고 닫기
   const carrierId = input.dataset.ss;
@@ -2364,6 +2461,11 @@ function renderCell(row, field) {
       value: val,
       onChange: `onFieldChange('${sid}','${sfn}',this.value)`,
     });
+  }
+  if (field.foreignKeyList) {
+    const ids = parseFkList(val);
+    const disp = ids.length ? escHtml(ids.join(', ')) : '(비어있음)';
+    return `<span class="badge bg-cyan-lt json-badge" title="${escHtml(val||'[]')}" onclick="openFkList('${sid}','${sfn}')"><i class="ti ti-link me-1"></i>${disp}</span>`;
   }
   if (field.iconAtlas) {
     ensureIconsLoaded();   // 최초 1회 _icons lazy fetch → 완료 시 재렌더(썸네일 반영)

@@ -9,7 +9,7 @@
 |------|------|------|
 | SupaRunSettings | `../Settings/SupaRunSettings.cs` | 모든 설정값 읽기/쓰기 |
 | Deploy | `../Deploy/` | DeployManager, ActionsTracker, ServerCacheHealthChecker 호출 |
-| EditorToolkit | 패키지 `com.tjdtjq5.editor-toolkit` | EditorUI 드로잉 유틸 (EditorTabBase, 색상 상수, 컴포넌트) |
+| SupaRunUI | `UI/SupaRunUI.cs` | 공용 IMGUI 헬퍼 (알림 바, NotificationType, 정보 박스) — 바닐라 IMGUI |
 | PrerequisiteChecker | `../PrerequisiteChecker.cs` | dotnet/gh/gcloud CLI 상태 확인 |
 | SupabaseManagementApi | `../SupabaseManagementApi.cs` | 프로젝트 목록, Anon Key, Auth 설정, DB 쿼리 |
 | AuthUrlSyncManager | `../AuthUrlSyncManager.cs` | Auth URL 변경 감지 + 자동 동기화 |
@@ -35,7 +35,8 @@ Dashboard/
 ├── SharedUI/
 │   ├── GcpSetupUI.cs         # GCP 설정 공용 UI (CLI → 로그인 → 프로젝트 → API 활성화)
 │   └── GitHubSetupUI.cs      # GitHub 설정 공용 UI (CLI → 로그인 → 레포 생성/선택)
-└── UI/                       # (빈 폴더 — 예약)
+└── UI/
+    └── SupaRunUI.cs          # 공용 IMGUI 헬퍼 (NotificationType, 알림 바, 정보 박스)
 ```
 
 ## API

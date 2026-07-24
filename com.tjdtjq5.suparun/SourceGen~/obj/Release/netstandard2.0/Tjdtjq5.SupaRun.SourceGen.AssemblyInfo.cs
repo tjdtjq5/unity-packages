@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Tjdtjq5.SupaRun.SourceGen")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b4c24c6541e97e5a0ab052fb58712d7e07604edf")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+de8021b8effbde7289b00bc21e750a09fbdb2ba4")]
 [assembly: System.Reflection.AssemblyProductAttribute("Tjdtjq5.SupaRun.SourceGen")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Tjdtjq5.SupaRun.SourceGen")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
