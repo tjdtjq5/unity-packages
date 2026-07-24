@@ -5,7 +5,6 @@ using System.Text.RegularExpressions;
 using Tjdtjq5.Codemagic.Editor.License;
 using Tjdtjq5.Codemagic.Editor.Settings;
 using Tjdtjq5.Codemagic.Editor.Util;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -68,10 +67,11 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
 
         public void OnDraw(SetupContext ctx)
         {
-            EditorUI.DrawSubLabel("Step 4/6: Unity 라이선스");
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField("Step 4/6: Unity 라이선스", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(
                 "Codemagic 빌드에서 Unity를 활성화하기 위해 필요합니다.\n" +
-                "Codemagic GUI에 환경 변수 3개를 등록합니다 (UNITY_SERIAL은 빌드 시 .ulf에서 자동 추출).");
+                "Codemagic GUI에 환경 변수 3개를 등록합니다 (UNITY_SERIAL은 빌드 시 .ulf에서 자동 추출).",
+                EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(8);
 
@@ -95,78 +95,75 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
 
         void DrawUnityAccountSection()
         {
-            EditorUI.DrawSectionHeader("Unity 계정", EditorUI.COL_INFO);
-            EditorUI.BeginBody();
-            _email = EditorUI.DrawTextField("이메일", _email);
+            EditorGUILayout.LabelField("Unity 계정", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            _email = EditorGUILayout.TextField("이메일", _email);
             if (!string.IsNullOrEmpty(_email) && !IsValidEmail(_email))
-                EditorUI.DrawDescription("  ⚠ 이메일 형식이 올바르지 않습니다.", EditorUI.COL_ERROR);
+                EditorGUILayout.LabelField("  ⚠ 이메일 형식이 올바르지 않습니다.",
+                    EditorStyles.wordWrappedMiniLabel);
 
-            _password = EditorUI.DrawPasswordField("비밀번호", _password);
+            _password = EditorGUILayout.PasswordField("비밀번호", _password);
             if (!string.IsNullOrEmpty(_password))
-                EditorUI.DrawDescription($"  현재 입력 길이: {_password.Length}자", EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField($"  현재 입력 길이: {_password.Length}자",
+                    EditorStyles.wordWrappedMiniLabel);
 
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField(
                 "Google/Apple로만 로그인하던 계정이라면 id.unity.com 에서 비밀번호를 추가하세요.",
-                EditorUI.COL_MUTED);
-            EditorUI.EndBody();
+                EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.EndVertical();
         }
 
         // ── .ulf 파일 섹션 ─────────────────────────────────────────────────
 
         void DrawUlfSection(SetupContext ctx)
         {
-            EditorUI.DrawSectionHeader("라이선스 파일 (.ulf)", EditorUI.COL_INFO);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("라이선스 파일 (.ulf)", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             if (!string.IsNullOrEmpty(_ulfContent))
             {
                 if (!string.IsNullOrEmpty(_ulfPath))
-                    EditorUI.DrawCellLabel($"  ✓ {Path.GetFileName(_ulfPath)} 로드됨",
-                        0, EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField($"  ✓ {Path.GetFileName(_ulfPath)} 로드됨");
                 else
-                    EditorUI.DrawCellLabel("  ✓ .ulf 로드됨 (이전 세션 저장)",
-                        0, EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField("  ✓ .ulf 로드됨 (이전 세션 저장)");
 
-                EditorUI.DrawDescription(
+                EditorGUILayout.LabelField(
                     $"      길이: {_ulfContent.Length} bytes",
-                    EditorUI.COL_MUTED);
+                    EditorStyles.wordWrappedMiniLabel);
 
                 if (!string.IsNullOrEmpty(_ulfStopDate))
                 {
-                    var dInfo = ComputeDayDiff(_ulfStopDate);
-                    EditorUI.DrawCellLabel(
-                        $"      만료일: {_ulfStopDate} {dInfo.label}",
-                        0, dInfo.color);
+                    EditorGUILayout.LabelField(
+                        $"      만료일: {_ulfStopDate} {ComputeDayDiff(_ulfStopDate)}");
                 }
 
                 if (!string.IsNullOrEmpty(_serialMasked))
-                    EditorUI.DrawCellLabel($"      Serial: {_serialMasked}",
-                        0, EditorUI.COL_MUTED);
+                    EditorGUILayout.LabelField($"      Serial: {_serialMasked}");
             }
             else
             {
-                EditorUI.DrawCellLabel("  ✗ .ulf 파일을 찾지 못했습니다.", 0, EditorUI.COL_WARN);
-                EditorUI.DrawDescription(
+                EditorGUILayout.LabelField("  ✗ .ulf 파일을 찾지 못했습니다.");
+                EditorGUILayout.LabelField(
                     "      Unity Hub → Preferences → Licenses → Add → Get a free personal license\n" +
                     "      를 마친 후 [다시 탐색]을 누르세요.",
-                    EditorUI.COL_MUTED);
+                    EditorStyles.wordWrappedMiniLabel);
             }
 
             GUILayout.Space(4);
-            EditorUI.BeginRow();
-            if (EditorUI.DrawColorButton("다시 탐색", EditorUI.COL_INFO))
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("다시 탐색"))
                 TryAutoDetect(ctx);
-            if (EditorUI.DrawColorButton(".ulf 직접 선택", EditorUI.COL_MUTED))
+            if (GUILayout.Button(".ulf 직접 선택"))
                 SelectUlfManually(ctx);
-            EditorUI.EndRow();
-            EditorUI.EndBody();
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 환경 변수 등록 walk-through ────────────────────────────────────
 
         void DrawEnvRegistrationSection(SetupContext ctx)
         {
-            EditorUI.DrawSectionHeader("Codemagic 환경 변수 등록", EditorUI.COL_INFO);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("Codemagic 환경 변수 등록", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             DrawGroupCreationStep(ctx);
             GUILayout.Space(8);
@@ -178,49 +175,49 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             GUILayout.Space(8);
             DrawCompleteButton(ctx);
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         void DrawGroupCreationStep(SetupContext ctx)
         {
-            EditorUI.DrawCellLabel("① 변수 그룹 1회 생성", 0, EditorUI.COL_INFO);
+            EditorGUILayout.LabelField("① 변수 그룹 1회 생성");
             GUILayout.Space(2);
 
-            EditorUI.BeginRow();
-            EditorUI.DrawCellLabel("  그룹 이름:", 100, EditorUI.COL_MUTED);
-            EditorUI.DrawCellLabel(GroupName, 200, EditorUI.COL_INFO);
-            if (EditorUI.DrawMiniButton("📋 복사"))
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("  그룹 이름:", GUILayout.Width(100));
+            EditorGUILayout.LabelField(GroupName, GUILayout.Width(200));
+            if (GUILayout.Button("📋 복사", EditorStyles.miniButton))
             {
                 EditorGUIUtility.systemCopyBuffer = GroupName;
-                ctx.ShowNotification($"그룹 이름 복사됨: {GroupName}", EditorUI.NotificationType.Info);
+                ctx.ShowNotification($"그룹 이름 복사됨: {GroupName}", MessageType.Info);
             }
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(2);
 
             var appId = ctx.Settings.CodemagicAppId;
             if (!string.IsNullOrEmpty(appId))
             {
-                EditorUI.BeginRow();
-                if (EditorUI.DrawLinkButton("🔗 Codemagic Settings 페이지 열기"))
+                EditorGUILayout.BeginHorizontal();
+                if (EditorGUILayout.LinkButton("🔗 Codemagic Settings 페이지 열기"))
                     Application.OpenURL($"https://codemagic.io/app/{appId}/settings");
-                EditorUI.EndRow();
+                EditorGUILayout.EndHorizontal();
             }
             else
             {
-                EditorUI.DrawDescription(
+                EditorGUILayout.LabelField(
                     "  ⚠ Codemagic 앱이 선택되지 않음 — Step 3을 먼저 완료하세요.",
-                    EditorUI.COL_WARN);
+                    EditorStyles.wordWrappedMiniLabel);
             }
 
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField(
                 "  Settings → Environment variables 탭 → [+ Add variable group] → 이름 paste → Save",
-                EditorUI.COL_MUTED);
+                EditorStyles.wordWrappedMiniLabel);
         }
 
         void DrawWalkThroughCards(SetupContext ctx)
         {
-            EditorUI.DrawCellLabel("② 변수 4개 등록  (Secure ✓ 체크 잊지 마세요)", 0, EditorUI.COL_INFO);
+            EditorGUILayout.LabelField("② 변수 4개 등록  (Secure ✓ 체크 잊지 마세요)");
             GUILayout.Space(2);
 
             for (int i = 0; i < _entries.Length; i++)
@@ -232,62 +229,57 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             bool isDone = _copied[idx];
             bool isActive = idx == _currentIdx && !isDone;
 
-            var color = isDone ? EditorUI.COL_SUCCESS
-                       : isActive ? EditorUI.COL_INFO
-                       : EditorUI.COL_MUTED;
             var marker = isDone ? "✓" : (isActive ? "●" : "○");
 
-            EditorUI.BeginSubBox();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-            EditorUI.DrawCellLabel(
-                $"  {marker} Variable {idx + 1}/{VariableCount} — {entry.Key}",
-                0, color);
+            EditorGUILayout.LabelField(
+                $"  {marker} Variable {idx + 1}/{VariableCount} — {entry.Key}");
 
             GUILayout.Space(2);
 
             // Key
-            EditorUI.BeginRow();
-            EditorUI.DrawCellLabel("    Key:", 70, EditorUI.COL_MUTED);
-            EditorUI.DrawCellLabel(entry.Key, 200, EditorUI.COL_INFO);
-            if (EditorUI.DrawMiniButton("📋 키"))
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("    Key:", GUILayout.Width(70));
+            EditorGUILayout.LabelField(entry.Key, GUILayout.Width(200));
+            if (GUILayout.Button("📋 키", EditorStyles.miniButton))
             {
                 EditorGUIUtility.systemCopyBuffer = entry.Key;
-                ctx.ShowNotification($"Key 복사됨: {entry.Key}", EditorUI.NotificationType.Info);
+                ctx.ShowNotification($"Key 복사됨: {entry.Key}", MessageType.Info);
             }
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
             // Value (마스킹 표시)
-            EditorUI.BeginRow();
-            EditorUI.DrawCellLabel("    Value:", 70, EditorUI.COL_MUTED);
-            EditorUI.DrawCellLabel(MaskValue(entry), 220, EditorUI.COL_MUTED);
-            if (EditorUI.DrawMiniButton("📋 값"))
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("    Value:", GUILayout.Width(70));
+            EditorGUILayout.LabelField(MaskValue(entry), GUILayout.Width(220));
+            if (GUILayout.Button("📋 값", EditorStyles.miniButton))
             {
                 EditorGUIUtility.systemCopyBuffer = entry.Value ?? "";
                 _copied[idx] = true;
                 if (idx + 1 > _currentIdx) _currentIdx = idx + 1;
                 ctx.ShowNotification(
                     $"{entry.Key} 값 복사됨 ({(entry.Value?.Length ?? 0)}자)",
-                    EditorUI.NotificationType.Info);
+                    MessageType.Info);
             }
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
-            EditorUI.DrawDescription("    Secure: ✓ 체크 필수", EditorUI.COL_WARN);
+            EditorGUILayout.LabelField("    Secure: ✓ 체크 필수", EditorStyles.wordWrappedMiniLabel);
 
-            EditorUI.EndSubBox();
+            EditorGUILayout.EndVertical();
             GUILayout.Space(4);
         }
 
         void DrawCompleteButton(SetupContext ctx)
         {
-            EditorUI.DrawCellLabel("③ 등록 완료 표시", 0, EditorUI.COL_INFO);
+            EditorGUILayout.LabelField("③ 등록 완료 표시");
             GUILayout.Space(2);
 
             if (_registered)
             {
-                EditorUI.DrawCellLabel(
-                    "  ✓ Codemagic env 등록 완료로 표시됨.", 0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField("  ✓ Codemagic env 등록 완료로 표시됨.");
                 GUILayout.Space(2);
-                if (EditorUI.DrawColorButton("재등록 (처음부터)", EditorUI.COL_MUTED, 24))
+                if (GUILayout.Button("재등록 (처음부터)", GUILayout.Height(24)))
                 {
                     _registered = false;
                     ctx.State.LicenseEnvRegistered = false;
@@ -295,7 +287,7 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
                     for (int i = 0; i < _copied.Length; i++) _copied[i] = false;
                     _currentIdx = 0;
                     ctx.ShowNotification("Codemagic env 등록 상태 리셋됨.",
-                        EditorUI.NotificationType.Info);
+                        MessageType.Info);
                 }
                 return;
             }
@@ -304,25 +296,24 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             for (int i = 0; i < _copied.Length; i++)
                 if (!_copied[i]) { allCopied = false; break; }
 
-            EditorUI.BeginDisabled(!allCopied);
-            if (EditorUI.DrawColorButton(
+            EditorGUI.BeginDisabledGroup(!allCopied);
+            if (GUILayout.Button(
                 $"✓ Codemagic에 {VariableCount}개 변수 등록 완료",
-                allCopied ? EditorUI.COL_SUCCESS : EditorUI.COL_MUTED,
-                32))
+                GUILayout.Height(32)))
             {
                 _registered = true;
                 ctx.State.LicenseEnvRegistered = true;
                 ctx.SaveState();
                 ctx.ShowNotification(
-                    $"Codemagic env 등록 완료로 표시됨 — 다음 단계로 진행 가능.",
-                    EditorUI.NotificationType.Success);
+                    $"✓ Codemagic env 등록 완료로 표시됨 — 다음 단계로 진행 가능.",
+                    MessageType.Info);
             }
-            EditorUI.EndDisabled();
+            EditorGUI.EndDisabledGroup();
 
             if (!allCopied)
-                EditorUI.DrawDescription(
+                EditorGUILayout.LabelField(
                     $"  {VariableCount}개 변수의 [값 복사] 버튼을 모두 눌러야 활성화됩니다.",
-                    EditorUI.COL_MUTED);
+                    EditorStyles.wordWrappedMiniLabel);
         }
 
         // ── 자동 탐색 / 파일 로드 ──────────────────────────────────────────
@@ -336,7 +327,7 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             var (valid, content, error) = UlfReader.TryRead(path);
             if (!valid)
             {
-                ctx.ShowNotification($".ulf 자동 탐색 실패: {error}", EditorUI.NotificationType.Error);
+                ctx.ShowNotification($".ulf 자동 탐색 실패: {error}", MessageType.Error);
                 return;
             }
 
@@ -358,7 +349,7 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             var (valid, content, error) = UlfReader.TryRead(path);
             if (!valid)
             {
-                ctx.ShowNotification($".ulf 파일 읽기 실패: {error}", EditorUI.NotificationType.Error);
+                ctx.ShowNotification($".ulf 파일 읽기 실패: {error}", MessageType.Error);
                 return;
             }
 
@@ -439,16 +430,16 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             return $"{prefix}-XXXX-...-{suffix}";
         }
 
-        static (string label, Color color) ComputeDayDiff(string stopDate)
+        static string ComputeDayDiff(string stopDate)
         {
             if (DateTime.TryParse(stopDate, out var d))
             {
                 var diff = (int)(d.Date - DateTime.UtcNow.Date).TotalDays;
-                if (diff < 0) return ($"(만료됨, {-diff}일 경과)", EditorUI.COL_ERROR);
-                if (diff < 14) return ($"(D-{diff})", EditorUI.COL_WARN);
-                return ($"(D-{diff})", EditorUI.COL_SUCCESS);
+                if (diff < 0) return $"(만료됨, {-diff}일 경과)";
+                if (diff < 14) return $"(D-{diff} ⚠)";
+                return $"(D-{diff})";
             }
-            return ("", EditorUI.COL_MUTED);
+            return "";
         }
     }
 }

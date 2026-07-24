@@ -1,5 +1,4 @@
 #if UNITY_EDITOR
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -78,13 +77,15 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             GUILayout.Space(60);
 
             // 가운데 큰 [시작하기 →] 버튼
-            EditorUI.BeginCenterRow();
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
             var prevBg = GUI.backgroundColor;
             GUI.backgroundColor = Accent;
             if (GUILayout.Button("시작하기  →", _buttonStyle))
                 ctx.RequestNext();
             GUI.backgroundColor = prevBg;
-            EditorUI.EndCenterRow();
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(16);
 

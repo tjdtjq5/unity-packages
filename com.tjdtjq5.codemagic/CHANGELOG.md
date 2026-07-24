@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.0] — 2026-07-24
+
+### Breaking Changes
+- **`com.tjdtjq5.editor-toolkit` 의존 완전 제거** — Setup 위저드(Step0~6)/BuildDialog의 EditorUI 호출 350곳을 바닐라 IMGUI로 치환. 다크 커스텀 테마 → Unity 기본 스타일 (위저드 진행/검증 흐름 동일, 상태는 ✓/⚠ 텍스트 마커로 표시).
+
 ## [0.1.0] — 2026-05-05
 
 Phase 1 MVP 첫 배포. `com.tjdtjq5.cicd`(GameCI/GitHub Actions) 대체 — Codemagic 전용.
@@ -33,7 +38,7 @@ Phase 1 MVP 첫 배포. `com.tjdtjq5.cicd`(GameCI/GitHub Actions) 대체 — Cod
 - `CodemagicApiClient` — REST(`/apps`, `/builds`, `/builds/{id}`). UniTask 기반
 - `CodemagicYamlGenerator` — Linux X2 + GameCI Docker yaml + 캐시 step + 진단 grep + publishing.email
 - `CodemagicBuildScript` — Unity `-batchmode -executeMethod` 진입점 (패키지 asmdef로 cp 단계 회피)
-- **토스트 알림 시스템** — `EditorUI.DrawNotificationBar`로 [Copy] / [X] 버튼 제공 (suparun/cicd 일관)
+- **토스트 알림 시스템** — 상단 알림 바에 [Copy] / [X] 버튼 제공 (suparun/cicd 일관)
 
 **Util 포팅 (cicd → codemagic)**
 - `ManifestModeSwapper` (file:↔git URL swap), `GitHelpers` (RunGit/GetDirtyFiles), `KeystoreHelper` (base64), `KeystoreCreator` (keytool 호출), `UlfReader`, `UlfSerialExtractor`, `PlatformPaths`

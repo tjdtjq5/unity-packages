@@ -2,7 +2,7 @@
 using System;
 using Tjdtjq5.Codemagic.Editor.Codemagic;
 using Tjdtjq5.Codemagic.Editor.Settings;
-using Tjdtjq5.EditorToolkit.Editor;
+using UnityEditor;
 
 namespace Tjdtjq5.Codemagic.Editor.Setup
 {
@@ -27,9 +27,9 @@ namespace Tjdtjq5.Codemagic.Editor.Setup
 
         // 토스트 알림 — SetupWizard 상단의 DrawNotificationBar에 표시.
         // string은 ref로 넘기는 게 표준 패턴이라 public 필드로 둔다 (property X).
-        // [Copy]/[X] 버튼은 EditorUI.DrawNotificationBar가 자동 제공.
+        // [Copy]/[X] 버튼은 SetupWizard의 알림 바가 제공.
         public string Notification = "";
-        public EditorUI.NotificationType NotificationType = EditorUI.NotificationType.Info;
+        public MessageType NotificationType = MessageType.Info;
 
         public SetupContext()
         {
@@ -54,7 +54,7 @@ namespace Tjdtjq5.Codemagic.Editor.Setup
         public void RequestNext() => _onNextRequested?.Invoke();
 
         /// <summary>토스트 알림 표시. 윈도우 상단에 Copy/X 버튼과 함께 노출. 다음 호출 시 덮어쓰기.</summary>
-        public void ShowNotification(string message, EditorUI.NotificationType type = EditorUI.NotificationType.Info)
+        public void ShowNotification(string message, MessageType type = MessageType.Info)
         {
             Notification = message ?? "";
             NotificationType = type;

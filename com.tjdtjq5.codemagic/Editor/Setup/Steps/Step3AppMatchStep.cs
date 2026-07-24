@@ -4,7 +4,6 @@ using Cysharp.Threading.Tasks;
 using Tjdtjq5.Codemagic.Editor.Codemagic;
 using Tjdtjq5.Codemagic.Editor.Git;
 using Tjdtjq5.Codemagic.Editor.Settings;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -32,37 +31,36 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
 
         public void OnDraw(SetupContext ctx)
         {
-            EditorUI.DrawSubLabel("Step 3/6: 앱 매칭");
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField("Step 3/6: 앱 매칭", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(
                 "현재 git remote와 연결된 Codemagic 앱을 찾습니다.\n" +
-                "Codemagic UI에서 앱을 미리 추가해 두어야 합니다.");
+                "Codemagic UI에서 앱을 미리 추가해 두어야 합니다.",
+                EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(8);
 
             // git remote 표시.
-            EditorUI.BeginBody();
-            EditorUI.BeginRow();
-            EditorUI.DrawCellLabel("Git remote", 100, EditorUI.COL_MUTED);
-            EditorUI.DrawCellLabel(
-                string.IsNullOrEmpty(_gitHubRepo) ? "(없음)" : _gitHubRepo,
-                0,
-                string.IsNullOrEmpty(_gitHubRepo) ? EditorUI.COL_ERROR : EditorUI.COL_INFO);
-            EditorUI.EndRow();
-            EditorUI.EndBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Git remote", GUILayout.Width(100));
+            EditorGUILayout.LabelField(
+                string.IsNullOrEmpty(_gitHubRepo) ? "(없음)" : _gitHubRepo);
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.EndVertical();
 
             GUILayout.Space(4);
 
             // 앱 목록.
-            EditorUI.BeginBody();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             if (_isLoading)
             {
-                EditorUI.DrawDescription("Codemagic 앱 목록 로딩 중...", EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField("Codemagic 앱 목록 로딩 중...", EditorStyles.wordWrappedMiniLabel);
             }
             else if (_apps == null || _apps.Count == 0)
             {
-                EditorUI.DrawCellLabel("  (등록된 Codemagic 앱이 없습니다)", 0, EditorUI.COL_WARN);
+                EditorGUILayout.LabelField("  (등록된 Codemagic 앱이 없습니다)");
                 GUILayout.Space(4);
-                if (EditorUI.DrawLinkButton("Codemagic UI에서 앱 추가하기"))
+                if (EditorGUILayout.LinkButton("Codemagic UI에서 앱 추가하기"))
                     Application.OpenURL("https://codemagic.io/apps");
             }
             else
@@ -81,7 +79,7 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
                 if (_selectedIdx < 0)
                     _selectedIdx = AutoMatchIndex(_apps, ctx);
 
-                _selectedIdx = EditorUI.DrawPopup("Codemagic 앱",
+                _selectedIdx = EditorGUILayout.Popup("Codemagic 앱",
                     Mathf.Clamp(_selectedIdx, 0, _apps.Count - 1), labels);
 
                 if (_selectedIdx >= 0 && _selectedIdx < _apps.Count)
@@ -89,49 +87,48 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
                     var picked = _apps[_selectedIdx];
 
                     GUILayout.Space(4);
-                    EditorUI.BeginRow();
-                    EditorUI.DrawCellLabel("App ID", 100, EditorUI.COL_MUTED);
-                    EditorUI.DrawCellLabel(picked.AppId ?? "", 0, EditorUI.COL_INFO);
-                    EditorUI.EndRow();
-                    EditorUI.BeginRow();
-                    EditorUI.DrawCellLabel("Repo URL", 100, EditorUI.COL_MUTED);
-                    EditorUI.DrawCellLabel(picked.RepoUrl ?? "(none)", 0, EditorUI.COL_MUTED);
-                    EditorUI.EndRow();
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField("App ID", GUILayout.Width(100));
+                    EditorGUILayout.LabelField(picked.AppId ?? "");
+                    EditorGUILayout.EndHorizontal();
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField("Repo URL", GUILayout.Width(100));
+                    EditorGUILayout.LabelField(picked.RepoUrl ?? "(none)");
+                    EditorGUILayout.EndHorizontal();
 
                     GUILayout.Space(4);
-                    if (EditorUI.DrawColorButton("이 앱으로 설정", EditorUI.COL_SUCCESS))
+                    if (GUILayout.Button("이 앱으로 설정"))
                     {
                         ctx.Settings.CodemagicAppId = picked.AppId ?? "";
                         ctx.Settings.CodemagicAppName = picked.AppName ?? "";
                         ctx.Settings.CodemagicAppRepoUrl = picked.RepoUrl ?? "";
                         ctx.Settings.Save();
-                        ctx.ShowNotification($"Codemagic 앱 설정됨: {picked.AppName}",
-                            EditorUI.NotificationType.Success);
+                        ctx.ShowNotification($"✓ Codemagic 앱 설정됨: {picked.AppName}",
+                            MessageType.Info);
                     }
                 }
             }
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
 
             GUILayout.Space(4);
 
             // 액션 행.
-            EditorUI.BeginRow();
-            EditorUI.BeginDisabled(_isLoading);
-            if (EditorUI.DrawColorButton("다시 가져오기", EditorUI.COL_INFO))
+            EditorGUILayout.BeginHorizontal();
+            EditorGUI.BeginDisabledGroup(_isLoading);
+            if (GUILayout.Button("다시 가져오기"))
                 LoadAppsAsync(ctx).Forget();
-            EditorUI.EndDisabled();
-            if (EditorUI.DrawLinkButton("Codemagic Apps 페이지"))
+            EditorGUI.EndDisabledGroup();
+            if (EditorGUILayout.LinkButton("Codemagic Apps 페이지"))
                 Application.OpenURL("https://codemagic.io/apps");
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
             // 현재 설정된 App.
             var curId = ctx.Settings.CodemagicAppId;
             if (!string.IsNullOrEmpty(curId))
             {
                 GUILayout.Space(4);
-                EditorUI.DrawCellLabel(
-                    $"  ✓ 현재 설정: {ctx.Settings.CodemagicAppName} ({curId})",
-                    0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField(
+                    $"  ✓ 현재 설정: {ctx.Settings.CodemagicAppName} ({curId})");
             }
         }
 
@@ -172,13 +169,13 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             {
                 ctx.ShowNotification(
                     "API 토큰이 등록되지 않았습니다. 이전 단계에서 토큰을 등록하세요.",
-                    EditorUI.NotificationType.Error);
+                    MessageType.Error);
                 _apps = new List<CodemagicAppDto>();
                 return;
             }
 
             _isLoading = true;
-            ctx.ShowNotification("Codemagic 앱 목록을 가져오는 중...", EditorUI.NotificationType.Info);
+            ctx.ShowNotification("Codemagic 앱 목록을 가져오는 중...", MessageType.Info);
 
             try
             {
@@ -189,19 +186,19 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
                 {
                     ctx.ShowNotification(
                         "Codemagic에 등록된 앱이 없습니다. UI에서 먼저 앱을 추가하세요.",
-                        EditorUI.NotificationType.Info);
+                        MessageType.Info);
                 }
                 else
                 {
                     _selectedIdx = AutoMatchIndex(_apps, ctx);
-                    ctx.ShowNotification($"Codemagic 앱 {_apps.Count}개 로드됨.",
-                        EditorUI.NotificationType.Success);
+                    ctx.ShowNotification($"✓ Codemagic 앱 {_apps.Count}개 로드됨.",
+                        MessageType.Info);
                 }
             }
             catch (System.Exception ex)
             {
                 ctx.ShowNotification($"앱 목록 로드 실패: {ex.Message}",
-                    EditorUI.NotificationType.Error);
+                    MessageType.Error);
             }
             finally
             {

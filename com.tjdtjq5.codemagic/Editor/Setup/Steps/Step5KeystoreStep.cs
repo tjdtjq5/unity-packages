@@ -3,7 +3,6 @@ using System;
 using System.IO;
 using Tjdtjq5.Codemagic.Editor.Settings;
 using Tjdtjq5.Codemagic.Editor.Util;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -48,10 +47,11 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
 
         public void OnDraw(SetupContext ctx)
         {
-            EditorUI.DrawSubLabel("Step 5/6: Android 서명 (선택)");
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField("Step 5/6: Android 서명 (선택)", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(
                 "Android 빌드(AAB/APK)를 서명할 keystore를 등록합니다.\n" +
-                "iOS/WebGL만 빌드한다면 [건너뛰기]로 넘어가세요.");
+                "iOS/WebGL만 빌드한다면 [건너뛰기]로 넘어가세요.",
+                EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(8);
 
@@ -60,9 +60,9 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             DrawEnvRegistrationSection(ctx);
 
             GUILayout.Space(8);
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField(
                 "이 단계는 선택입니다. Android를 빌드하지 않으면 [건너뛰기]로 다음으로 진행하세요.",
-                EditorUI.COL_MUTED);
+                EditorStyles.wordWrappedMiniLabel);
         }
 
         public void OnLeave(SetupContext ctx)
@@ -81,50 +81,51 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
 
         void DrawKeystoreInputSection(SetupContext ctx)
         {
-            EditorUI.DrawSectionHeader("Keystore 정보", EditorUI.COL_INFO);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("Keystore 정보", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-            EditorUI.BeginRow();
-            _keystorePath = EditorUI.DrawTextField("Keystore", _keystorePath);
-            if (EditorUI.DrawMiniButton("..."))
+            EditorGUILayout.BeginHorizontal();
+            _keystorePath = EditorGUILayout.TextField("Keystore", _keystorePath);
+            if (GUILayout.Button("...", EditorStyles.miniButton))
             {
                 var p = EditorUtility.OpenFilePanel("Keystore 선택", "", "keystore,jks");
                 if (!string.IsNullOrEmpty(p)) _keystorePath = p;
             }
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
             if (!string.IsNullOrEmpty(_keystorePath))
             {
                 if (File.Exists(_keystorePath))
-                    EditorUI.DrawCellLabel($"  ✓ 파일 존재: {Path.GetFileName(_keystorePath)}",
-                        0, EditorUI.COL_SUCCESS);
+                    EditorGUILayout.LabelField($"  ✓ 파일 존재: {Path.GetFileName(_keystorePath)}");
                 else
-                    EditorUI.DrawCellLabel("  ✗ 파일이 존재하지 않습니다.", 0, EditorUI.COL_ERROR);
+                    EditorGUILayout.LabelField("  ✗ 파일이 존재하지 않습니다.");
             }
 
-            _keystorePass = EditorUI.DrawPasswordField("Keystore 비밀번호", _keystorePass);
+            _keystorePass = EditorGUILayout.PasswordField("Keystore 비밀번호", _keystorePass);
             if (!string.IsNullOrEmpty(_keystorePass) && _keystorePass.Length < 6)
-                EditorUI.DrawDescription("  ⚠ 비밀번호는 6자 이상이어야 합니다.", EditorUI.COL_ERROR);
+                EditorGUILayout.LabelField("  ⚠ 비밀번호는 6자 이상이어야 합니다.",
+                    EditorStyles.wordWrappedMiniLabel);
 
-            _alias = EditorUI.DrawTextField("Key Alias", _alias);
+            _alias = EditorGUILayout.TextField("Key Alias", _alias);
 
-            _keyPass = EditorUI.DrawPasswordField("Key 비밀번호", _keyPass);
+            _keyPass = EditorGUILayout.PasswordField("Key 비밀번호", _keyPass);
             if (!string.IsNullOrEmpty(_keyPass) && _keyPass.Length < 6)
-                EditorUI.DrawDescription("  ⚠ 비밀번호는 6자 이상이어야 합니다.", EditorUI.COL_ERROR);
+                EditorGUILayout.LabelField("  ⚠ 비밀번호는 6자 이상이어야 합니다.",
+                    EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(4);
-            if (EditorUI.DrawColorButton("Keystore 생성 (keytool)", EditorUI.COL_INFO))
+            if (GUILayout.Button("Keystore 생성 (keytool)"))
                 CreateKeystore(ctx);
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 환경 변수 등록 walk-through ────────────────────────────────────
 
         void DrawEnvRegistrationSection(SetupContext ctx)
         {
-            EditorUI.DrawSectionHeader("Codemagic 환경 변수 등록", EditorUI.COL_INFO);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("Codemagic 환경 변수 등록", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             // 사전 조건 검사 — keystore 입력이 다 채워지지 않았으면 walk-through 비활성.
             bool keystoreReady =
@@ -135,11 +136,11 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
 
             if (!keystoreReady)
             {
-                EditorUI.DrawDescription(
+                EditorGUILayout.LabelField(
                     "  ⚠ 위 Keystore 정보를 모두 입력하면 등록 단계가 활성화됩니다.\n" +
                     "    (keystore 파일 / 비밀번호 6자+ / alias / key 비밀번호 6자+)",
-                    EditorUI.COL_WARN);
-                EditorUI.EndBody();
+                    EditorStyles.wordWrappedMiniLabel);
+                EditorGUILayout.EndVertical();
                 return;
             }
 
@@ -152,49 +153,49 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             GUILayout.Space(8);
             DrawCompleteButton(ctx);
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         void DrawGroupCreationStep(SetupContext ctx)
         {
-            EditorUI.DrawCellLabel("① 변수 그룹 1회 생성", 0, EditorUI.COL_INFO);
+            EditorGUILayout.LabelField("① 변수 그룹 1회 생성");
             GUILayout.Space(2);
 
-            EditorUI.BeginRow();
-            EditorUI.DrawCellLabel("  그룹 이름:", 100, EditorUI.COL_MUTED);
-            EditorUI.DrawCellLabel(GroupName, 200, EditorUI.COL_INFO);
-            if (EditorUI.DrawMiniButton("📋 복사"))
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("  그룹 이름:", GUILayout.Width(100));
+            EditorGUILayout.LabelField(GroupName, GUILayout.Width(200));
+            if (GUILayout.Button("📋 복사", EditorStyles.miniButton))
             {
                 EditorGUIUtility.systemCopyBuffer = GroupName;
-                ctx.ShowNotification($"그룹 이름 복사됨: {GroupName}", EditorUI.NotificationType.Info);
+                ctx.ShowNotification($"그룹 이름 복사됨: {GroupName}", MessageType.Info);
             }
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(2);
 
             var appId = ctx.Settings.CodemagicAppId;
             if (!string.IsNullOrEmpty(appId))
             {
-                EditorUI.BeginRow();
-                if (EditorUI.DrawLinkButton("🔗 Codemagic Settings 페이지 열기"))
+                EditorGUILayout.BeginHorizontal();
+                if (EditorGUILayout.LinkButton("🔗 Codemagic Settings 페이지 열기"))
                     Application.OpenURL($"https://codemagic.io/app/{appId}/settings");
-                EditorUI.EndRow();
+                EditorGUILayout.EndHorizontal();
             }
             else
             {
-                EditorUI.DrawDescription(
+                EditorGUILayout.LabelField(
                     "  ⚠ Codemagic 앱이 선택되지 않음 — Step 3을 먼저 완료하세요.",
-                    EditorUI.COL_WARN);
+                    EditorStyles.wordWrappedMiniLabel);
             }
 
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField(
                 "  Settings → Environment variables 탭 → [+ Add variable group] → 이름 paste → Save",
-                EditorUI.COL_MUTED);
+                EditorStyles.wordWrappedMiniLabel);
         }
 
         void DrawWalkThroughCards(SetupContext ctx)
         {
-            EditorUI.DrawCellLabel("② 변수 4개 등록  (Secure ✓ 체크 잊지 마세요)", 0, EditorUI.COL_INFO);
+            EditorGUILayout.LabelField("② 변수 4개 등록  (Secure ✓ 체크 잊지 마세요)");
             GUILayout.Space(2);
 
             for (int i = 0; i < _entries.Length; i++)
@@ -206,62 +207,57 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             bool isDone = _copied[idx];
             bool isActive = idx == _currentIdx && !isDone;
 
-            var color = isDone ? EditorUI.COL_SUCCESS
-                       : isActive ? EditorUI.COL_INFO
-                       : EditorUI.COL_MUTED;
             var marker = isDone ? "✓" : (isActive ? "●" : "○");
 
-            EditorUI.BeginSubBox();
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-            EditorUI.DrawCellLabel(
-                $"  {marker} Variable {idx + 1}/{VariableCount} — {entry.Key}",
-                0, color);
+            EditorGUILayout.LabelField(
+                $"  {marker} Variable {idx + 1}/{VariableCount} — {entry.Key}");
 
             GUILayout.Space(2);
 
             // Key
-            EditorUI.BeginRow();
-            EditorUI.DrawCellLabel("    Key:", 70, EditorUI.COL_MUTED);
-            EditorUI.DrawCellLabel(entry.Key, 200, EditorUI.COL_INFO);
-            if (EditorUI.DrawMiniButton("📋 키"))
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("    Key:", GUILayout.Width(70));
+            EditorGUILayout.LabelField(entry.Key, GUILayout.Width(200));
+            if (GUILayout.Button("📋 키", EditorStyles.miniButton))
             {
                 EditorGUIUtility.systemCopyBuffer = entry.Key;
-                ctx.ShowNotification($"Key 복사됨: {entry.Key}", EditorUI.NotificationType.Info);
+                ctx.ShowNotification($"Key 복사됨: {entry.Key}", MessageType.Info);
             }
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
             // Value (마스킹 표시)
-            EditorUI.BeginRow();
-            EditorUI.DrawCellLabel("    Value:", 70, EditorUI.COL_MUTED);
-            EditorUI.DrawCellLabel(MaskValue(entry), 220, EditorUI.COL_MUTED);
-            if (EditorUI.DrawMiniButton("📋 값"))
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("    Value:", GUILayout.Width(70));
+            EditorGUILayout.LabelField(MaskValue(entry), GUILayout.Width(220));
+            if (GUILayout.Button("📋 값", EditorStyles.miniButton))
             {
                 EditorGUIUtility.systemCopyBuffer = entry.Value ?? "";
                 _copied[idx] = true;
                 if (idx + 1 > _currentIdx) _currentIdx = idx + 1;
                 ctx.ShowNotification(
                     $"{entry.Key} 값 복사됨 ({(entry.Value?.Length ?? 0)}자)",
-                    EditorUI.NotificationType.Info);
+                    MessageType.Info);
             }
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
-            EditorUI.DrawDescription("    Secure: ✓ 체크 필수", EditorUI.COL_WARN);
+            EditorGUILayout.LabelField("    Secure: ✓ 체크 필수", EditorStyles.wordWrappedMiniLabel);
 
-            EditorUI.EndSubBox();
+            EditorGUILayout.EndVertical();
             GUILayout.Space(4);
         }
 
         void DrawCompleteButton(SetupContext ctx)
         {
-            EditorUI.DrawCellLabel("③ 등록 완료 표시", 0, EditorUI.COL_INFO);
+            EditorGUILayout.LabelField("③ 등록 완료 표시");
             GUILayout.Space(2);
 
             if (_registered)
             {
-                EditorUI.DrawCellLabel(
-                    "  ✓ Codemagic keystore env 등록 완료로 표시됨.", 0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField("  ✓ Codemagic keystore env 등록 완료로 표시됨.");
                 GUILayout.Space(2);
-                if (EditorUI.DrawColorButton("재등록 (처음부터)", EditorUI.COL_MUTED, 24))
+                if (GUILayout.Button("재등록 (처음부터)", GUILayout.Height(24)))
                 {
                     _registered = false;
                     ctx.State.KeystoreEnvRegistered = false;
@@ -269,7 +265,7 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
                     for (int i = 0; i < _copied.Length; i++) _copied[i] = false;
                     _currentIdx = 0;
                     ctx.ShowNotification("Codemagic keystore env 등록 상태 리셋됨.",
-                        EditorUI.NotificationType.Info);
+                        MessageType.Info);
                 }
                 return;
             }
@@ -278,25 +274,24 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             for (int i = 0; i < _copied.Length; i++)
                 if (!_copied[i]) { allCopied = false; break; }
 
-            EditorUI.BeginDisabled(!allCopied);
-            if (EditorUI.DrawColorButton(
+            EditorGUI.BeginDisabledGroup(!allCopied);
+            if (GUILayout.Button(
                 $"✓ Codemagic에 {VariableCount}개 변수 등록 완료",
-                allCopied ? EditorUI.COL_SUCCESS : EditorUI.COL_MUTED,
-                32))
+                GUILayout.Height(32)))
             {
                 _registered = true;
                 ctx.State.KeystoreEnvRegistered = true;
                 ctx.SaveState();
                 ctx.ShowNotification(
-                    $"Codemagic keystore env 등록 완료로 표시됨.",
-                    EditorUI.NotificationType.Success);
+                    $"✓ Codemagic keystore env 등록 완료로 표시됨.",
+                    MessageType.Info);
             }
-            EditorUI.EndDisabled();
+            EditorGUI.EndDisabledGroup();
 
             if (!allCopied)
-                EditorUI.DrawDescription(
+                EditorGUILayout.LabelField(
                     $"  {VariableCount}개 변수의 [값 복사] 버튼을 모두 눌러야 활성화됩니다.",
-                    EditorUI.COL_MUTED);
+                    EditorStyles.wordWrappedMiniLabel);
         }
 
         // ── Keystore 생성 (keytool) ────────────────────────────────────────
@@ -332,20 +327,20 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
                 ctx.State.KeystorePath = savePath;
                 ctx.Settings.KeyAlias = _alias;
                 ctx.Settings.Save();
-                ctx.ShowNotification($"Keystore 생성 완료: {Path.GetFileName(savePath)}",
-                    EditorUI.NotificationType.Success);
+                ctx.ShowNotification($"✓ Keystore 생성 완료: {Path.GetFileName(savePath)}",
+                    MessageType.Info);
                 EditorUtility.DisplayDialog("Keystore 생성",
                     $"Keystore가 생성되었습니다!\n{savePath}\n\n" +
                     ".gitignore에 *.keystore 가 추가되었습니다.", "확인");
             }
             else if (savePath == null && error == null)
             {
-                ctx.ShowNotification("Keystore 생성 취소됨.", EditorUI.NotificationType.Info);
+                ctx.ShowNotification("Keystore 생성 취소됨.", MessageType.Info);
             }
             else
             {
                 ctx.ShowNotification($"Keystore 생성 실패: {error ?? "알 수 없는 오류"}",
-                    EditorUI.NotificationType.Error);
+                    MessageType.Error);
             }
         }
 

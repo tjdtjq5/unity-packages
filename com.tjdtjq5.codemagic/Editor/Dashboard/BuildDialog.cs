@@ -9,7 +9,6 @@ using Tjdtjq5.Codemagic.Editor.Codemagic;
 using Tjdtjq5.Codemagic.Editor.Git;
 using Tjdtjq5.Codemagic.Editor.Manifest;
 using Tjdtjq5.Codemagic.Editor.Settings;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -22,9 +21,6 @@ namespace Tjdtjq5.Codemagic.Editor.Dashboard
     /// </summary>
     public sealed class BuildDialog : EditorWindow
     {
-        // ── UI 색 ──────────────────────────────────────────────────────────
-        static readonly Color COL_PRIMARY = new(0.20f, 0.65f, 1f);
-
         // ── 인스턴스 / 캐시 옵션 ───────────────────────────────────────────
         static readonly string[] InstanceOptions =
         {
@@ -43,7 +39,7 @@ namespace Tjdtjq5.Codemagic.Editor.Dashboard
         Vector2 _scroll;
         bool _isBuilding;
         string _statusMessage;
-        EditorUI.NotificationType _statusType = EditorUI.NotificationType.Info;
+        MessageType _statusType = MessageType.Info;
 
         // ── 옵션 (yaml + 다이얼로그용 추가 필드) ──────────────────────────
         BuildYamlOptions _yamlOptions;
@@ -127,10 +123,10 @@ namespace Tjdtjq5.Codemagic.Editor.Dashboard
 
         void OnGUI()
         {
-            EditorUI.DrawWindowBackground(position);
-            EditorUI.DrawWindowHeader("Codemagic Build", "v0.1.0", COL_PRIMARY);
+            EditorGUILayout.LabelField("Codemagic Build v0.1.0", EditorStyles.largeLabel);
+            EditorGUILayout.Space();
 
-            EditorUI.DrawNotificationBar(ref _statusMessage, _statusType);
+            DrawNotificationBar();
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
 
@@ -152,46 +148,45 @@ namespace Tjdtjq5.Codemagic.Editor.Dashboard
 
         void DrawTargetSection()
         {
-            EditorUI.DrawSectionHeader("빌드 타겟", COL_PRIMARY);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("빌드 타겟", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             _yamlOptions.BuildAndroid = EditorGUILayout.ToggleLeft(
                 new GUIContent("Android", "Android 빌드 — Phase 1 기본"),
                 _yamlOptions.BuildAndroid);
 
-            EditorUI.BeginDisabled(true);
+            EditorGUI.BeginDisabledGroup(true);
             _yamlOptions.BuildIOS = EditorGUILayout.ToggleLeft(
                 new GUIContent("iOS  (v0.2.0+ 예정)", "Phase 1에서 비활성화"),
                 _yamlOptions.BuildIOS);
-            EditorUI.EndDisabled();
+            EditorGUI.EndDisabledGroup();
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 2. 인스턴스 ────────────────────────────────────────────────────
 
         void DrawInstanceSection()
         {
-            EditorUI.DrawSectionHeader("인스턴스", COL_PRIMARY);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("인스턴스", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-            _instanceIndex = EditorUI.DrawPopup("Instance Type", _instanceIndex, InstanceOptions,
-                "linux_x2 = 16GB, linux_x4 = 32GB. mac_*는 iOS 빌드용");
+            _instanceIndex = EditorGUILayout.Popup("Instance Type", _instanceIndex, InstanceOptions);
             _yamlOptions.InstanceType = InstanceOptions[_instanceIndex];
 
             _yamlOptions.MaxBuildDuration = EditorGUILayout.IntSlider(
                 new GUIContent("Max Build Duration (min)", "최대 빌드 시간(분). 초과 시 강제 종료"),
                 _yamlOptions.MaxBuildDuration, 15, 180);
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 3. 캐시 (수동) ─────────────────────────────────────────────────
 
         void DrawCacheSection()
         {
-            EditorUI.DrawSectionHeader("캐시 (Phase 1 — 수동)", COL_PRIMARY);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("캐시 (Phase 1 — 수동)", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             _yamlOptions.ClearLibraryCache = EditorGUILayout.ToggleLeft(
                 new GUIContent("Library 클린", "Library 폴더 삭제 — 큰 변경 후 사용"),
@@ -201,78 +196,85 @@ namespace Tjdtjq5.Codemagic.Editor.Dashboard
                 new GUIContent("Gradle 클린  (~/.gradle)", "Gradle 캐시 삭제 — Android plugin 변경 후"),
                 _yamlOptions.ClearGradleCache);
 
-            var reason = EditorUI.DrawTextField("사유 (선택, 200자)", _yamlOptions.CacheReason ?? "",
-                "캐시를 클린하는 이유를 빌드 로그에 남깁니다");
+            var reason = EditorGUILayout.TextField(
+                new GUIContent("사유 (선택, 200자)", "캐시를 클린하는 이유를 빌드 로그에 남깁니다"),
+                _yamlOptions.CacheReason ?? "");
             if (reason != null && reason.Length > 200) reason = reason.Substring(0, 200);
             _yamlOptions.CacheReason = reason;
 
-            EditorUI.DrawDescription("v0.2.0에서 자동 결정 룰 도입 예정", EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField("v0.2.0에서 자동 결정 룰 도입 예정", EditorStyles.wordWrappedMiniLabel);
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 4. 빌드 옵션 ───────────────────────────────────────────────────
 
         void DrawBuildOptionsSection()
         {
-            EditorUI.DrawSectionHeader("빌드 옵션", COL_PRIMARY);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("빌드 옵션", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-            _yamlOptions.BuildName = EditorUI.DrawTextField("BuildName", _yamlOptions.BuildName,
-                "빌드 산출물 파일명 (예: SurvivorsDuo)");
-            _yamlOptions.TagPattern = EditorUI.DrawTextField("TagPattern", _yamlOptions.TagPattern,
-                "어떤 git tag에 빌드를 트리거할지 (예: v*)");
-            _yamlOptions.UnityVersion = EditorUI.DrawTextField("UnityVersion", _yamlOptions.UnityVersion,
-                "Codemagic 빌드 이미지가 사용할 Unity 버전");
-            _yamlOptions.ImageTag = EditorUI.DrawTextField("ImageTag", _yamlOptions.ImageTag,
-                "unityci/editor 도커 이미지 태그");
-            _yamlOptions.BuilderVersion = EditorUI.DrawTextField("BuilderVersion", _yamlOptions.BuilderVersion,
-                "GameCI unity-builder 브랜치/태그 (예: v4)");
-            _yamlOptions.BuildMethod = EditorUI.DrawTextField("BuildMethod", _yamlOptions.BuildMethod,
-                "Unity 빌드 메서드 (FullyQualifiedName.Method)");
+            _yamlOptions.BuildName = EditorGUILayout.TextField(
+                new GUIContent("BuildName", "빌드 산출물 파일명 (예: SurvivorsDuo)"),
+                _yamlOptions.BuildName);
+            _yamlOptions.TagPattern = EditorGUILayout.TextField(
+                new GUIContent("TagPattern", "어떤 git tag에 빌드를 트리거할지 (예: v*)"),
+                _yamlOptions.TagPattern);
+            _yamlOptions.UnityVersion = EditorGUILayout.TextField(
+                new GUIContent("UnityVersion", "Codemagic 빌드 이미지가 사용할 Unity 버전"),
+                _yamlOptions.UnityVersion);
+            _yamlOptions.ImageTag = EditorGUILayout.TextField(
+                new GUIContent("ImageTag", "unityci/editor 도커 이미지 태그"),
+                _yamlOptions.ImageTag);
+            _yamlOptions.BuilderVersion = EditorGUILayout.TextField(
+                new GUIContent("BuilderVersion", "GameCI unity-builder 브랜치/태그 (예: v4)"),
+                _yamlOptions.BuilderVersion);
+            _yamlOptions.BuildMethod = EditorGUILayout.TextField(
+                new GUIContent("BuildMethod", "Unity 빌드 메서드 (FullyQualifiedName.Method)"),
+                _yamlOptions.BuildMethod);
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 5. 알림 (읽기) ─────────────────────────────────────────────────
 
         void DrawNotificationSection()
         {
-            EditorUI.DrawSectionHeader("알림", COL_PRIMARY);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("알림", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             var settings = CodemagicProjectSettings.Instance;
             var recipients = settings.NotificationRecipients;
             if (recipients == null || recipients.Count == 0)
             {
-                EditorUI.DrawDescription("등록된 수신자 없음. CodemagicProjectSettings.asset에서 추가",
-                    EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField("등록된 수신자 없음. CodemagicProjectSettings.asset에서 추가",
+                    EditorStyles.wordWrappedMiniLabel);
             }
             else
             {
                 foreach (var r in recipients)
                 {
                     if (string.IsNullOrWhiteSpace(r)) continue;
-                    EditorUI.DrawCellLabel($"• {r}", color: EditorUI.COL_INFO);
+                    EditorGUILayout.LabelField($"• {r}");
                 }
-                EditorUI.DrawDescription(
+                EditorGUILayout.LabelField(
                     $"성공 알림: {(settings.NotifyOnSuccess ? "ON" : "OFF")}, " +
                     $"실패 알림: {(settings.NotifyOnFailure ? "ON" : "OFF")}",
-                    EditorUI.COL_MUTED);
+                    EditorStyles.wordWrappedMiniLabel);
             }
 
-            EditorUI.DrawDescription("수신자 변경은 CodemagicProjectSettings.asset에서",
-                EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField("수신자 변경은 CodemagicProjectSettings.asset에서",
+                EditorStyles.wordWrappedMiniLabel);
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 6. 사전 점검 ───────────────────────────────────────────────────
 
         void DrawPreflightSection()
         {
-            EditorUI.DrawSectionHeader("사전 점검", COL_PRIMARY);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("사전 점검", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             DrawCheck(_hasToken, "Codemagic 토큰 등록됨", "Codemagic 토큰 미등록 — Setup 필요");
             DrawCheck(!string.IsNullOrEmpty(_appId),
@@ -286,12 +288,11 @@ namespace Tjdtjq5.Codemagic.Editor.Dashboard
             // 미커밋 변경
             if (_dirtyFiles.Count > 0)
             {
-                EditorUI.DrawCellLabel($"! 미커밋 변경: {_dirtyFiles.Count}개 (자동 commit 진행)",
-                    color: EditorUI.COL_WARN);
+                EditorGUILayout.LabelField($"! 미커밋 변경: {_dirtyFiles.Count}개 (자동 commit 진행)");
             }
             else
             {
-                EditorUI.DrawCellLabel("✓ 워킹트리 클린", color: EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField("✓ 워킹트리 클린");
             }
 
             // manifest.json file: 패키지
@@ -299,80 +300,78 @@ namespace Tjdtjq5.Codemagic.Editor.Dashboard
             var unswappable = _localPackages.Where(p => !p.HasBackup).ToList();
             if (unswappable.Count > 0)
             {
-                EditorUI.DrawCellLabel(
-                    $"x manifest.json file:: {unswappable.Count}개 (백업 URL 없음 → 자동 처리 불가)",
-                    color: EditorUI.COL_ERROR);
+                EditorGUILayout.LabelField(
+                    $"x manifest.json file:: {unswappable.Count}개 (백업 URL 없음 → 자동 처리 불가)");
                 foreach (var p in unswappable)
-                    EditorUI.DrawCellLabel($"   • {p.PackageName}", color: EditorUI.COL_ERROR);
+                    EditorGUILayout.LabelField($"   • {p.PackageName}");
             }
             if (swappable.Count > 0)
             {
-                EditorUI.DrawCellLabel(
-                    $"! manifest.json file:: {swappable.Count}개 (자동 swap 진행)",
-                    color: EditorUI.COL_WARN);
+                EditorGUILayout.LabelField(
+                    $"! manifest.json file:: {swappable.Count}개 (자동 swap 진행)");
             }
 
-            EditorUI.BeginRow();
+            EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
-            if (EditorUI.DrawMiniButton("새로고침"))
+            if (GUILayout.Button("새로고침", EditorStyles.miniButton))
             {
                 GitHelpers.InvalidateCache();
                 RefreshPreflight();
             }
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         static void DrawCheck(bool ok, string okText, string failText)
         {
-            EditorUI.DrawCellLabel(ok ? $"✓ {okText}" : $"x {failText}",
-                color: ok ? EditorUI.COL_SUCCESS : EditorUI.COL_ERROR);
+            EditorGUILayout.LabelField(ok ? $"✓ {okText}" : $"x {failText}");
         }
 
         // ── 7. 트리거 ──────────────────────────────────────────────────────
 
         void DrawTriggerSection()
         {
-            EditorUI.DrawSectionHeader("트리거 방식", COL_PRIMARY);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("트리거 방식", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-            _triggerIndex = EditorUI.DrawPopup("Trigger Mode", _triggerIndex, TriggerOptions,
-                "Tag = git tag push로 자동 트리거 (yaml triggering 매칭). API = 즉시 트리거");
+            _triggerIndex = EditorGUILayout.Popup("Trigger Mode", _triggerIndex, TriggerOptions);
             _triggerMode = _triggerIndex == 0 ? TriggerMode.Tag : TriggerMode.Api;
 
             if (_triggerMode == TriggerMode.Tag)
             {
-                _tagName = EditorUI.DrawTextField("Tag Name (필수)", _tagName,
-                    "예: v0.1.0 — TagPattern과 매칭되어야 빌드 트리거됨");
-                EditorUI.DrawDescription(
+                _tagName = EditorGUILayout.TextField(
+                    new GUIContent("Tag Name (필수)", "예: v0.1.0 — TagPattern과 매칭되어야 빌드 트리거됨"),
+                    _tagName);
+                EditorGUILayout.LabelField(
                     "이 태그를 push하면 Codemagic이 yaml의 triggering.tag_patterns 매칭으로 자동 빌드",
-                    EditorUI.COL_MUTED);
+                    EditorStyles.wordWrappedMiniLabel);
             }
             else
             {
-                EditorUI.DrawDescription(
+                EditorGUILayout.LabelField(
                     "현재 브랜치 + workflow 'android-build'에 즉시 빌드 요청을 보냅니다 (태그 생성 없음)",
-                    EditorUI.COL_MUTED);
+                    EditorStyles.wordWrappedMiniLabel);
             }
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         // ── 8. 빌드 미리보기 ──────────────────────────────────────────────
 
         void DrawPreviewSection()
         {
-            EditorUI.DrawSectionHeader("빌드 미리보기", COL_PRIMARY);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("빌드 미리보기", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             var (newYaml, hint) = TryGenerateYamlPreview();
-            EditorUI.DrawDescription(hint, EditorUI.COL_MUTED);
+            EditorGUILayout.LabelField(hint, EditorStyles.wordWrappedMiniLabel);
 
-            _commitMessage = EditorUI.DrawTextField("Commit Message", _commitMessage,
-                "yaml + manifest.json을 함께 커밋할 때 사용할 메시지");
+            _commitMessage = EditorGUILayout.TextField(
+                new GUIContent("Commit Message", "yaml + manifest.json을 함께 커밋할 때 사용할 메시지"),
+                _commitMessage);
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
         }
 
         (string yaml, string hint) TryGenerateYamlPreview()
@@ -418,23 +417,22 @@ namespace Tjdtjq5.Codemagic.Editor.Dashboard
         {
             GUILayout.Space(4);
 
-            EditorUI.BeginRow();
+            EditorGUILayout.BeginHorizontal();
 
-            EditorUI.BeginDisabled(_isBuilding || !CanStartBuild());
-            if (EditorUI.DrawColorButton(_isBuilding ? "진행 중..." : "빌드 시작",
-                    EditorUI.COL_INFO, height: 32))
+            EditorGUI.BeginDisabledGroup(_isBuilding || !CanStartBuild());
+            if (GUILayout.Button(_isBuilding ? "진행 중..." : "빌드 시작", GUILayout.Height(32)))
             {
                 StartBuildAsync().Forget();
             }
-            EditorUI.EndDisabled();
+            EditorGUI.EndDisabledGroup();
 
-            if (EditorUI.DrawColorButton("취소", EditorUI.COL_MUTED, height: 32))
+            if (GUILayout.Button("취소", GUILayout.Height(32)))
             {
                 if (!_isBuilding)
                     Close();
             }
 
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
         }
 
         bool CanStartBuild()
@@ -690,24 +688,41 @@ namespace Tjdtjq5.Codemagic.Editor.Dashboard
 
         // ── 헬퍼 ───────────────────────────────────────────────────────────
 
+        // 상단 알림 바 — HelpBox + [Copy]/[✕] 버튼.
+        void DrawNotificationBar()
+        {
+            if (string.IsNullOrEmpty(_statusMessage)) return;
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.HelpBox(_statusMessage, _statusType);
+            EditorGUILayout.BeginVertical(GUILayout.Width(44));
+            if (GUILayout.Button("Copy", EditorStyles.miniButton))
+                EditorGUIUtility.systemCopyBuffer = _statusMessage;
+            if (GUILayout.Button("✕", EditorStyles.miniButton))
+                _statusMessage = null;
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
+        }
+
         void ShowError(string message)
         {
             _statusMessage = message;
-            _statusType = EditorUI.NotificationType.Error;
+            _statusType = MessageType.Error;
             Repaint();
         }
 
         void ShowInfo(string message)
         {
             _statusMessage = message;
-            _statusType = EditorUI.NotificationType.Info;
+            _statusType = MessageType.Info;
             Repaint();
         }
 
         void ShowSuccess(string message)
         {
-            _statusMessage = message;
-            _statusType = EditorUI.NotificationType.Success;
+            // Success 타입 폐기 — Info 아이콘 + "✓" 프리픽스로 의미 보존.
+            _statusMessage = $"✓ {message}";
+            _statusType = MessageType.Info;
             Repaint();
         }
 

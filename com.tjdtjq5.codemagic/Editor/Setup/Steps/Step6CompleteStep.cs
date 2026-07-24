@@ -3,7 +3,6 @@ using System;
 using System.IO;
 using Tjdtjq5.Codemagic.Editor.Dashboard;
 using Tjdtjq5.Codemagic.Editor.Settings;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -20,17 +19,17 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
 
         public void OnDraw(SetupContext ctx)
         {
-            EditorUI.DrawSubLabel("Step 6/6: 셋업 완료");
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField("Step 6/6: 셋업 완료", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(
                 "Codemagic 셋업이 마무리되었습니다.\n" +
                 "이제 Build Dialog 에서 빌드를 시작할 수 있습니다.",
-                EditorUI.COL_SUCCESS);
+                EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(8);
 
             // ── 요약 ──
-            EditorUI.DrawSectionHeader("셋업 요약", EditorUI.COL_INFO);
-            EditorUI.BeginBody();
+            EditorGUILayout.LabelField("셋업 요약", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             DrawSummaryRow("API 토큰",
                 !string.IsNullOrEmpty(SecretStore.CodemagicToken),
@@ -67,35 +66,35 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
                 "✓ android_keystore 4개 등록 완료",
                 "(미등록 또는 건너뜀)");
 
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
 
             GUILayout.Space(8);
 
             // ── 다음 단계 ──
-            EditorUI.DrawSectionHeader("다음 단계", EditorUI.COL_INFO);
-            EditorUI.BeginBody();
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField("다음 단계", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
                 "ㆍ Build Dialog 를 열고 빌드 옵션을 선택해 첫 빌드를 시작하세요.\n" +
                 "ㆍ 셋업 정보는 EditorPrefs(시크릿) + Library/codemagic-setup.json(메타) 에 저장됩니다.\n" +
                 "ㆍ Build Dialog는 [Build → Codemagic → Build Dialog] 메뉴에서도 열 수 있습니다.",
-                EditorUI.COL_MUTED);
-            EditorUI.EndBody();
+                EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.EndVertical();
 
             GUILayout.Space(8);
 
             // ── 액션 ──
-            EditorUI.BeginRow();
+            EditorGUILayout.BeginHorizontal();
 
-            if (EditorUI.DrawColorButton("Build Dialog 열기", EditorUI.COL_SUCCESS, 28))
+            if (GUILayout.Button("Build Dialog 열기", GUILayout.Height(28)))
                 OpenBuildDialog();
 
-            if (EditorUI.DrawColorButton("Setup 마치기", EditorUI.COL_MUTED, 28))
+            if (GUILayout.Button("Setup 마치기", GUILayout.Height(28)))
             {
                 var win = EditorWindow.focusedWindow;
                 if (win != null) win.Close();
             }
 
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
         }
 
         public void OnLeave(SetupContext ctx) { }
@@ -104,13 +103,11 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
 
         static void DrawSummaryRow(string label, bool ok, string okText, string failText)
         {
-            EditorUI.BeginRow();
+            EditorGUILayout.BeginHorizontal();
             var mark = ok ? "✓" : "·";
-            var color = ok ? EditorUI.COL_SUCCESS : EditorUI.COL_MUTED;
-            EditorUI.DrawCellLabel($"  {mark} {label}", 180, color);
-            EditorUI.DrawCellLabel(ok ? okText : failText, 0,
-                ok ? EditorUI.COL_INFO : EditorUI.COL_MUTED);
-            EditorUI.EndRow();
+            EditorGUILayout.LabelField($"  {mark} {label}", GUILayout.Width(180));
+            EditorGUILayout.LabelField(ok ? okText : failText);
+            EditorGUILayout.EndHorizontal();
         }
 
         static string FormatLicenseLabel(string stopDate)

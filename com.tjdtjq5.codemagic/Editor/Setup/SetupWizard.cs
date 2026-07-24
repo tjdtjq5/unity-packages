@@ -1,5 +1,4 @@
 #if UNITY_EDITOR
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -11,8 +10,6 @@ namespace Tjdtjq5.Codemagic.Editor.Setup
     /// </summary>
     public sealed class SetupWizard
     {
-        public static readonly Color COL_PRIMARY = new(0.20f, 0.65f, 1f);
-
         readonly SetupContext _ctx;
         readonly ISetupStep[] _steps;
         readonly string[] _stepLabels;
@@ -45,12 +42,12 @@ namespace Tjdtjq5.Codemagic.Editor.Setup
             bool isSplash = _currentStep == 0;
 
             // 상단 토스트 — 모든 step에서 노출. 빈 문자열이면 자체 처리로 미표시.
-            // [Copy]/[X] 버튼은 EditorUI가 자동 제공 (suparun/cicd 패턴 일관).
-            EditorUI.DrawNotificationBar(ref _ctx.Notification, _ctx.NotificationType);
+            // [Copy]/[X] 버튼 포함 (suparun/cicd 패턴 일관).
+            DrawNotificationBar();
 
             if (!isSplash)
             {
-                EditorUI.DrawSectionHeader("Codemagic 셋업", COL_PRIMARY);
+                EditorGUILayout.LabelField("Codemagic 셋업", EditorStyles.boldLabel);
                 GUILayout.Space(8);
                 DrawStepIndicator();
                 GUILayout.Space(8);
@@ -81,17 +78,42 @@ namespace Tjdtjq5.Codemagic.Editor.Setup
                 else
                     states[i] = 0;  // 미진행
             }
-            EditorUI.DrawStepIndicator(_stepLabels, states);
+
+            // 바닐라 치환 — 상태를 텍스트 마커로 표시 (✓=완료 / △=건너뜀 / ●=현재 / ○=미진행).
+            var sb = new System.Text.StringBuilder($"Step {_currentStep + 1}/{_steps.Length}:  ");
+            for (int i = 0; i < _steps.Length; i++)
+            {
+                var mark = states[i] == 2 ? "✓" : states[i] == 3 ? "△" : states[i] == 1 ? "●" : "○";
+                sb.Append(mark).Append(' ').Append(_stepLabels[i]);
+                if (i < _steps.Length - 1) sb.Append("   ");
+            }
+            EditorGUILayout.LabelField(sb.ToString(), EditorStyles.boldLabel);
+        }
+
+        // 상단 알림 바 — HelpBox + [Copy]/[✕] 버튼.
+        void DrawNotificationBar()
+        {
+            if (string.IsNullOrEmpty(_ctx.Notification)) return;
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.HelpBox(_ctx.Notification, _ctx.NotificationType);
+            EditorGUILayout.BeginVertical(GUILayout.Width(44));
+            if (GUILayout.Button("Copy", EditorStyles.miniButton))
+                EditorGUIUtility.systemCopyBuffer = _ctx.Notification;
+            if (GUILayout.Button("✕", EditorStyles.miniButton))
+                _ctx.ClearNotification();
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
         }
 
         void DrawNavigation()
         {
-            EditorUI.BeginRow();
+            EditorGUILayout.BeginHorizontal();
 
             // ← 이전
             if (_currentStep > 0)
             {
-                if (EditorUI.DrawColorButton("이전", EditorUI.COL_MUTED, 28))
+                if (GUILayout.Button("이전", GUILayout.Height(28)))
                     GoTo(_currentStep - 1);
             }
 
@@ -105,21 +127,22 @@ namespace Tjdtjq5.Codemagic.Editor.Setup
             {
                 if (!step.IsRequired)
                 {
-                    if (EditorUI.DrawColorButton("건너뛰기", EditorUI.COL_WARN, 28))
+                    if (GUILayout.Button("건너뛰기", GUILayout.Height(28)))
                         GoTo(_currentStep + 1);
                     GUILayout.Space(8);
                 }
 
-                EditorUI.BeginDisabled(!canProceed);
-                if (EditorUI.DrawColorButton("다음 →", COL_PRIMARY, 28))
+                EditorGUI.BeginDisabledGroup(!canProceed);
+                if (GUILayout.Button("다음 →", GUILayout.Height(28)))
                     GoTo(_currentStep + 1);
-                EditorUI.EndDisabled();
+                EditorGUI.EndDisabledGroup();
             }
 
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
             if (!canProceed && step.IsRequired)
-                EditorUI.DrawDescription("  위 항목을 완료해야 다음으로 진행할 수 있습니다.", EditorUI.COL_WARN);
+                EditorGUILayout.LabelField("  위 항목을 완료해야 다음으로 진행할 수 있습니다.",
+                    EditorStyles.wordWrappedMiniLabel);
         }
 
         void GoTo(int newIndex)

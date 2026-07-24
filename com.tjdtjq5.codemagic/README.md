@@ -18,7 +18,7 @@ Codemagic 자체는 강력하지만 Unity 특수성(라이선스 만료, 시리�
 ```json
 {
   "dependencies": {
-    "com.tjdtjq5.codemagic": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.codemagic#codemagic/v0.1.0"
+    "com.tjdtjq5.codemagic": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.codemagic#codemagic/v1.0.0"
   }
 }
 ```
@@ -54,7 +54,6 @@ Editor/
 
 ## 의존성
 
-- `com.tjdtjq5.editor-toolkit` 1.3.3 (IMGUI 헬퍼 `EditorUI`)
 - Codemagic 계정 + Personal Access Token
 
 ## 라이선스

@@ -1,7 +1,6 @@
 #if UNITY_EDITOR
 using Cysharp.Threading.Tasks;
 using Tjdtjq5.Codemagic.Editor.Settings;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -32,47 +31,47 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
 
         public void OnDraw(SetupContext ctx)
         {
-            EditorUI.DrawSubLabel("Step 2/6: API 토큰");
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField("Step 2/6: API 토큰", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(
                 "Codemagic Personal Access Token을 등록합니다.\n" +
-                "발급 위치: 좌측 사이드바에서 Personal account 선택 → Settings → Integrations → Codemagic API → Show");
+                "발급 위치: 좌측 사이드바에서 Personal account 선택 → Settings → Integrations → Codemagic API → Show",
+                EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(8);
 
-            EditorUI.BeginBody();
-            _token = EditorUI.DrawPasswordField("Token", _token);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            _token = EditorGUILayout.PasswordField("Token", _token);
 
             if (!string.IsNullOrEmpty(_token))
-                EditorUI.DrawDescription($"  현재 입력 길이: {_token.Length}자", EditorUI.COL_MUTED);
+                EditorGUILayout.LabelField($"  현재 입력 길이: {_token.Length}자",
+                    EditorStyles.wordWrappedMiniLabel);
 
             GUILayout.Space(4);
 
-            EditorUI.BeginRow();
-            EditorUI.BeginDisabled(string.IsNullOrEmpty(_token) || _isValidating);
-            if (EditorUI.DrawColorButton(_isValidating ? "검증 중..." : "저장 + 검증",
-                EditorUI.COL_INFO))
+            EditorGUILayout.BeginHorizontal();
+            EditorGUI.BeginDisabledGroup(string.IsNullOrEmpty(_token) || _isValidating);
+            if (GUILayout.Button(_isValidating ? "검증 중..." : "저장 + 검증"))
             {
                 ValidateAsync(ctx).Forget();
             }
-            EditorUI.EndDisabled();
+            EditorGUI.EndDisabledGroup();
 
-            if (EditorUI.DrawLinkButton("Codemagic 열기"))
+            if (EditorGUILayout.LinkButton("Codemagic 열기"))
                 Application.OpenURL("https://codemagic.io/apps");
-            EditorUI.EndRow();
+            EditorGUILayout.EndHorizontal();
 
             // 결과 표시 (성공만 인라인, 실패는 상단 토스트).
             if (_validated)
             {
                 GUILayout.Space(4);
-                EditorUI.DrawCellLabel("  ✓ 토큰 검증됨 — 다음 단계로 진행할 수 있습니다.",
-                    0, EditorUI.COL_SUCCESS);
+                EditorGUILayout.LabelField("  ✓ 토큰 검증됨 — 다음 단계로 진행할 수 있습니다.");
             }
-            EditorUI.EndBody();
+            EditorGUILayout.EndVertical();
 
             GUILayout.Space(4);
-            EditorUI.DrawDescription(
+            EditorGUILayout.LabelField(
                 "토큰은 EditorPrefs에 저장됩니다 (per-user, OS-level). git에 노출되지 않습니다.",
-                EditorUI.COL_MUTED);
+                EditorStyles.wordWrappedMiniLabel);
         }
 
         public void OnLeave(SetupContext ctx) { }
@@ -80,7 +79,7 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
         async UniTask ValidateAsync(SetupContext ctx)
         {
             _isValidating = true;
-            ctx.ShowNotification("Codemagic API 토큰 검증 중...", EditorUI.NotificationType.Info);
+            ctx.ShowNotification("Codemagic API 토큰 검증 중...", MessageType.Info);
 
             // 입력값을 SecretStore에 저장 후 ApiClient 재생성.
             SecretStore.CodemagicToken = _token ?? "";
@@ -90,7 +89,7 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
             {
                 _validated = false;
                 _isValidating = false;
-                ctx.ShowNotification("토큰이 비어 있습니다.", EditorUI.NotificationType.Error);
+                ctx.ShowNotification("토큰이 비어 있습니다.", MessageType.Error);
                 return;
             }
 
@@ -99,10 +98,10 @@ namespace Tjdtjq5.Codemagic.Editor.Setup.Steps
                 var (ok, error) = await ctx.Api.ValidateTokenAsync();
                 _validated = ok;
                 if (ok)
-                    ctx.ShowNotification("토큰 검증 OK", EditorUI.NotificationType.Success);
+                    ctx.ShowNotification("✓ 토큰 검증 OK", MessageType.Info);
                 else
                     ctx.ShowNotification($"토큰 검증 실패: {error ?? "알 수 없는 오류"}",
-                        EditorUI.NotificationType.Error);
+                        MessageType.Error);
             }
             finally
             {
