@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Tjdtjq5.EditorToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -34,7 +33,7 @@ namespace Tjdtjq5.Terminal
 
         void OnGUI()
         {
-            EditorTabBase.DrawSectionHeader("터미널 목록", EditorTabBase.COL_INFO);
+            EditorGUILayout.LabelField("터미널 목록", EditorStyles.boldLabel);
             GUILayout.Space(4);
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
@@ -100,8 +99,8 @@ namespace Tjdtjq5.Terminal
             // 설치 여부 (✓/✗/-)
             var installed = GetInstalledCached(p);
             var mark = installed == true ? "✓" : installed == false ? "✗" : "-";
-            var markColor = installed == true ? EditorTabBase.COL_SUCCESS
-                : installed == false ? EditorTabBase.COL_ERROR : EditorTabBase.COL_MUTED;
+            var markColor = installed == true ? new Color(0.30f, 0.80f, 0.40f)
+                : installed == false ? new Color(0.95f, 0.30f, 0.30f) : new Color(0.45f, 0.45f, 0.50f);
             var prevColor = GUI.color;
             GUI.color = markColor;
             GUILayout.Label(mark, GUILayout.Width(16));

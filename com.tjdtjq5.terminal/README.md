@@ -10,7 +10,7 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 `Packages/manifest.json`의 `dependencies`에 추가:
 
 ```json
-"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v1.0.3"
+"com.tjdtjq5.terminal": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.terminal#terminal/v2.0.0"
 ```
 
 ## 사용법
@@ -63,7 +63,7 @@ Unity 에디터 툴바에서 원하는 터미널을 프로젝트 루트로 바�
 
 ## 의존성
 
-- `com.tjdtjq5.editor-toolkit` (툴바 삽입 + 에디터 UI 스타일)
+- 없음 (툴바 삽입 헬퍼 내장)
 
 ## 주의
 

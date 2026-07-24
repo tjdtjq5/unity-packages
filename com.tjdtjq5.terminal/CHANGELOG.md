@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.0] - 2026-07-24
+
+### Breaking Changes
+- **`com.tjdtjq5.editor-toolkit` 의존 완전 제거** — 툴바 주입 헬퍼(`ToolbarHelper`)를 패키지에 내장, 목록 윈도우의 스타일 호출을 바닐라 IMGUI로 치환. 이제 의존성 없이 단독 설치 가능.
+
 ## [1.0.3] - 2026-07-04
 
 ### 수정

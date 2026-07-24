@@ -1,7 +1,7 @@
 {
     "name": "Tjdtjq5.Terminal.Editor",
     "rootNamespace": "Tjdtjq5.Terminal",
-    "references": ["Tjdtjq5.EditorToolkit.Editor"],
+    "references": [],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
