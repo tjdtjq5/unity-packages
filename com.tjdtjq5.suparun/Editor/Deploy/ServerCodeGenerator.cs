@@ -9,29 +9,32 @@ namespace Tjdtjq5.SupaRun.Editor
     public static class ServerCodeGenerator
     {
         /// <summary>
-        /// 마이그레이션 SQL 만 생성한다 (ADR-0004 — 컴파일 후 자동 반영용).
+        /// 컴파일 직후 반영할 SQL 만 생성한다 (ADR-0004 — SchemaAutoSync 용).
+        ///
+        /// **[SpecData] 만 다룬다.** [UserData] 는 게임이 Cloud Run 을 거쳐 읽고 쓰므로,
+        /// DB 컬럼만 먼저 만들어 봐야 서버는 그 필드를 모른다([Service] 가 옛 클래스로
+        /// 역직렬화해 버린다). 어중간한 상태를 만들지 않도록 **배포 때 함께** 반영한다
+        /// — 서버가 시작하며 Migrations 를 자동 실행하므로 그것으로 충분하다.
+        /// 같은 이유로 table_types 메타도 여기서 제외한다(컬럼 없는 필드를 어드민이 조회하면 에러).
         ///
         /// <see cref="Generate"/> 를 쓰지 않는 이유: 그쪽은 어드민 컨트롤러를 만들면서
-        /// SpriteAtlas 를 열어 PNG 를 base64 로 굽고(BuildIconsJson) Addressables 전체를
-        /// 스캔한다(BuildComponentsJson). **컴파일할 때마다** 그걸 돌리면 에디터가 멈춘다.
-        /// 여기서는 SQL 에 필요한 것만 만든다.
+        /// SpriteAtlas 를 열어 PNG 를 base64 로 굽고 Addressables 전체를 스캔한다.
+        /// **컴파일할 때마다** 그걸 돌리면 에디터가 멈춘다.
         ///
         /// 반환 순서는 서버(Program.cs)의 실행 순서와 같아야 한다 —
         /// 호출부에서 파일명 기준으로 정렬한다.
         /// </summary>
-        public static List<GeneratedFile> GenerateSchemaSql(Type[] tableTypes, Type[] specTypes)
+        public static List<GeneratedFile> GenerateSchemaSql(Type[] specTypes)
         {
-            var files = new List<GeneratedFile>
+            return new List<GeneratedFile>
             {
                 GenerateSupaRunCoreMigration(),
-                GenerateMetaUpsertMigration(specTypes, tableTypes),
-                new GeneratedFile("Generated/Migrations/server_logs.sql", GenerateServerLogsMigration()),
+                GenerateConfigMetaMigration(specTypes),
                 GenerateAdminUserMigration(),
                 GenerateAdminAuditMigration(),
-            };
-            foreach (var type in tableTypes) files.Add(GenerateMigration(type));
-            foreach (var type in specTypes) files.Add(GenerateMigration(type));
-            return files;
+            }
+            .Concat(specTypes.Select(GenerateMigration))
+            .ToList();
         }
 
         public static List<GeneratedFile> Generate(
@@ -55,7 +58,8 @@ namespace Tjdtjq5.SupaRun.Editor
             // SupaRun 코어 — 메타 테이블 + is_admin() + 감사 트리거 함수.
             // 파일명이 `_` 로 시작해 다른 마이그레이션보다 먼저 실행된다 (ADR-0004).
             files.Add(GenerateSupaRunCoreMigration());
-            files.Add(GenerateMetaUpsertMigration(specTypes, tableTypes));
+            files.Add(GenerateConfigMetaMigration(specTypes));
+            files.Add(GenerateTableMetaMigration(tableTypes));
 
             // 서버 로그 시스템
             files.Add(new GeneratedFile("Generated/Migrations/server_logs.sql", GenerateServerLogsMigration()));
@@ -88,16 +92,13 @@ namespace Tjdtjq5.SupaRun.Editor
             if (cronMethods.Count > 0)
                 files.Add(GenerateCronController(cronMethods));
 
-            // Admin → Config CRUD + 관리자 + 감사로그
+            // 관리자/감사로그 — **테이블만** 만든다 (ADR-0004).
+            // 어드민 웹은 Supabase 에 직접 붙으므로 AdminController / AdminTableController 가 필요 없다.
+            // AdminUser 모델은 남긴다 — Program.cs 의 미들웨어가 첫 가입자 자동 등록에 쓴다.
+            // 감사 로그는 suparun_audit() 트리거가 남기므로 서버 모델이 필요 없다.
             files.Add(GenerateAdminUserModel());
             files.Add(GenerateAdminUserMigration());
-            files.Add(GenerateAdminAuditModel());
             files.Add(GenerateAdminAuditMigration());
-            files.Add(GenerateAdminController(specTypes));
-
-            // Admin Table → Table 조회 + 통계 + 크로스 검색
-            if (tableTypes.Length > 0)
-                files.Add(GenerateAdminTableController(tableTypes));
 
             return files;
         }
@@ -878,24 +879,17 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             }
             else
             {
-                // [UserData] — 지금까지 정책이 하나도 없어 anon/authenticated 는 완전 차단이었고,
-                // 서버만 service_role 로 접근했다. 어드민이 직접 붙으려면 문을 열어야 한다.
+                // [UserData] — **관리자만**. 게임은 anon 으로 직접 붙지 않는다.
                 //
-                // ⚠ 게임 클라이언트도 같은 anon key 를 쓴다. 여기서 연 문은 모든 플레이어에게도 열린다.
-                //   그래서 **쓰기는 관리자에게만** 준다 — 열면 currency_balance 직접 조작이 가능해진다.
-                //   게임의 쓰기는 지금처럼 Cloud Run 이 service_role 로 처리한다.
+                // 게임의 읽기·쓰기는 Cloud Run 이 service_role 로 처리하므로 RLS 를 타지 않는다.
+                // 그래서 anon 에게 열어 줄 이유가 없고, 여기 필요한 것은 **어드민이 볼 수 있게** 하는 것뿐이다.
+                // (게임 클라이언트도 같은 anon key 를 쓰므로, 여기서 연 문은 모든 플레이어에게도 열린다.)
+                //
+                // "본인 행만 읽기" 정책은 게임이 UserData 를 직접 읽을 때만 의미가 있는데,
+                // 그러려면 저장도 직접 해야 하고([Service] 가 새 필드를 버리므로) 그건 게임 아키텍처
+                // 변경이다. ADR-0004 결정 20 참조.
                 sb.AppendLine();
                 sb.AppendLine($"ALTER TABLE {tableName} ENABLE ROW LEVEL SECURITY;");
-
-                var ownerCol = info.Owner?.Name.ToLower();
-                if (ownerCol != null)
-                {
-                    // [Owner] 있음 — 본인은 자기 행만 읽는다. auth.uid() 와 직접 비교하므로
-                    // 그 컬럼에 Supabase Auth UUID 가 들어 있어야 한다.
-                    AppendPolicy(sb, tableName, "owner_read", "FOR SELECT",
-                        $"{ownerCol} = auth.uid()::text");
-                }
-                // [Owner] 없음 — 소유자 개념이 없는 테이블(server_log 등)은 관리자 전용이다.
                 AppendPolicy(sb, tableName, "admin_all", "FOR ALL", "is_admin()", "is_admin()");
             }
 
@@ -1209,474 +1203,6 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
             return sqls;
         }
 
-        // ── Admin Controller (제네릭 Config CRUD + Batch + Audit) ──
-
-        static GeneratedFile GenerateAdminController(Type[] configTypes)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("using System;");
-            sb.AppendLine("using System.Collections.Generic;");
-            sb.AppendLine("using System.Linq;");
-            sb.AppendLine("using System.Text.Json;");
-            sb.AppendLine("using System.Threading.Tasks;");
-            sb.AppendLine("using Microsoft.AspNetCore.Mvc;");
-            sb.AppendLine("using Dapper;");
-            sb.AppendLine("");
-            sb.AppendLine("[ApiController]");
-            sb.AppendLine("[Route(\"admin/api/config\")]");
-            sb.AppendLine("public class AdminController : ControllerBase");
-            sb.AppendLine("{");
-            sb.AppendLine("    readonly IGameDB _db;");
-            sb.AppendLine("    readonly Npgsql.NpgsqlConnection _conn;  // _reorder의 raw UPDATE 트랜잭션용");
-            sb.AppendLine("    public AdminController(IGameDB db, Npgsql.NpgsqlConnection conn) { _db = db; _conn = conn; }");
-            sb.AppendLine("");
-            sb.AppendLine("    static readonly JsonSerializerOptions _jsonOpts = new() { IncludeFields = true };");
-            sb.AppendLine("    static readonly JsonSerializerOptions _jsonPretty = new() { IncludeFields = true, WriteIndented = true };");
-            sb.AppendLine("");
-
-            // 필수 필드 딕셔너리
-            sb.AppendLine("    static readonly Dictionary<string, HashSet<string>> _requiredFields = new()");
-            sb.AppendLine("    {");
-            foreach (var t in configTypes)
-            {
-                var reqFields = t.GetFields(BindingFlags.Public | BindingFlags.Instance)
-                    .Where(f => f.GetCustomAttribute<NotNullAttribute>() != null)
-                    .Select(f => $"\"{f.Name}\"");
-                if (reqFields.Any())
-                    sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = new() {{ {string.Join(", ", reqFields)} }},");
-            }
-            sb.AppendLine("    };");
-            sb.AppendLine("");
-
-            // 메타데이터 JSON (하드코딩)
-            var metaJson = BuildConfigMetadataJson(configTypes).Replace("\"", "\"\"");
-            sb.AppendLine($"    static readonly string _typesJson = @\"{metaJson}\";");
-            sb.AppendLine("");
-
-            // [Icon] 아틀라스 sprite 썸네일 맵 (아틀라스별 dedup, base64). 어드민이 1회 fetch + 캐시.
-            var iconsJson = BuildIconsJson(configTypes).Replace("\"", "\"\"");
-            sb.AppendLine($"    static readonly string _iconsJson = @\"{iconsJson}\";");
-            sb.AppendLine("");
-
-            // [Component] 컴포넌트별 어드레서블 주소 맵. 어드민이 1회 fetch + 캐시.
-            var componentsJson = BuildComponentsJson(configTypes).Replace("\"", "\"\"");
-            sb.AppendLine($"    static readonly string _componentsJson = @\"{componentsJson}\";");
-            sb.AppendLine("");
-
-            // DB operation delegates (Reflection 제거 — 타입별 직접 호출)
-            sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, Task<object>>> _getAll = new()");
-            sb.AppendLine("    {");
-            // sort_order 정렬은 SQL 측에서 처리됨. Config 클래스에 sort_order 필드가 없어도
-            // DapperGameDB는 SELECT * 결과를 deserialize 시 모르는 컬럼은 무시한다.
-            foreach (var t in configTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async db => await db.Query<{t.Name}>(new QueryOptions().OrderByAsc(\"sort_order\")),");
-            sb.AppendLine("    };");
-            sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, string, Task<object>>> _getOne = new()");
-            sb.AppendLine("    {");
-            foreach (var t in configTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async (db, id) => await db.Get<{t.Name}>(id),");
-            sb.AppendLine("    };");
-            sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, object, Task>> _save = new()");
-            sb.AppendLine("    {");
-            foreach (var t in configTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async (db, e) => await db.Save(({t.Name})e),");
-            sb.AppendLine("    };");
-            sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, object, Task>> _saveAll = new()");
-            sb.AppendLine("    {");
-            foreach (var t in configTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async (db, e) => await db.SaveAll((List<{t.Name}>)e),");
-            sb.AppendLine("    };");
-            sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, string, Task>> _delete = new()");
-            sb.AppendLine("    {");
-            foreach (var t in configTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async (db, id) => await db.Delete<{t.Name}>(id),");
-            sb.AppendLine("    };");
-            sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, QueryOptions, Task>> _deleteAll = new()");
-            sb.AppendLine("    {");
-            foreach (var t in configTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async (db, opts) => await db.DeleteAll<{t.Name}>(opts),");
-            sb.AppendLine("    };");
-            sb.AppendLine("    static readonly Dictionary<string, Func<string, object>> _deserialize = new()");
-            sb.AppendLine("    {");
-            foreach (var t in configTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = json => JsonSerializer.Deserialize<{t.Name}>(json, _jsonOpts),");
-            sb.AppendLine("    };");
-            sb.AppendLine("    static readonly Dictionary<string, Func<string, System.Collections.IList>> _deserializeList = new()");
-            sb.AppendLine("    {");
-            foreach (var t in configTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = json => JsonSerializer.Deserialize<List<{t.Name}>>(json, _jsonOpts),");
-            sb.AppendLine("    };");
-            sb.AppendLine("");
-
-            // ── 헬퍼 메서드 ──
-            sb.AppendLine("    string GetAdminId() => User?.FindFirst(\"sub\")?.Value ?? \"unknown\";");
-            sb.AppendLine("");
-
-            // Validate
-            sb.AppendLine("    string Validate(object entity, string typeName)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_requiredFields.TryGetValue(typeName, out var required)) return null;");
-            sb.AppendLine("        foreach (var f in entity.GetType().GetFields())");
-            sb.AppendLine("        {");
-            sb.AppendLine("            if (!required.Contains(f.Name)) continue;");
-            sb.AppendLine("            var val = f.GetValue(entity);");
-            sb.AppendLine("            if (val == null || (val is string s && string.IsNullOrEmpty(s)))");
-            sb.AppendLine("                return $\"{f.Name} is required\";");
-            sb.AppendLine("        }");
-            sb.AppendLine("        return null;");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            sb.AppendLine("    Task<object> GetOne(string typeName, string id) => _getOne[typeName](_db, id);");
-            sb.AppendLine("    Task<object> GetAllData(string typeName) => _getAll[typeName](_db);");
-            sb.AppendLine("");
-
-            // Audit
-            sb.AppendLine("    async Task Audit(string action, string configType, string rowId, object before, object after)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            await _db.Save(new AdminAuditLog");
-            sb.AppendLine("            {");
-            sb.AppendLine("                id = Guid.NewGuid().ToString(),");
-            sb.AppendLine("                admin_id = GetAdminId(),");
-            sb.AppendLine("                config_type = configType,");
-            sb.AppendLine("                row_id = rowId,");
-            sb.AppendLine("                action = action,");
-            sb.AppendLine("                before_json = before != null ? JsonSerializer.Serialize(before, _jsonOpts) : null,");
-            sb.AppendLine("                after_json = after != null ? JsonSerializer.Serialize(after, _jsonOpts) : null,");
-            sb.AppendLine("                created_at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()");
-            sb.AppendLine("            });");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch { }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── GET _types ──
-            sb.AppendLine("    [HttpGet(\"_types\")]");
-            sb.AppendLine("    public IActionResult GetTypes() => Content(_typesJson, \"application/json\");");
-            sb.AppendLine("");
-
-            // ── GET _icons (아틀라스별 sprite 썸네일 맵) ──
-            sb.AppendLine("    [HttpGet(\"_icons\")]");
-            sb.AppendLine("    public IActionResult GetIcons() => Content(_iconsJson, \"application/json\");");
-            sb.AppendLine("");
-
-            // ── GET _components (컴포넌트별 어드레서블 주소 맵) ──
-            sb.AppendLine("    [HttpGet(\"_components\")]");
-            sb.AppendLine("    public IActionResult GetComponents() => Content(_componentsJson, \"application/json\");");
-            sb.AppendLine("");
-
-            // ── GET _audit ──
-            sb.AppendLine("    [HttpGet(\"_audit\")]");
-            sb.AppendLine("    public async Task<IActionResult> GetAuditLog([FromQuery] string type = null, [FromQuery] int limit = 50)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        var opts = new QueryOptions().OrderByDesc(\"created_at\").SetLimit(limit);");
-            sb.AppendLine("        if (type != null) opts.Eq(\"config_type\", type);");
-            sb.AppendLine("        var logs = await _db.Query<AdminAuditLog>(opts);");
-            sb.AppendLine("        return Ok(logs);");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── GET _export/{typeName} ──
-            sb.AppendLine("    [HttpGet(\"_export/{typeName}\")]");
-            sb.AppendLine("    public async Task<IActionResult> Export(string typeName)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_getAll.ContainsKey(typeName))");
-            sb.AppendLine("            return NotFound(new { error = $\"Unknown config type: {typeName}\" });");
-            sb.AppendLine("        var data = await GetAllData(typeName);");
-            sb.AppendLine("        var json = JsonSerializer.Serialize(data, _jsonPretty);");
-            sb.AppendLine("        return File(System.Text.Encoding.UTF8.GetBytes(json), \"application/json\", $\"{typeName}.json\");");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── POST _import/{typeName} (전체 교체) ──
-            sb.AppendLine("    [HttpPost(\"_import/{typeName}\")]");
-            sb.AppendLine("    public async Task<IActionResult> Import(string typeName, [FromBody] JsonElement body)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_getAll.ContainsKey(typeName))");
-            sb.AppendLine("            return NotFound(new { error = $\"Unknown config type: {typeName}\" });");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var entities = _deserializeList[typeName](body.GetRawText());");
-            sb.AppendLine("            foreach (var e in entities) { var err = Validate(e, typeName); if (err != null) return BadRequest(new { error = err }); }");
-            sb.AppendLine("            var beforeData = await GetAllData(typeName);");
-            sb.AppendLine("            await _db.Transaction(async tx =>");
-            sb.AppendLine("            {");
-            sb.AppendLine("                await _deleteAll[typeName](tx, new QueryOptions());");
-            sb.AppendLine("                await _saveAll[typeName](tx, entities);");
-            sb.AppendLine("            });");
-            sb.AppendLine("            await Audit(\"import\", typeName, null, beforeData, entities);");
-            sb.AppendLine("            return Ok(new { imported = entities.Count });");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            await ServerLogger.LogError(_db, ex.InnerException?.Message ?? ex.Message, stack: ex.InnerException?.StackTrace ?? ex.StackTrace, endpoint: $\"admin/import/{typeName}\", serviceName: \"AdminController\");");
-            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── POST _batch/{typeName} (추가/업서트) ──
-            sb.AppendLine("    [HttpPost(\"_batch/{typeName}\")]");
-            sb.AppendLine("    public async Task<IActionResult> Batch(string typeName, [FromBody] JsonElement body)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_getAll.ContainsKey(typeName))");
-            sb.AppendLine("            return NotFound(new { error = $\"Unknown config type: {typeName}\" });");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var entities = _deserializeList[typeName](body.GetRawText());");
-            sb.AppendLine("            foreach (var e in entities) { var err = Validate(e, typeName); if (err != null) return BadRequest(new { error = err }); }");
-            sb.AppendLine("            await _saveAll[typeName](_db, entities);");
-            sb.AppendLine("            await Audit(\"batch\", typeName, null, null, entities);");
-            sb.AppendLine("            return Ok(new { saved = entities.Count });");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            await ServerLogger.LogError(_db, ex.InnerException?.Message ?? ex.Message, stack: ex.InnerException?.StackTrace ?? ex.StackTrace, endpoint: $\"admin/batch/{typeName}\", serviceName: \"AdminController\");");
-            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── POST _reorder/{typeName} ──
-            // body: { "items": [ { "id": "...", "sort_order": 0 }, ... ] }
-            // raw UPDATE 트랜잭션으로 일괄 sort_order 변경 (Config 클래스에 sort_order 필드 없어도 동작)
-            sb.AppendLine("    [HttpPost(\"_reorder/{typeName}\")]");
-            sb.AppendLine("    public async Task<IActionResult> Reorder(string typeName, [FromBody] JsonElement body)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_getAll.ContainsKey(typeName))");
-            sb.AppendLine("            return NotFound(new { error = $\"Unknown config type: {typeName}\" });");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            if (!body.TryGetProperty(\"items\", out var items) || items.ValueKind != JsonValueKind.Array)");
-            sb.AppendLine("                return BadRequest(new { error = \"items array required\" });");
-            sb.AppendLine("            using var tx = await _conn.BeginTransactionAsync();");
-            sb.AppendLine("            int count = 0;");
-            sb.AppendLine("            foreach (var item in items.EnumerateArray())");
-            sb.AppendLine("            {");
-            sb.AppendLine("                var rowId = item.GetProperty(\"id\").GetString();");
-            sb.AppendLine("                var sortOrder = item.GetProperty(\"sort_order\").GetInt32();");
-            sb.AppendLine("                // typeName은 _getAll 화이트리스트로 검증 완료 (SQL injection 안전)");
-            sb.AppendLine("                await _conn.ExecuteAsync($\"UPDATE {typeName} SET sort_order = @order WHERE id = @id\",");
-            sb.AppendLine("                    new { order = sortOrder, id = rowId }, tx);");
-            sb.AppendLine("                count++;");
-            sb.AppendLine("            }");
-            sb.AppendLine("            await tx.CommitAsync();");
-            sb.AppendLine("            await Audit(\"reorder\", typeName, null, null, items);");
-            sb.AppendLine("            return Ok(new { reordered = count });");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            await ServerLogger.LogError(_db, ex.InnerException?.Message ?? ex.Message, stack: ex.InnerException?.StackTrace ?? ex.StackTrace, endpoint: $\"admin/_reorder/{typeName}\", serviceName: \"AdminController\");");
-            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── GET {typeName} ──
-            sb.AppendLine("    [HttpGet(\"{typeName}\")]");
-            sb.AppendLine("    public async Task<IActionResult> GetAll(string typeName)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_getAll.ContainsKey(typeName))");
-            sb.AppendLine("            return NotFound(new { error = $\"Unknown config type: {typeName}\" });");
-            sb.AppendLine("        try { return Ok(await GetAllData(typeName)); }");
-            sb.AppendLine("        catch (Exception ex)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            await ServerLogger.LogError(_db, ex.InnerException?.Message ?? ex.Message, stack: ex.InnerException?.StackTrace ?? ex.StackTrace, endpoint: $\"admin/config/{typeName}\", serviceName: \"AdminController\");");
-            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── POST {typeName} ──
-            sb.AppendLine("    [HttpPost(\"{typeName}\")]");
-            sb.AppendLine("    public async Task<IActionResult> Create(string typeName, [FromBody] JsonElement body)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_getAll.ContainsKey(typeName))");
-            sb.AppendLine("            return NotFound(new { error = $\"Unknown config type: {typeName}\" });");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var entity = _deserialize[typeName](body.GetRawText());");
-            sb.AppendLine("            var err = Validate(entity, typeName); if (err != null) return BadRequest(new { error = err });");
-            sb.AppendLine("            var rowId = entity.GetType().GetField(\"id\")?.GetValue(entity)?.ToString();");
-            sb.AppendLine("            if (!string.IsNullOrEmpty(rowId) && _getOne.ContainsKey(typeName))");
-            sb.AppendLine("            {");
-            sb.AppendLine("                var existing = await _getOne[typeName](_db, rowId);");
-            sb.AppendLine("                if (existing != null) return Conflict(new { error = $\"ID '{rowId}' already exists\" });");
-            sb.AppendLine("            }");
-            sb.AppendLine("            await _save[typeName](_db, entity);");
-            sb.AppendLine("            await Audit(\"create\", typeName, rowId, null, entity);");
-            sb.AppendLine("            return Ok(entity);");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            await ServerLogger.LogError(_db, ex.InnerException?.Message ?? ex.Message, stack: ex.InnerException?.StackTrace ?? ex.StackTrace, endpoint: $\"admin/config/{typeName}\", serviceName: \"AdminController\", requestBody: body.GetRawText());");
-            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── PUT {typeName}/{id} ──
-            sb.AppendLine("    [HttpPut(\"{typeName}/{id}\")]");
-            sb.AppendLine("    public async Task<IActionResult> Update(string typeName, string id, [FromBody] JsonElement body)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_getAll.ContainsKey(typeName))");
-            sb.AppendLine("            return NotFound(new { error = $\"Unknown config type: {typeName}\" });");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var before = await GetOne(typeName, id);");
-            sb.AppendLine("            var entity = _deserialize[typeName](body.GetRawText());");
-            sb.AppendLine("            var newId = entity.GetType().GetField(\"id\")?.GetValue(entity) as string;");
-            sb.AppendLine("            var idChanged = !string.IsNullOrEmpty(newId) && newId != id;");
-            sb.AppendLine("            if (!idChanged) entity.GetType().GetField(\"id\")?.SetValue(entity, id);");
-            sb.AppendLine("            var err = Validate(entity, typeName); if (err != null) return BadRequest(new { error = err });");
-            sb.AppendLine("            if (idChanged) await _delete[typeName](_db, id);");
-            sb.AppendLine("            await _save[typeName](_db, entity);");
-            sb.AppendLine("            await Audit(idChanged ? \"rename\" : \"update\", typeName, idChanged ? $\"{id} → {newId}\" : id, before, entity);");
-            sb.AppendLine("            return Ok(entity);");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            await ServerLogger.LogError(_db, ex.InnerException?.Message ?? ex.Message, stack: ex.InnerException?.StackTrace ?? ex.StackTrace, endpoint: $\"admin/config/{typeName}/{id}\", serviceName: \"AdminController\", requestBody: body.GetRawText());");
-            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── DELETE {typeName}/{id} ──
-            sb.AppendLine("    [HttpDelete(\"{typeName}/{id}\")]");
-            sb.AppendLine("    public async Task<IActionResult> Delete(string typeName, string id)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_getAll.ContainsKey(typeName))");
-            sb.AppendLine("            return NotFound(new { error = $\"Unknown config type: {typeName}\" });");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var before = await GetOne(typeName, id);");
-            sb.AppendLine("            await _delete[typeName](_db, id);");
-            sb.AppendLine("            await Audit(\"delete\", typeName, id, before, null);");
-            sb.AppendLine("            return Ok();");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            await ServerLogger.LogError(_db, ex.InnerException?.Message ?? ex.Message, stack: ex.InnerException?.StackTrace ?? ex.StackTrace, endpoint: $\"admin/config/{typeName}/{id}\", serviceName: \"AdminController\");");
-            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── 관리자 목록 ──
-            sb.AppendLine("    [HttpGet(\"/admin/api/admins\")]");
-            sb.AppendLine("    public async Task<IActionResult> GetAdmins()");
-            sb.AppendLine("    {");
-            sb.AppendLine("        var admins = await _db.GetAll<AdminUser>();");
-            sb.AppendLine("        return Ok(admins);");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── 관리자 추가 ──
-            sb.AppendLine("    [HttpPost(\"/admin/api/admins\")]");
-            sb.AppendLine("    public async Task<IActionResult> AddAdmin([FromBody] JsonElement body)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var email = body.TryGetProperty(\"email\", out var e) ? e.GetString() : null;");
-            sb.AppendLine("            var memo = body.TryGetProperty(\"memo\", out var m) ? m.GetString() : null;");
-            sb.AppendLine("            if (string.IsNullOrEmpty(email)) return BadRequest(new { error = \"email is required\" });");
-            sb.AppendLine("            var existing = (await _db.GetAll<AdminUser>()).FirstOrDefault(a => a.email == email);");
-            sb.AppendLine("            if (existing != null) return BadRequest(new { error = \"already registered\" });");
-            sb.AppendLine("            var admin = new AdminUser");
-            sb.AppendLine("            {");
-            sb.AppendLine("                id = Guid.NewGuid().ToString(),");
-            sb.AppendLine("                user_id = null,");
-            sb.AppendLine("                email = email,");
-            sb.AppendLine("                role = \"admin\",");
-            sb.AppendLine("                memo = memo,");
-            sb.AppendLine("                created_at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),");
-            sb.AppendLine("                created_by = GetAdminId()");
-            sb.AppendLine("            };");
-            sb.AppendLine("            await _db.Save(admin);");
-            sb.AppendLine("            await Audit(\"admin_add\", \"admin_user\", admin.id, null, admin);");
-            sb.AppendLine("            return Ok(admin);");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── 관리자 삭제 ──
-            sb.AppendLine("    [HttpDelete(\"/admin/api/admins/{id}\")]");
-            sb.AppendLine("    public async Task<IActionResult> RemoveAdmin(string id)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var admins = await _db.GetAll<AdminUser>();");
-            sb.AppendLine("            if (admins.Count <= 1) return BadRequest(new { error = \"Cannot remove the last admin\" });");
-            sb.AppendLine("            var target = admins.FirstOrDefault(a => a.id == id);");
-            sb.AppendLine("            if (target == null) return NotFound();");
-            sb.AppendLine("            await _db.Delete<AdminUser>(id);");
-            sb.AppendLine("            await Audit(\"admin_remove\", \"admin_user\", id, target, null);");
-            sb.AppendLine("            return Ok();");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── 관리자 role 변경 ──
-            sb.AppendLine("    [HttpPut(\"/admin/api/admins/{id}/role\")]");
-            sb.AppendLine("    public async Task<IActionResult> UpdateRole(string id, [FromBody] JsonElement body)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var role = body.TryGetProperty(\"role\", out var r) ? r.GetString() : null;");
-            sb.AppendLine("            if (role != \"admin\" && role != \"pending\") return BadRequest(new { error = \"role must be admin or pending\" });");
-            sb.AppendLine("            var target = await _db.Get<AdminUser>(id);");
-            sb.AppendLine("            if (target == null) return NotFound();");
-            sb.AppendLine("            if (role == \"pending\" && target.role == \"admin\")");
-            sb.AppendLine("            {");
-            sb.AppendLine("                var adminCount = (await _db.GetAll<AdminUser>()).Count(a => a.role == \"admin\");");
-            sb.AppendLine("                if (adminCount <= 1) return BadRequest(new { error = \"Cannot demote the last admin\" });");
-            sb.AppendLine("            }");
-            sb.AppendLine("            var before = target.role;");
-            sb.AppendLine("            target.role = role;");
-            sb.AppendLine("            await _db.Save(target);");
-            sb.AppendLine("            await Audit(\"role_change\", \"admin_user\", id, new { role = before }, new { role });");
-            sb.AppendLine("            return Ok(target);");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-
-            sb.AppendLine("}");
-
-            return new GeneratedFile("Generated/Controllers/AdminController.cs", sb.ToString());
-        }
-
-        // ── AdminAuditLog 모델 ──
-
-        static GeneratedFile GenerateAdminAuditModel()
-        {
-            return new GeneratedFile("Generated/AdminAuditLog.cs",
-@"public class AdminAuditLog
-{
-    public string id;
-    public string admin_id;
-    public string config_type;
-    public string row_id;
-    public string action;
-    public string before_json;
-    public string after_json;
-    public long created_at;
-}");
-        }
-
         // ── SupaRun 코어 마이그레이션 (ADR-0004) ──
 
         /// <summary>
@@ -1779,15 +1305,6 @@ AS $$
   );
 $$;
 
--- [Owner] 로 선언된 소유자 컬럼. 코드가 진실이라 메타에서 읽는다.
-CREATE OR REPLACE FUNCTION suparun_owner_column(p_table text) RETURNS text
-LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
-AS $$
-  SELECT e->>'owner' FROM suparun_meta m, jsonb_array_elements(m.value) e
-  WHERE m.key = 'table_types' AND e->>'tableName' = p_table
-  LIMIT 1;
-$$;
-
 -- 현재 정책 상태. 프리셋으로 되돌려 읽되, 우리가 만든 조합과 다르면 'custom' 이다.
 -- unsafe = 쓰기가 무조건 허용된 상태(USING true 인 ALL/INSERT/UPDATE/DELETE) — 화면에서 빨갛게 띄운다.
 CREATE OR REPLACE FUNCTION suparun_policies()
@@ -1826,8 +1343,6 @@ BEGIN
             v_preset := 'custom';
         ELSIF v_names = ARRAY['admin_write', 'public_read'] THEN
             v_preset := 'public';
-        ELSIF v_names = ARRAY['admin_all', 'owner_read'] THEN
-            v_preset := 'user';
         ELSIF v_names = ARRAY['admin_all'] THEN
             v_preset := 'admin';
         ELSIF array_length(v_names, 1) IS NULL THEN
@@ -1846,8 +1361,6 @@ END $$;
 CREATE OR REPLACE FUNCTION suparun_set_policy(p_table text, p_preset text) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
-DECLARE
-    v_owner text;
 BEGIN
     IF NOT is_admin() THEN
         RAISE EXCEPTION '관리자만 정책을 바꿀 수 있습니다';
@@ -1866,14 +1379,6 @@ BEGIN
     IF p_preset = 'public' THEN
         EXECUTE format('CREATE POLICY public_read ON %I FOR SELECT USING (true)', p_table);
         EXECUTE format('CREATE POLICY admin_write ON %I FOR ALL USING (is_admin()) WITH CHECK (is_admin())', p_table);
-
-    ELSIF p_preset = 'user' THEN
-        v_owner := suparun_owner_column(p_table);
-        IF v_owner IS NULL THEN
-            RAISE EXCEPTION '[Owner] 필드가 선언되지 않아 ""유저 데이터"" 를 쓸 수 없습니다: %', p_table;
-        END IF;
-        EXECUTE format('CREATE POLICY owner_read ON %I FOR SELECT USING (%I = auth.uid()::text)', p_table, v_owner);
-        EXECUTE format('CREATE POLICY admin_all ON %I FOR ALL USING (is_admin()) WITH CHECK (is_admin())', p_table);
 
     ELSIF p_preset = 'admin' THEN
         EXECUTE format('CREATE POLICY admin_all ON %I FOR ALL USING (is_admin()) WITH CHECK (is_admin())', p_table);
@@ -1909,15 +1414,32 @@ END $$;
         /// 파일명은 `_suparun_core.sql` 다음으로 실행돼야 한다(테이블이 거기서 생성됨).
         /// `core` &lt; `meta` 라 이름순으로 자연히 뒤가 된다.
         /// </summary>
-        public static GeneratedFile GenerateMetaUpsertMigration(Type[] specTypes, Type[] tableTypes)
+        public static GeneratedFile GenerateConfigMetaMigration(Type[] specTypes)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("-- 어드민 타입 메타데이터 (자동 생성) — ADR-0004");
-            sb.AppendLine("-- 어드민이 이 행들을 읽어 표를 그린다. 서버 _typesJson 을 대체한다.");
+            sb.AppendLine("-- [SpecData] 타입 메타 (자동 생성) — ADR-0004");
+            sb.AppendLine("-- 어드민이 이 행을 읽어 표를 그린다. 서버 _typesJson 을 대체한다.");
+            sb.AppendLine("-- 컴파일 직후 반영된다 — 게임도 어드민도 DB 를 직접 보므로 서버가 낄 자리가 없다.");
             sb.AppendLine();
             AppendMetaUpsert(sb, "config_types", BuildConfigMetadataJson(specTypes));
+            return new GeneratedFile("Generated/Migrations/_suparun_meta_config.sql", sb.ToString());
+        }
+
+        /// <summary>
+        /// [UserData] 타입 메타. **배포 때만** 반영한다.
+        ///
+        /// 게임이 Cloud Run 을 거치므로 서버가 최신이어야 새 필드가 동작한다.
+        /// 메타만 먼저 갱신하면 어드민이 DB 에 없는 컬럼을 조회해 에러가 난다.
+        /// 파일명이 `_suparun_meta_config.sql` 뒤에 오도록 `_table` 접미사를 쓴다.
+        /// </summary>
+        public static GeneratedFile GenerateTableMetaMigration(Type[] tableTypes)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("-- [UserData] 타입 메타 (자동 생성) — ADR-0004");
+            sb.AppendLine("-- 서버 재배포와 함께 반영된다. 컴파일 훅은 이 파일을 건드리지 않는다.");
+            sb.AppendLine();
             AppendMetaUpsert(sb, "table_types", BuildTableMetadataJson(tableTypes));
-            return new GeneratedFile("Generated/Migrations/_suparun_meta.sql", sb.ToString());
+            return new GeneratedFile("Generated/Migrations/_suparun_meta_table.sql", sb.ToString());
         }
 
         /// <summary>
@@ -2317,340 +1839,6 @@ END $$;
             return "string";
         }
 
-        // ── Admin Table Controller (Table 조회 + 통계 + 크로스 검색) ──
-
-        static GeneratedFile GenerateAdminTableController(Type[] tableTypes)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("using System;");
-            sb.AppendLine("using System.Collections.Generic;");
-            sb.AppendLine("using System.Linq;");
-            sb.AppendLine("using System.Text.Json;");
-            sb.AppendLine("using System.Threading.Tasks;");
-            sb.AppendLine("using Microsoft.AspNetCore.Mvc;");
-            sb.AppendLine("using Microsoft.Extensions.Configuration;");
-            sb.AppendLine("using Npgsql;");
-            sb.AppendLine("using Dapper;");
-            sb.AppendLine("");
-            sb.AppendLine("[ApiController]");
-            sb.AppendLine("[Route(\"admin/api/table\")]");
-            sb.AppendLine("public class AdminTableController : ControllerBase");
-            sb.AppendLine("{");
-            sb.AppendLine("    readonly IGameDB _db;");
-            sb.AppendLine("    readonly string _connStr;");
-            sb.AppendLine("    public AdminTableController(IGameDB db, IConfiguration config)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        _db = db;");
-            sb.AppendLine("        _connStr = config.GetConnectionString(\"Supabase\");");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-            sb.AppendLine("    static readonly JsonSerializerOptions _jsonOpts = new() { IncludeFields = true };");
-            sb.AppendLine("");
-
-            // 메타데이터
-            var metaJson = BuildTableMetadataJson(tableTypes).Replace("\"", "\"\"");
-            sb.AppendLine($"    static readonly string _typesJson = @\"{metaJson}\";");
-            sb.AppendLine("");
-
-            // Query delegates
-            sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, QueryOptions, Task<object>>> _query = new()");
-            sb.AppendLine("    {");
-            foreach (var t in tableTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async (db, opts) => await db.Query<{t.Name}>(opts),");
-            sb.AppendLine("    };");
-
-            // Count delegates
-            sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, QueryOptions, Task<int>>> _count = new()");
-            sb.AppendLine("    {");
-            foreach (var t in tableTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async (db, opts) => await db.Count<{t.Name}>(opts),");
-            sb.AppendLine("    };");
-            sb.AppendLine("");
-
-            // Save delegates (플레이어 관리 수정용)
-            sb.AppendLine("    static readonly Dictionary<string, Func<IGameDB, object, Task>> _save = new()");
-            sb.AppendLine("    {");
-            foreach (var t in tableTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = async (db, e) => await db.Save(({t.Name})e),");
-            sb.AppendLine("    };");
-
-            // Deserialize delegates
-            sb.AppendLine("    static readonly Dictionary<string, Func<string, object>> _deserialize = new()");
-            sb.AppendLine("    {");
-            foreach (var t in tableTypes)
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = json => JsonSerializer.Deserialize<{t.Name}>(json, _jsonOpts),");
-            sb.AppendLine("    };");
-
-            // hasUserId 테이블 목록
-            sb.AppendLine("    static readonly HashSet<string> _userTables = new()");
-            sb.AppendLine("    {");
-            foreach (var t in tableTypes)
-            {
-                var hasUserId = t.GetFields(BindingFlags.Public | BindingFlags.Instance)
-                    .Any(f => f.Name == "userId" || f.Name == "user_id");
-                if (hasUserId)
-                    sb.AppendLine($"        \"{ToSnakeCase(t.Name)}\",");
-            }
-            sb.AppendLine("    };");
-            sb.AppendLine("");
-
-            // Field → Column 매핑 (camelCase → snake_case)
-            sb.AppendLine("    static readonly Dictionary<string, Dictionary<string, string>> _fieldToColumn = new()");
-            sb.AppendLine("    {");
-            foreach (var t in tableTypes)
-            {
-                var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
-                var entries = string.Join(", ", fields.Select(f => $"[\"{f.Name}\"] = \"{ToSnakeCase(f.Name)}\""));
-                sb.AppendLine($"        [\"{ToSnakeCase(t.Name)}\"] = new() {{ {entries} }},");
-            }
-            sb.AppendLine("    };");
-            sb.AppendLine("");
-
-            // 허용 연산자
-            sb.AppendLine("    static readonly HashSet<string> _ops = new() { \"=\", \">\", \"<\", \">=\", \"<=\", \"like\" };");
-            sb.AppendLine("");
-
-            // ── 헬퍼: 쿼리 파라미터 → WHERE + Dapper Params ──
-            sb.AppendLine("    (string where, DynamicParameters parms) BuildWhere(string typeName, IQueryCollection q)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        var map = _fieldToColumn[typeName];");
-            sb.AppendLine("        var clauses = new List<string>();");
-            sb.AppendLine("        var p = new DynamicParameters();");
-            sb.AppendLine("        int i = 0;");
-            sb.AppendLine("        foreach (var key in q.Keys)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            if (key is \"orderBy\" or \"desc\" or \"limit\" or \"offset\" or \"field\" or \"buckets\") continue;");
-            sb.AppendLine("            var parts = key.Split('.');");
-            sb.AppendLine("            var fname = parts[0];");
-            sb.AppendLine("            if (!map.ContainsKey(fname)) continue;");
-            sb.AppendLine("            var col = map[fname];");
-            sb.AppendLine("            var op = parts.Length > 1 ? parts[1] switch { \"gt\" => \">\", \"gte\" => \">=\", \"lt\" => \"<\", \"lte\" => \"<=\", \"like\" => \"LIKE\", _ => \"=\" } : \"=\";");
-            sb.AppendLine("            var val = q[key].ToString();");
-            sb.AppendLine("            clauses.Add($\"\\\"{col}\\\" {op} @p{i}\");");
-            sb.AppendLine("            if (long.TryParse(val, out var lv)) p.Add($\"p{i}\", lv);");
-            sb.AppendLine("            else if (double.TryParse(val, out var dv)) p.Add($\"p{i}\", dv);");
-            sb.AppendLine("            else if (bool.TryParse(val, out var bv)) p.Add($\"p{i}\", bv);");
-            sb.AppendLine("            else p.Add($\"p{i}\", val);");
-            sb.AppendLine("            i++;");
-            sb.AppendLine("        }");
-            sb.AppendLine("        return (clauses.Count > 0 ? \"WHERE \" + string.Join(\" AND \", clauses) : \"\", p);");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── 헬퍼: 쿼리 파라미터 → QueryOptions ──
-            sb.AppendLine("    QueryOptions BuildQueryOpts(string typeName, IQueryCollection q)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        var map = _fieldToColumn[typeName];");
-            sb.AppendLine("        var opts = new QueryOptions();");
-            sb.AppendLine("        foreach (var key in q.Keys)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            if (key is \"orderBy\" or \"desc\" or \"limit\" or \"offset\" or \"field\" or \"buckets\") continue;");
-            sb.AppendLine("            var parts = key.Split('.');");
-            sb.AppendLine("            var fname = parts[0];");
-            sb.AppendLine("            if (!map.ContainsKey(fname)) continue;");
-            sb.AppendLine("            var col = map[fname];");
-            sb.AppendLine("            var val = q[key].ToString();");
-            sb.AppendLine("            var op = parts.Length > 1 ? parts[1] : \"eq\";");
-            sb.AppendLine("            switch (op) {");
-            sb.AppendLine("                case \"gt\": opts.Gt(col, val); break;");
-            sb.AppendLine("                case \"gte\": opts.Gte(col, val); break;");
-            sb.AppendLine("                case \"lt\": opts.Lt(col, val); break;");
-            sb.AppendLine("                case \"lte\": opts.Lte(col, val); break;");
-            sb.AppendLine("                case \"like\": opts.Like(col, val); break;");
-            sb.AppendLine("                default: opts.Eq(col, val); break;");
-            sb.AppendLine("            }");
-            sb.AppendLine("        }");
-            sb.AppendLine("        if (q.ContainsKey(\"orderBy\") && map.ContainsKey(q[\"orderBy\"].ToString()))");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var col = map[q[\"orderBy\"].ToString()];");
-            sb.AppendLine("            if (q.ContainsKey(\"desc\") && q[\"desc\"] == \"true\") opts.OrderByDesc(col); else opts.OrderByAsc(col);");
-            sb.AppendLine("        }");
-            sb.AppendLine("        opts.SetLimit(int.TryParse(q[\"limit\"], out var lim) ? Math.Clamp(lim, 1, 500) : 50);");
-            sb.AppendLine("        opts.SetOffset(int.TryParse(q[\"offset\"], out var off) ? Math.Max(off, 0) : 0);");
-            sb.AppendLine("        return opts;");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── GET _types ──
-            sb.AppendLine("    [HttpGet(\"_types\")]");
-            sb.AppendLine("    public IActionResult GetTypes() => Content(_typesJson, \"application/json\");");
-            sb.AppendLine("");
-
-            // ── GET {typeName} ──
-            sb.AppendLine("    [HttpGet(\"{typeName}\")]");
-            sb.AppendLine("    public async Task<IActionResult> Query(string typeName)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_query.ContainsKey(typeName)) return NotFound(new { error = $\"Unknown table: {typeName}\" });");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var opts = BuildQueryOpts(typeName, Request.Query);");
-            sb.AppendLine("            var countOpts = BuildQueryOpts(typeName, Request.Query);");
-            sb.AppendLine("            countOpts.SetLimit(int.MaxValue); countOpts.SetOffset(0);");
-            sb.AppendLine("            var rows = await _query[typeName](_db, opts);");
-            sb.AppendLine("            var total = await _count[typeName](_db, countOpts);");
-            sb.AppendLine("            return Ok(new { rows, total });");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message });");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── GET {typeName}/_stats ──
-            sb.AppendLine("    [HttpGet(\"{typeName}/_stats\")]");
-            sb.AppendLine("    public async Task<IActionResult> Stats(string typeName, [FromQuery] string field)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_fieldToColumn.TryGetValue(typeName, out var map)) return NotFound();");
-            sb.AppendLine("        if (string.IsNullOrEmpty(field) || !map.ContainsKey(field)) return BadRequest(new { error = \"invalid field\" });");
-            sb.AppendLine("        var col = map[field];");
-            sb.AppendLine("        var (where, parms) = BuildWhere(typeName, Request.Query);");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            using var conn = new NpgsqlConnection(_connStr);");
-            sb.AppendLine("            var sql = $\"SELECT COUNT(*) as count, COALESCE(SUM(\\\"{col}\\\"::numeric),0) as sum, COALESCE(AVG(\\\"{col}\\\"::numeric),0) as avg, COALESCE(MIN(\\\"{col}\\\"::numeric),0) as min, COALESCE(MAX(\\\"{col}\\\"::numeric),0) as max FROM \\\"{typeName}\\\" {where}\";");
-            sb.AppendLine("            var result = await conn.QueryFirstAsync(sql, parms);");
-            sb.AppendLine("            return Ok(new { count = (long)result.count, sum = (decimal)result.sum, avg = (decimal)result.avg, min = (decimal)result.min, max = (decimal)result.max });");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex) { return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message }); }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── GET {typeName}/_distribution ──
-            sb.AppendLine("    [HttpGet(\"{typeName}/_distribution\")]");
-            sb.AppendLine("    public async Task<IActionResult> Distribution(string typeName, [FromQuery] string field, [FromQuery] int buckets = 10)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_fieldToColumn.TryGetValue(typeName, out var map)) return NotFound();");
-            sb.AppendLine("        if (string.IsNullOrEmpty(field) || !map.ContainsKey(field)) return BadRequest(new { error = \"invalid field\" });");
-            sb.AppendLine("        var col = map[field];");
-            sb.AppendLine("        buckets = Math.Clamp(buckets, 2, 50);");
-            sb.AppendLine("        var (where, parms) = BuildWhere(typeName, Request.Query);");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            using var conn = new NpgsqlConnection(_connStr);");
-            sb.AppendLine("            var rangeSql = $\"SELECT MIN(\\\"{col}\\\"::numeric) as lo, MAX(\\\"{col}\\\"::numeric) as hi FROM \\\"{typeName}\\\" {where}\";");
-            sb.AppendLine("            var range = await conn.QueryFirstAsync(rangeSql, parms);");
-            sb.AppendLine("            if (range.lo == null || range.hi == null) return Ok(new { buckets = Array.Empty<object>() });");
-            sb.AppendLine("            decimal lo = (decimal)range.lo, hi = (decimal)range.hi;");
-            sb.AppendLine("            if (lo == hi) hi = lo + 1;");
-            sb.AppendLine("            var step = (hi - lo) / buckets;");
-            sb.AppendLine("            var result = new List<object>();");
-            sb.AppendLine("            for (int i = 0; i < buckets; i++)");
-            sb.AppendLine("            {");
-            sb.AppendLine("                var bLo = lo + step * i;");
-            sb.AppendLine("                var bHi = i == buckets - 1 ? hi + 1 : lo + step * (i + 1);");
-            sb.AppendLine("                var cntSql = $\"SELECT COUNT(*) FROM \\\"{typeName}\\\" {(string.IsNullOrEmpty(where) ? \"WHERE\" : where + \" AND\")} \\\"{col}\\\"::numeric >= @bLo AND \\\"{col}\\\"::numeric < @bHi\";");
-            sb.AppendLine("                parms.Add(\"bLo\", bLo); parms.Add(\"bHi\", bHi);");
-            sb.AppendLine("                var cnt = await conn.ExecuteScalarAsync<long>(cntSql, parms);");
-            sb.AppendLine("                result.Add(new { min = bLo, max = bHi, count = cnt });");
-            // DynamicParameters에 같은 키 중복 방지
-            sb.AppendLine("                parms = new DynamicParameters(parms);");
-            sb.AppendLine("            }");
-            sb.AppendLine("            return Ok(new { buckets = result });");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex) { return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message }); }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── POST _cross ──
-            sb.AppendLine("    [HttpPost(\"_cross\")]");
-            sb.AppendLine("    public async Task<IActionResult> CrossQuery([FromBody] JsonElement body)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var conditions = body.GetProperty(\"conditions\");");
-            sb.AppendLine("            var limit = body.TryGetProperty(\"limit\", out var lp) ? lp.GetInt32() : 100;");
-            sb.AppendLine("            limit = Math.Clamp(limit, 1, 500);");
-            sb.AppendLine("            var sqls = new List<string>();");
-            sb.AppendLine("            var p = new DynamicParameters();");
-            sb.AppendLine("            int idx = 0;");
-            sb.AppendLine("            var involvedTables = new List<(string table, string field)>();");
-            sb.AppendLine("            foreach (var c in conditions.EnumerateArray())");
-            sb.AppendLine("            {");
-            sb.AppendLine("                var table = c.GetProperty(\"table\").GetString();");
-            sb.AppendLine("                var field = c.GetProperty(\"field\").GetString();");
-            sb.AppendLine("                var op = c.GetProperty(\"op\").GetString();");
-            sb.AppendLine("                var val = c.GetProperty(\"value\").GetString();");
-            sb.AppendLine("                if (!_fieldToColumn.TryGetValue(table, out var map)) return BadRequest(new { error = $\"Unknown table: {table}\" });");
-            sb.AppendLine("                if (!map.ContainsKey(field)) return BadRequest(new { error = $\"Unknown field: {field}\" });");
-            sb.AppendLine("                if (!_ops.Contains(op)) return BadRequest(new { error = $\"Invalid op: {op}\" });");
-            sb.AppendLine("                var col = map[field];");
-            sb.AppendLine("                sqls.Add($\"SELECT \\\"user_id\\\" FROM \\\"{table}\\\" WHERE \\\"{col}\\\" {op} @p{idx}\");");
-            sb.AppendLine("                if (long.TryParse(val, out var lv)) p.Add($\"p{idx}\", lv);");
-            sb.AppendLine("                else if (double.TryParse(val, out var dv)) p.Add($\"p{idx}\", dv);");
-            sb.AppendLine("                else if (bool.TryParse(val, out var bv)) p.Add($\"p{idx}\", bv);");
-            sb.AppendLine("                else p.Add($\"p{idx}\", val);");
-            sb.AppendLine("                involvedTables.Add((table, field));");
-            sb.AppendLine("                idx++;");
-            sb.AppendLine("            }");
-            sb.AppendLine("            if (sqls.Count == 0) return BadRequest(new { error = \"No conditions\" });");
-            sb.AppendLine("            var intersectSql = string.Join(\" INTERSECT \", sqls) + $\" LIMIT {limit}\";");
-            sb.AppendLine("            using var conn = new NpgsqlConnection(_connStr);");
-            sb.AppendLine("            var userIds = (await conn.QueryAsync<string>(intersectSql, p)).ToList();");
-            sb.AppendLine("            // 상세 데이터 조회");
-            sb.AppendLine("            var details = new Dictionary<string, Dictionary<string, object>>();");
-            sb.AppendLine("            if (userIds.Count > 0 && userIds.Count <= 200)");
-            sb.AppendLine("            {");
-            sb.AppendLine("                foreach (var (table, _) in involvedTables.Distinct())");
-            sb.AppendLine("                {");
-            sb.AppendLine("                    var detailSql = $\"SELECT * FROM \\\"{table}\\\" WHERE \\\"user_id\\\" = ANY(@ids)\";");
-            sb.AppendLine("                    var rows = await conn.QueryAsync(detailSql, new { ids = userIds.ToArray() });");
-            sb.AppendLine("                    foreach (var row in rows)");
-            sb.AppendLine("                    {");
-            sb.AppendLine("                        var dict = (IDictionary<string, object>)row;");
-            sb.AppendLine("                        var uid = dict[\"user_id\"]?.ToString();");
-            sb.AppendLine("                        if (uid == null) continue;");
-            sb.AppendLine("                        if (!details.ContainsKey(uid)) details[uid] = new();");
-            sb.AppendLine("                        details[uid][table] = dict;");
-            sb.AppendLine("                    }");
-            sb.AppendLine("                }");
-            sb.AppendLine("            }");
-            sb.AppendLine("            return Ok(new { count = userIds.Count, userIds, details });");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex) { return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message }); }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── GET /admin/api/player/{userId} ──
-            sb.AppendLine("    [HttpGet(\"/admin/api/player/{userId}\")]");
-            sb.AppendLine("    public async Task<IActionResult> GetPlayer(string userId)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var tables = new Dictionary<string, object>();");
-            sb.AppendLine("            foreach (var tableName in _userTables)");
-            sb.AppendLine("            {");
-            sb.AppendLine("                var opts = new QueryOptions().Eq(\"user_id\", userId).SetLimit(200);");
-            sb.AppendLine("                tables[tableName] = await _query[tableName](_db, opts);");
-            sb.AppendLine("            }");
-            sb.AppendLine("            return Ok(new { userId, tables });");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex) { return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message }); }");
-            sb.AppendLine("    }");
-            sb.AppendLine("");
-
-            // ── PUT {typeName}/{id} (플레이어 데이터 수정) ──
-            sb.AppendLine("    [HttpPut(\"{typeName}/{id}\")]");
-            sb.AppendLine("    public async Task<IActionResult> UpdateRow(string typeName, string id, [FromBody] JsonElement body)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        if (!_save.ContainsKey(typeName)) return NotFound(new { error = $\"Unknown table: {typeName}\" });");
-            sb.AppendLine("        try");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var entity = _deserialize[typeName](body.GetRawText());");
-            sb.AppendLine("            entity.GetType().GetField(\"id\")?.SetValue(entity, id);");
-            sb.AppendLine("            await _save[typeName](_db, entity);");
-            // 감사 로그
-            sb.AppendLine("            var adminId = User?.FindFirst(\"sub\")?.Value ?? \"unknown\";");
-            sb.AppendLine("            try { await _db.Save(new AdminAuditLog { id = Guid.NewGuid().ToString(), admin_id = adminId, config_type = typeName, row_id = id, action = \"player_update\", after_json = body.GetRawText(), created_at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }); } catch { }");
-            sb.AppendLine("            return Ok(entity);");
-            sb.AppendLine("        }");
-            sb.AppendLine("        catch (Exception ex) { return StatusCode(500, new { error = ex.InnerException?.Message ?? ex.Message }); }");
-            sb.AppendLine("    }");
-
-            sb.AppendLine("}");
-            return new GeneratedFile("Generated/Controllers/AdminTableController.cs", sb.ToString());
-        }
-
         /// <summary>[UserData] 타입 목록에서 메타데이터 JSON 문자열 생성.</summary>
         static string BuildTableMetadataJson(Type[] tableTypes)
         {
@@ -2662,16 +1850,11 @@ END $$;
                 var groupPart = group != null ? $"\"group\":\"{group}\"," : "";
                 var hasUserId = fields.Any(f => f.Name == "userId" || f.Name == "user_id");
                 var userIdPart = hasUserId ? "\"hasUserId\":true," : "";
-                // [Owner] 소유자 컬럼 — RLS 정책(본인 읽기)이 auth.uid() 와 비교할 대상.
-                // 컬럼명은 소문자다 (Postgres 가 따옴표 없는 식별자를 접는다).
-                var owner = AttributeRegistry.Get(type).Owner;
-                var ownerPart = owner != null ? $"\"owner\":\"{owner.Name.ToLower()}\"," : "";
                 var item = "{" +
                     $"\"name\":\"{type.Name}\"," +
                     $"\"tableName\":\"{ToSnakeCase(type.Name)}\"," +
                     groupPart +
                     userIdPart +
-                    ownerPart +
                     $"\"fields\":[{BuildFieldsJson(type)}]" +
                     "}";
                 items.Add(item);

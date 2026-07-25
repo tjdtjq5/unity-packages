@@ -9,7 +9,12 @@ import { sb } from './supabase'
  * 보내는 것은 테이블명과 프리셋 이름뿐이고, SQL 은 함수 안에서 조립된다.
  */
 
-export type Preset = 'public' | 'user' | 'admin' | 'locked' | 'custom'
+/**
+ * "본인만 읽기" 프리셋은 없다 — 게임이 [UserData] 를 Supabase 에서 직접 읽지 않기 때문이다
+ * (Cloud Run 을 거친다). anon 에게 열어 줄 이유가 없고, 열면 그 문은 모든 플레이어에게 열린다.
+ * ADR-0004 결정 20 참조.
+ */
+export type Preset = 'public' | 'admin' | 'locked' | 'custom'
 
 export interface PolicyState {
   table_name: string
@@ -22,7 +27,6 @@ export interface PolicyState {
 
 export const PRESET_LABEL: Record<Preset, string> = {
   public: '공개 데이터',
-  user: '유저 데이터',
   admin: '관리 전용',
   locked: '잠금',
   custom: '사용자 지정',

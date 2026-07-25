@@ -8,7 +8,7 @@ import { toast } from '../../shared/toast'
  * 항상 보이는 것이 핵심이다 — 정책은 코드에도 화면에도 안 나타나서 조용히 어긋난다.
  * 실제로 `FOR ALL USING (true)` 정책 8개가 아무도 모르게 있었고, DB 를 직접 캐물어서야 발견했다.
  */
-export function PolicyBadge({ tableName, canUseOwner }: { tableName: string; canUseOwner: boolean }) {
+export function PolicyBadge({ tableName }: { tableName: string }) {
   const [state, setState] = useState<PolicyState | null>(null)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -48,7 +48,7 @@ export function PolicyBadge({ tableName, canUseOwner }: { tableName: string; can
   }
 
   const danger = state.unsafe
-  const presets: Exclude<Preset, 'custom'>[] = ['public', 'user', 'admin', 'locked']
+  const presets: Exclude<Preset, 'custom'>[] = ['public', 'admin', 'locked']
 
   return (
     <div className="policy-box">
@@ -64,22 +64,18 @@ export function PolicyBadge({ tableName, canUseOwner }: { tableName: string; can
 
       {open && (
         <div className="policy-panel">
-          {presets.map((p) => {
-            const disabled = busy || (p === 'user' && !canUseOwner)
-            return (
-              <label key={p} className={`policy-opt${disabled ? ' disabled' : ''}`}>
-                <input
-                  type="radio"
-                  name={`policy_${tableName}`}
-                  checked={state.preset === p}
-                  disabled={disabled}
-                  onChange={() => void apply(p)}
-                />
-                <span>{PRESET_LABEL[p]}</span>
-                {p === 'user' && !canUseOwner && <span className="policy-note">[Owner] 없음</span>}
-              </label>
-            )
-          })}
+          {presets.map((p) => (
+            <label key={p} className={`policy-opt${busy ? ' disabled' : ''}`}>
+              <input
+                type="radio"
+                name={`policy_${tableName}`}
+                checked={state.preset === p}
+                disabled={busy}
+                onChange={() => void apply(p)}
+              />
+              <span>{PRESET_LABEL[p]}</span>
+            </label>
+          ))}
         </div>
       )}
     </div>

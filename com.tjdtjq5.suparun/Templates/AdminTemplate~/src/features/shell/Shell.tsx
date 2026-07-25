@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AdminsPage } from '../admins/AdminsPage'
 import { AuditPage } from '../audit/AuditPage'
 import { ConfigPage } from '../config/ConfigPage'
-import { CrossPage } from '../cross/CrossPage'
-import { PlayerPage } from '../player/PlayerPage'
 import { TablePage } from '../table/TablePage'
 import { AdminProvider, type AdminContextValue, type ToolbarActions } from './AdminContext'
 import { KeymapHelp } from './KeymapHelp'
@@ -241,10 +239,6 @@ function describeRoute(
       return shell('관리자 목록', 'ADMINS.SH', '~/admins')
     case 'audit':
       return shell('변경 이력', 'AUDIT_LOG.SH', '~/audit_log')
-    case 'cross':
-      return shell('크로스 테이블 검색', 'CROSS_SEARCH.SH', '~/cross_search')
-    case 'player':
-      return shell('플레이어 관리', 'PLAYER_SEARCH.SH', '~/player_search')
     case 'home':
       return shell('Config를 선택하세요', 'READY', '~/admin')
   }
@@ -274,10 +268,6 @@ function ScreenContent({
       return <AdminsPage />
     case 'audit':
       return <AuditPage />
-    case 'cross':
-      return <CrossPage />
-    case 'player':
-      return <PlayerPage key={route.userId ?? ''} initialUserId={route.userId} />
     case 'home':
       return (
         <div className="empty-state">

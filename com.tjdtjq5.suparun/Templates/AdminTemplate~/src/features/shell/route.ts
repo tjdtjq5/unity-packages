@@ -14,8 +14,6 @@ export type Route =
   | { kind: 'table'; tableName: string }
   | { kind: 'admins' }
   | { kind: 'audit' }
-  | { kind: 'cross' }
-  | { kind: 'player'; userId?: string }
 
 export function routeToHash(r: Route): string | null {
   switch (r.kind) {
@@ -27,10 +25,6 @@ export function routeToHash(r: Route): string | null {
       return 'admins'
     case 'audit':
       return 'audit_log'
-    case 'cross':
-      return 'cross_search'
-    case 'player':
-      return 'player_search'
     case 'home':
       return null
   }
@@ -54,8 +48,6 @@ export function hashToRoute(
     const tn = h.slice(6)
     return isKnownTable(tn) ? { kind: 'table', tableName: tn } : { kind: 'home' }
   }
-  if (h === 'player_search') return { kind: 'player' }
-  if (h === 'cross_search') return { kind: 'cross' }
   if (h === 'admins') return { kind: 'admins' }
   if (h === 'audit_log') return { kind: 'audit' }
   return { kind: 'home' }

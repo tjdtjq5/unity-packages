@@ -61,9 +61,15 @@ export interface PostgrestResult<T> {
 /** PromiseLike 라 그대로 await 할 수 있다. */
 export interface PostgrestFilter<T> extends PromiseLike<PostgrestResult<T>> {
   eq(column: string, value: unknown): PostgrestFilter<T>
+  neq(column: string, value: unknown): PostgrestFilter<T>
   in(column: string, values: unknown[]): PostgrestFilter<T>
+  gt(column: string, value: unknown): PostgrestFilter<T>
   gte(column: string, value: unknown): PostgrestFilter<T>
   lt(column: string, value: unknown): PostgrestFilter<T>
+  lte(column: string, value: unknown): PostgrestFilter<T>
+  like(column: string, pattern: string): PostgrestFilter<T>
+  ilike(column: string, pattern: string): PostgrestFilter<T>
+  not(column: string, op: string, value: unknown): PostgrestFilter<T>
   order(column: string, opts?: { ascending?: boolean }): PostgrestFilter<T>
   limit(count: number): PostgrestFilter<T>
   range(from: number, to: number): PostgrestFilter<T>

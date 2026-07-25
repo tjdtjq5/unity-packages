@@ -42,10 +42,9 @@ namespace Tjdtjq5.SupaRun.Editor
         /// </summary>
         public static List<GeneratedFile> GenerateSchemaSql()
         {
-            var tableTypes = ScanTypes<UserDataAttribute>();
             var specTypes = ScanTypes<SpecDataAttribute>();
-            if (tableTypes.Length == 0 && specTypes.Length == 0) return null;
-            return ServerCodeGenerator.GenerateSchemaSql(tableTypes, specTypes);
+            if (specTypes.Length == 0) return null;
+            return ServerCodeGenerator.GenerateSchemaSql(specTypes);
         }
 
         /// <summary>
@@ -265,8 +264,16 @@ namespace Tjdtjq5.SupaRun.Editor
         // [UserData]/[SpecData]/[Service] 부착된 모든 user 타입을 수집한다.
         // TypeCache는 모든 어셈블리(asmdef 분리 포함)를 미리 인덱싱하므로
         // Assembly-CSharp 단일 가정 없이 안전하게 스캔한다.
+        /// <summary>
+        /// [SpecData] 등을 스캔한다. **반드시 정렬한다** —
+        /// `TypeCache.GetTypesWithAttribute` 는 순서를 보장하지 않아(Unity 문서: "the order ... is undefined")
+        /// 도메인 리로드마다 결과 순서가 달라질 수 있다. 그러면 내용이 같아도 생성 JSON 이 달라져
+        /// SchemaAutoSync 가 매번 "변경됨"으로 판정하고, 어드민 사이드바 순서도 흔들린다.
+        /// </summary>
         static Type[] ScanTypes<T>() where T : Attribute
-            => TypeCache.GetTypesWithAttribute<T>().ToArray();
+            => TypeCache.GetTypesWithAttribute<T>()
+                .OrderBy(t => t.FullName, StringComparer.Ordinal)
+                .ToArray();
 
         static List<GeneratedFile> GetTemplateFiles(SupaRunSettings settings)
         {

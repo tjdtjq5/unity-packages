@@ -108,8 +108,7 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
 
   // 정책 배지는 **데이터가 없을 때도** 보여야 한다 —
   // 정책이 잘못돼 아무것도 못 읽는 상황이 정확히 그 경우다.
-  // SpecData 에는 [Owner] 개념이 없으므로 "유저 데이터" 프리셋은 비활성이다.
-  const badge = <PolicyBadge tableName={configType.tableName} canUseOwner={false} />
+  const badge = <PolicyBadge tableName={configType.tableName} />
 
   if (!rows) {
     return (

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { configApi } from '../../shared/api'
+import { selectAll } from '../../shared/db'
 import type { AuditLog } from '../../shared/types'
 
 const LIMIT = 100
 
 /**
- * 변경 이력 목록. 바닐라 showAuditLog() 의 데이터 부분을 대체한다.
+ * 변경 이력 목록. 서버 `/_audit` 대신 admin_audit_log 를 직접 읽는다 (ADR-0004).
  *
- * 바닐라는 전역 `auditLogs` 배열에 담고 상세 버튼이 인덱스로 그 배열을 참조했다.
- * React 에서는 로그 객체를 그대로 넘기므로 전역이 필요 없다.
+ * `admin_read` 정책(is_admin)이 걸려 있어 관리자만 보인다. 쓰기 정책은 없다 —
+ * 기록은 suparun_audit() 트리거(SECURITY DEFINER)만 하고, 사람이 고칠 수 있으면 감사가 아니다.
  */
 export function useAuditLogs() {
   const [logs, setLogs] = useState<AuditLog[] | null>(null)
@@ -17,7 +17,13 @@ export function useAuditLogs() {
   const reload = useCallback(async () => {
     try {
       setError(null)
-      setLogs(await configApi<AuditLog[]>(`/_audit?limit=${LIMIT}`))
+      setLogs(
+        await selectAll<AuditLog>('admin_audit_log', {
+          orderBy: 'created_at',
+          ascending: false,
+          limit: LIMIT,
+        }),
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }

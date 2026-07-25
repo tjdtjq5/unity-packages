@@ -53,22 +53,23 @@ export function Sidebar({
         />
       ))}
 
+      {/* [UserData] 테이블 — 읽기 전용 조회·통계.
+          예전에는 여기에 player_search / cross_search 만 있고 개별 테이블 진입점이 없어서
+          Table 화면에 아예 닿을 수 없었다. 두 화면을 걷어내면서 제자리를 찾았다. */}
       {tableTypes.length > 0 && (
         <>
           <div className="tree-section">[TABLES]</div>
           <div className="tree-list">
-            <TreeItem
-              branch="├─"
-              label="player_search"
-              active={route.kind === 'player'}
-              onClick={() => onNavigate({ kind: 'player' })}
-            />
-            <TreeItem
-              branch="└─"
-              label="cross_search"
-              active={route.kind === 'cross'}
-              onClick={() => onNavigate({ kind: 'cross' })}
-            />
+            {tableTypes.map((t, i) => (
+              <TreeItem
+                key={t.tableName}
+                branch={i === tableTypes.length - 1 ? '└─' : '├─'}
+                label={t.name}
+                dataType={t.tableName}
+                active={route.kind === 'table' && route.tableName === t.tableName}
+                onClick={() => onNavigate({ kind: 'table', tableName: t.tableName })}
+              />
+            ))}
           </div>
         </>
       )}

@@ -236,8 +236,22 @@ namespace Tjdtjq5.SupaRun.Editor
             }
 
             foreach (var f in changed) stored[Path.GetFileName(f.Path)] = HashOf(f.Content);
-            WriteStoredHashes(stored);
+            WriteStoredHashes(Prune(stored, sqlFiles));
             Debug.Log($"[SupaRun:Schema] 반영 완료 — {changed.Count}개. 어드민을 새로고침하면 보입니다.");
+        }
+
+        /// <summary>
+        /// 이번에 생성된 파일에 없는 항목을 버린다.
+        /// 파일이 이름을 바꾸거나(_suparun_meta → _config/_table) 타입이 사라지면
+        /// 옛 해시가 계속 쌓여 목록이 실제와 어긋난다.
+        /// </summary>
+        static Dictionary<string, string> Prune(Dictionary<string, string> stored, List<GeneratedFile> current)
+        {
+            var live = new HashSet<string>(current.Select(f => Path.GetFileName(f.Path)));
+            var next = new Dictionary<string, string>();
+            foreach (var kv in stored)
+                if (live.Contains(kv.Key)) next[kv.Key] = kv.Value;
+            return next;
         }
 
         static string HashOf(string content)

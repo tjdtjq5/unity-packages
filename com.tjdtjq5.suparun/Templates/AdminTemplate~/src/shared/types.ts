@@ -92,8 +92,6 @@ export interface TableField {
 export interface TableType {
   name: string
   tableName: string
-  /** `[Owner]` 로 선언된 소유자 컬럼(소문자). 없으면 "관리자만" 정책밖에 못 쓴다. */
-  owner?: string
   fields: TableField[]
 }
 
@@ -112,11 +110,15 @@ export interface TableFilter {
   value: string
 }
 
+/**
+ * 합계·평균은 없다 (ADR-0004 결정 8).
+ * PostgREST 가 집계 함수를 막아(`PGRST123`) 전체 스캔 없이는 구할 수 없는데,
+ * 그것 하나 때문에 SQL 함수를 만들거나 max_rows 를 건드릴 만한 가치가 없다.
+ * 건수·최소·최대와 분포 차트는 소량 수신으로 **정확하게** 얻을 수 있다.
+ */
 export interface TableStats {
-  sum: number
-  avg: number
-  max: number
-  min: number
+  max: number | null
+  min: number | null
   count: number
 }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { tableApi } from '../../shared/api'
+import { selectDistribution, selectPage, selectStats } from '../../shared/db'
 import { toast } from '../../shared/toast'
 import { enableColResize } from '../../shared/colResize'
 import type {
@@ -7,6 +7,7 @@ import type {
   FilterOp,
   TableData,
   TableFilter,
+  TableRow,
   TableStats,
   TableType,
 } from '../../shared/types'
@@ -16,24 +17,7 @@ import { DistChart } from './DistChart'
 /** 바닐라 TABLE_PAGE_SIZE 와 같은 값. */
 const PAGE_SIZE = 50
 const OPS: FilterOp[] = ['=', '>', '>=', '<', '<=', 'like']
-const OP_SUFFIX: Record<string, string> = {
-  '>': 'gt',
-  '>=': 'gte',
-  '<': 'lt',
-  '<=': 'lte',
-  like: 'like',
-}
 const NUMERIC = ['int', 'long', 'number']
-
-/** 바닐라의 필터 쿼리스트링 빌드 규칙과 동일. `=` 는 접미사 없이, 나머지는 `field.gt` 형태. */
-function buildParams(filters: TableFilter[]): URLSearchParams {
-  const p = new URLSearchParams()
-  for (const f of filters) {
-    const key = f.op === '=' ? f.field : `${f.field}.${OP_SUFFIX[f.op] ?? 'eq'}`
-    p.set(key, f.value)
-  }
-  return p
-}
 
 /**
  * Table 조회 화면. 바닐라 selectTableType/loadTableData/renderTableView/loadStats 를 옮긴 것이다.
@@ -54,18 +38,20 @@ export function TablePage({ tableType }: { tableType: TableType }) {
 
   const load = useCallback(async () => {
     setData(null)
-    const params = buildParams(filters)
-    params.set('limit', String(PAGE_SIZE))
-    params.set('offset', String(page * PAGE_SIZE))
     try {
-      const res = await tableApi<TableData>(`/${tableType.tableName}?${params}`)
+      const res = await selectPage<TableRow>(
+        tableType.tableName,
+        filters,
+        page * PAGE_SIZE,
+        PAGE_SIZE,
+      )
       setData(res)
       setPageSubtitle(`${res.total}건`)
     } catch (e) {
       toast('조회 실패: ' + (e instanceof Error ? e.message : String(e)), 'error')
       setData({ rows: [], total: 0 })
     }
-  }, [tableType.tableName, filters, page])
+  }, [tableType.tableName, filters, page, setPageSubtitle])
 
   useEffect(() => {
     void load()
@@ -304,16 +290,14 @@ function StatsPanel({
     if (!field) return
     let cancelled = false
     void (async () => {
-      const params = buildParams(filters)
-      params.set('field', field)
       try {
-        const s = await tableApi<TableStats>(`/${tableName}/_stats?${params}`)
-        const d = await tableApi<{ buckets?: DistBucket[] }>(
-          `/${tableName}/_distribution?${params}&buckets=10`,
-        )
+        // 집계 함수 없이 구한다 — count 는 본문 0행, min/max 는 1행,
+        // 분포는 구간별 count. 데이터가 몇 만이든 전송량이 거의 없다 (ADR-0004 결정 8).
+        const s = await selectStats(tableName, field, filters)
+        const d = await selectDistribution(tableName, field, filters, 10)
         if (cancelled) return
         setStats(s)
-        setBuckets(d.buckets ?? [])
+        setBuckets(d)
       } catch (e) {
         // 바닐라와 동일 — 통계 실패는 토스트를 띄우지 않고 콘솔에만 남긴다
         console.error('Stats error:', e)
@@ -352,11 +336,9 @@ function StatsPanel({
             <div className="card-body">
               {stats ? (
                 <div className="row text-center">
-                  <Stat label="합계" value={n(stats.sum)} />
-                  <Stat label="평균" value={n(stats.avg, 1)} />
-                  <Stat label="최대" value={n(stats.max)} />
-                  <Stat label="최소" value={n(stats.min)} />
                   <Stat label="건수" value={n(stats.count)} />
+                  <Stat label="최소" value={stats.min == null ? '—' : n(stats.min)} />
+                  <Stat label="최대" value={stats.max == null ? '—' : n(stats.max)} />
                 </div>
               ) : (
                 <div className="text-muted">필드를 선택하세요</div>
