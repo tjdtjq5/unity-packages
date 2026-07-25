@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { configApi, tableApi } from '../../shared/api'
+import { selectAll } from '../../shared/db'
+import { loadMeta } from '../../shared/meta'
 import type { ConfigField, ConfigType, FkOption, JsonSchemaField, TableType } from '../../shared/types'
 
 /**
@@ -36,20 +37,11 @@ export function useAdminData(): AdminData {
     let alive = true
 
     void (async () => {
-      // 타입 목록 — 실패해도 빈 목록으로 진행한다(바닐라 동일).
-      // 401/403 은 api() 안에서 로그인 화면 복귀로 처리되므로 여기서 따로 다루지 않는다.
-      let types: ConfigType[] = []
-      try {
-        types = await configApi<ConfigType[]>('/_types')
-      } catch {
-        types = []
-      }
-      let tableTypes: TableType[] = []
-      try {
-        tableTypes = await tableApi<TableType[]>('/_types')
-      } catch {
-        tableTypes = []
-      }
+      // 타입 메타 — 서버 /_types 가 아니라 suparun_meta 에서 읽는다 (ADR-0004).
+      // Unity 가 컴파일할 때 밀어 넣은 것이라 서버 재배포 없이 최신이다.
+      const meta = await loadMeta(['config_types', 'table_types'])
+      const types = (meta.config_types as ConfigType[] | undefined) ?? []
+      const tableTypes = (meta.table_types as TableType[] | undefined) ?? []
       if (!alive) return
       // 사이드바를 먼저 띄우고 참조 데이터는 뒤따라 채운다.
       setData((d) => ({ ...d, types, tableTypes, ready: true }))
@@ -58,7 +50,7 @@ export function useAdminData(): AdminData {
       for (const t of types) {
         if (t.tableName === 'currency_def' || t.tableName === 'inventory_item_def') {
           try {
-            rewardSources[t.tableName] = await configApi<FkOption[]>(`/${t.tableName}`)
+            rewardSources[t.tableName] = await selectAll<FkOption>(t.tableName)
           } catch {
             /* 없는 테이블이면 그냥 비워둔다 */
           }
@@ -73,7 +65,7 @@ export function useAdminData(): AdminData {
           const t = types.find((x) => x.name === name)
           if (!t) return
           try {
-            fkSources[name] = await configApi<FkOption[]>(`/${t.tableName}`)
+            fkSources[name] = await selectAll<FkOption>(t.tableName)
           } catch {
             /* 참조 대상이 사라졌을 수 있다 — 드롭다운만 비고 값은 보존된다 */
           }

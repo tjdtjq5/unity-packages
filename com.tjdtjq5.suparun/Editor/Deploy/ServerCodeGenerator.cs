@@ -8,6 +8,32 @@ namespace Tjdtjq5.SupaRun.Editor
 {
     public static class ServerCodeGenerator
     {
+        /// <summary>
+        /// 마이그레이션 SQL 만 생성한다 (ADR-0004 — 컴파일 후 자동 반영용).
+        ///
+        /// <see cref="Generate"/> 를 쓰지 않는 이유: 그쪽은 어드민 컨트롤러를 만들면서
+        /// SpriteAtlas 를 열어 PNG 를 base64 로 굽고(BuildIconsJson) Addressables 전체를
+        /// 스캔한다(BuildComponentsJson). **컴파일할 때마다** 그걸 돌리면 에디터가 멈춘다.
+        /// 여기서는 SQL 에 필요한 것만 만든다.
+        ///
+        /// 반환 순서는 서버(Program.cs)의 실행 순서와 같아야 한다 —
+        /// 호출부에서 파일명 기준으로 정렬한다.
+        /// </summary>
+        public static List<GeneratedFile> GenerateSchemaSql(Type[] tableTypes, Type[] specTypes)
+        {
+            var files = new List<GeneratedFile>
+            {
+                GenerateSupaRunCoreMigration(),
+                GenerateMetaUpsertMigration(specTypes, tableTypes),
+                new GeneratedFile("Generated/Migrations/server_logs.sql", GenerateServerLogsMigration()),
+                GenerateAdminUserMigration(),
+                GenerateAdminAuditMigration(),
+            };
+            foreach (var type in tableTypes) files.Add(GenerateMigration(type));
+            foreach (var type in specTypes) files.Add(GenerateMigration(type));
+            return files;
+        }
+
         public static List<GeneratedFile> Generate(
             Type[] tableTypes, Type[] specTypes, Type[] logicTypes,
             SupaRunSettings settings)
@@ -25,6 +51,11 @@ namespace Tjdtjq5.SupaRun.Editor
 
             // DapperGameDB
             files.Add(GenerateDapperGameDB());
+
+            // SupaRun 코어 — 메타 테이블 + is_admin() + 감사 트리거 함수.
+            // 파일명이 `_` 로 시작해 다른 마이그레이션보다 먼저 실행된다 (ADR-0004).
+            files.Add(GenerateSupaRunCoreMigration());
+            files.Add(GenerateMetaUpsertMigration(specTypes, tableTypes));
 
             // 서버 로그 시스템
             files.Add(new GeneratedFile("Generated/Migrations/server_logs.sql", GenerateServerLogsMigration()));
@@ -835,9 +866,66 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
                 sb.AppendLine($"    UPDATE {tableName} SET sort_order = ordered.rn FROM ordered WHERE {tableName}.ctid = ordered.ctid;");
                 sb.AppendLine($"  END IF;");
                 sb.AppendLine($"END $$;");
+
+                // 어드민이 Supabase 에 직접 쓰므로 쓰기 정책이 필요하다 (ADR-0004).
+                // 지금까지는 서버가 service_role 로 RLS 를 우회해 썼기에 정책이 없었다.
+                sb.AppendLine();
+                AppendPolicy(sb, tableName, "admin_write", "FOR ALL", "is_admin()", "is_admin()");
+
+                // 변경 이력은 트리거로 남긴다 — 클라이언트가 건너뛸 수 없다.
+                // [SpecData] 에만 단다. [UserData] 에 달면 게임 플레이마다 로그가 쌓여 폭발한다.
+                AppendAuditTrigger(sb, tableName, info);
+            }
+            else
+            {
+                // [UserData] — 지금까지 정책이 하나도 없어 anon/authenticated 는 완전 차단이었고,
+                // 서버만 service_role 로 접근했다. 어드민이 직접 붙으려면 문을 열어야 한다.
+                //
+                // ⚠ 게임 클라이언트도 같은 anon key 를 쓴다. 여기서 연 문은 모든 플레이어에게도 열린다.
+                //   그래서 **쓰기는 관리자에게만** 준다 — 열면 currency_balance 직접 조작이 가능해진다.
+                //   게임의 쓰기는 지금처럼 Cloud Run 이 service_role 로 처리한다.
+                sb.AppendLine();
+                sb.AppendLine($"ALTER TABLE {tableName} ENABLE ROW LEVEL SECURITY;");
+
+                var ownerCol = info.Owner?.Name.ToLower();
+                if (ownerCol != null)
+                {
+                    // [Owner] 있음 — 본인은 자기 행만 읽는다. auth.uid() 와 직접 비교하므로
+                    // 그 컬럼에 Supabase Auth UUID 가 들어 있어야 한다.
+                    AppendPolicy(sb, tableName, "owner_read", "FOR SELECT",
+                        $"{ownerCol} = auth.uid()::text");
+                }
+                // [Owner] 없음 — 소유자 개념이 없는 테이블(server_log 등)은 관리자 전용이다.
+                AppendPolicy(sb, tableName, "admin_all", "FOR ALL", "is_admin()", "is_admin()");
             }
 
             return new GeneratedFile($"Generated/Migrations/{tableName}.sql", sb.ToString());
+        }
+
+        /// <summary>RLS 정책을 멱등하게 추가한다 (CREATE POLICY 에는 IF NOT EXISTS 가 없다).</summary>
+        static void AppendPolicy(StringBuilder sb, string tableName, string policyName,
+            string forClause, string usingExpr, string checkExpr = null)
+        {
+            sb.AppendLine($"DO $$ BEGIN");
+            sb.AppendLine($"  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = '{tableName}' AND policyname = '{policyName}') THEN");
+            var check = checkExpr != null ? $" WITH CHECK ({checkExpr})" : "";
+            sb.AppendLine($"    CREATE POLICY {policyName} ON {tableName} {forClause} USING ({usingExpr}){check};");
+            sb.AppendLine($"  END IF;");
+            sb.AppendLine($"END $$;");
+        }
+
+        /// <summary>
+        /// 변경 이력 트리거. PK 컬럼명을 인자로 넘겨 공용 함수 하나를 재사용한다.
+        /// DROP + CREATE 로 멱등 — 컬럼이 바뀌어도 최신 정의로 덮인다.
+        /// </summary>
+        static void AppendAuditTrigger(StringBuilder sb, string tableName, TypeAttributeInfo info)
+        {
+            var pk = info.PrimaryKey?.Name.ToLower() ?? "id";
+            sb.AppendLine();
+            sb.AppendLine($"DROP TRIGGER IF EXISTS audit_{tableName} ON {tableName};");
+            sb.AppendLine($"CREATE TRIGGER audit_{tableName}");
+            sb.AppendLine($"  AFTER INSERT OR UPDATE OR DELETE ON {tableName}");
+            sb.AppendLine($"  FOR EACH ROW EXECUTE FUNCTION suparun_audit('{pk}');");
         }
 
         static string ToCSharpType(Type t)
@@ -1589,6 +1677,276 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
 }");
         }
 
+        // ── SupaRun 코어 마이그레이션 (ADR-0004) ──
+
+        /// <summary>
+        /// 메타 테이블 + 모든 RLS 정책이 쓰는 공통 함수.
+        ///
+        /// 파일명이 `_` 로 시작하는 이유: 서버는 Migrations 폴더를 이름순으로 실행하는데
+        /// (`Program.cs` — `Directory.GetFiles(...).OrderBy(f => f)`), 다른 파일의 정책이
+        /// is_admin() 을 참조하므로 **반드시 먼저** 실행돼야 한다. ASCII 에서 `_`(0x5F)는
+        /// 소문자(0x61~)보다 앞이라 항상 첫 번째가 된다.
+        ///
+        /// 두 함수 모두 plpgsql 인 이유: LANGUAGE sql 은 생성 시점에 본문의 참조 객체를 검증한다.
+        /// 이 파일이 admin_user / admin_audit_log 보다 먼저 실행되므로 그때는 두 테이블이 없다.
+        /// plpgsql 은 본문을 실행 시점에 해석하므로 순서에 걸리지 않는다.
+        /// </summary>
+        static GeneratedFile GenerateSupaRunCoreMigration()
+        {
+            return new GeneratedFile("Generated/Migrations/_suparun_core.sql",
+@"-- ══ SupaRun 코어 (자동 생성) ══════════════════════════════════════════
+-- 어드민이 서버를 거치지 않고 Supabase 에 직접 붙기 위한 토대. ADR-0004 참조.
+
+-- ── 어드민 메타데이터 ──
+-- 어드민이 표를 그리려면 컬럼 목록/enum/FK/조건이 필요한데, 그건 C# attribute 에만 있다.
+-- 서버 코드에 _typesJson 으로 박아 넣던 것을 여기로 옮겨 재배포 없이 갱신한다.
+CREATE TABLE IF NOT EXISTS suparun_meta (
+    key        TEXT PRIMARY KEY,
+    value      JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE suparun_meta ENABLE ROW LEVEL SECURITY;
+-- 스키마 정보일 뿐 비밀이 아니다. 어드민이 로그인 전에도 읽을 수 있어야 화면이 뜬다.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_meta' AND policyname = 'public_read') THEN
+    CREATE POLICY public_read ON suparun_meta FOR SELECT USING (true);
+  END IF;
+END $$;
+-- 쓰기 정책은 없다. Unity 가 Management API(service_role)로만 갱신한다.
+
+-- ── 관리자 판별 ──
+-- 모든 RLS 정책이 이 함수를 쓴다.
+-- SECURITY DEFINER 가 필수다 — admin_user 자신에도 RLS 가 걸려 있어서, 없으면
+-- 함수가 자기 참조에서 막혀 **항상 false** 가 되고 관리자가 아무것도 못 하게 된다.
+-- search_path 고정: 없으면 호출자가 스키마를 바꿔치기해 가짜 admin_user 로 우회할 수 있다.
+CREATE OR REPLACE FUNCTION is_admin() RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 FROM admin_user
+        WHERE user_id = auth.uid()::text AND role = 'admin'
+    );
+END $$;
+
+-- ── 변경 이력 자동 기록 ──
+-- 어드민이 Supabase 에 직접 쓰게 되면서, 기록을 클라이언트에 맡기면 건너뛸 수 있어
+-- 감사가 무의미해진다. 트리거로 내리면 **어떤 경로로 고쳐도** 남는다.
+-- SECURITY DEFINER: 호출자에게 admin_audit_log INSERT 권한이 없어도 기록돼야 한다.
+-- TG_ARGV[0] 로 PK 컬럼명을 받는다 — 테이블마다 PK 이름이 달라 함수 하나를 공용하려면 필요하다.
+CREATE OR REPLACE FUNCTION suparun_audit() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_before JSONB;
+    v_after  JSONB;
+    v_pk     TEXT := TG_ARGV[0];
+    v_row_id TEXT;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_before := to_jsonb(OLD); v_after := NULL;          v_row_id := v_before ->> v_pk;
+    ELSIF TG_OP = 'UPDATE' THEN
+        v_before := to_jsonb(OLD); v_after := to_jsonb(NEW); v_row_id := v_after  ->> v_pk;
+    ELSE
+        v_before := NULL;          v_after := to_jsonb(NEW); v_row_id := v_after  ->> v_pk;
+    END IF;
+
+    INSERT INTO admin_audit_log
+        (id, admin_id, config_type, row_id, action, before_json, after_json, created_at)
+    VALUES
+        (gen_random_uuid()::text,
+         coalesce(auth.uid()::text, 'server'),   -- service_role 로 쓰면 auth.uid() 가 NULL 이다
+         TG_TABLE_NAME, v_row_id, lower(TG_OP),
+         v_before::text, v_after::text,
+         (extract(epoch from now()) * 1000)::bigint);
+    RETURN NULL;   -- AFTER 트리거라 반환값은 무시된다
+END $$;
+
+-- ══ 정책 관리 (ADR-0004 결정 15~19) ═══════════════════════════════
+-- RLS 정책은 코드에도 화면에도 안 나타나고 DB 를 직접 캐물어야 보인다. 그래서 조용히 어긋난다
+-- (실제로 FOR ALL USING(true) 정책 8개가 아무도 모르게 있었다).
+-- 어드민에서 상시 보이게 하고, 프리셋으로만 바꾸게 한다.
+
+-- 관리 대상인가 — suparun_meta 에 등록된 테이블만 건드릴 수 있다.
+-- 이 화이트리스트가 없으면 admin_user 의 정책까지 지울 수 있다.
+CREATE OR REPLACE FUNCTION suparun_is_managed(p_table text) RETURNS boolean
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM suparun_meta m, jsonb_array_elements(m.value) e
+    WHERE m.key IN ('config_types', 'table_types') AND e->>'tableName' = p_table
+  );
+$$;
+
+-- [Owner] 로 선언된 소유자 컬럼. 코드가 진실이라 메타에서 읽는다.
+CREATE OR REPLACE FUNCTION suparun_owner_column(p_table text) RETURNS text
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+  SELECT e->>'owner' FROM suparun_meta m, jsonb_array_elements(m.value) e
+  WHERE m.key = 'table_types' AND e->>'tableName' = p_table
+  LIMIT 1;
+$$;
+
+-- 현재 정책 상태. 프리셋으로 되돌려 읽되, 우리가 만든 조합과 다르면 'custom' 이다.
+-- unsafe = 쓰기가 무조건 허용된 상태(USING true 인 ALL/INSERT/UPDATE/DELETE) — 화면에서 빨갛게 띄운다.
+CREATE OR REPLACE FUNCTION suparun_policies()
+RETURNS TABLE(table_name text, preset text, unsafe boolean, detail text)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+DECLARE
+    r        record;
+    v_names  text[];
+    v_unsafe boolean;
+    v_detail text;
+    v_preset text;
+BEGIN
+    IF NOT is_admin() THEN
+        RAISE EXCEPTION '관리자만 조회할 수 있습니다';
+    END IF;
+
+    FOR r IN
+        SELECT DISTINCT e->>'tableName' AS tbl
+        FROM suparun_meta m, jsonb_array_elements(m.value) e
+        WHERE m.key IN ('config_types', 'table_types')
+        ORDER BY 1
+    LOOP
+        SELECT array_agg(p.policyname ORDER BY p.policyname),
+               bool_or(p.cmd <> 'SELECT' AND coalesce(p.qual, 'true') = 'true'),
+               string_agg(p.policyname || '(' || p.cmd || ': ' || coalesce(p.qual, '-') || ')', ', ' ORDER BY p.policyname)
+          INTO v_names, v_unsafe, v_detail
+          FROM pg_policies p
+         WHERE p.schemaname = 'public' AND p.tablename = r.tbl;
+
+        v_names  := coalesce(v_names, ARRAY[]::text[]);
+        v_unsafe := coalesce(v_unsafe, false);
+
+        -- 이름 조합으로 프리셋을 되짚는다. 조건식까지 우리 것과 같아야 하므로 unsafe 면 custom 이다.
+        IF v_unsafe THEN
+            v_preset := 'custom';
+        ELSIF v_names = ARRAY['admin_write', 'public_read'] THEN
+            v_preset := 'public';
+        ELSIF v_names = ARRAY['admin_all', 'owner_read'] THEN
+            v_preset := 'user';
+        ELSIF v_names = ARRAY['admin_all'] THEN
+            v_preset := 'admin';
+        ELSIF array_length(v_names, 1) IS NULL THEN
+            v_preset := 'locked';
+        ELSE
+            v_preset := 'custom';
+        END IF;
+
+        table_name := r.tbl; preset := v_preset; unsafe := v_unsafe; detail := coalesce(v_detail, '(정책 없음)');
+        RETURN NEXT;
+    END LOOP;
+END $$;
+
+-- 프리셋 적용. **테이블명과 프리셋 이름만** 받는다 — 조건식을 문자열로 받으면
+-- 그 자체가 임의 SQL 실행 통로가 된다. 식별자는 format('%I') 로만 조립한다.
+CREATE OR REPLACE FUNCTION suparun_set_policy(p_table text, p_preset text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_owner text;
+BEGIN
+    IF NOT is_admin() THEN
+        RAISE EXCEPTION '관리자만 정책을 바꿀 수 있습니다';
+    END IF;
+    IF NOT suparun_is_managed(p_table) THEN
+        RAISE EXCEPTION 'SupaRun 이 관리하는 테이블이 아닙니다: %', p_table;
+    END IF;
+
+    -- SupaRun 이 만든 이름만 걷어낸다. 손으로 추가한 특수 정책은 남긴다.
+    EXECUTE format('DROP POLICY IF EXISTS public_read ON %I', p_table);
+    EXECUTE format('DROP POLICY IF EXISTS admin_write ON %I', p_table);
+    EXECUTE format('DROP POLICY IF EXISTS owner_read  ON %I', p_table);
+    EXECUTE format('DROP POLICY IF EXISTS admin_all   ON %I', p_table);
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', p_table);
+
+    IF p_preset = 'public' THEN
+        EXECUTE format('CREATE POLICY public_read ON %I FOR SELECT USING (true)', p_table);
+        EXECUTE format('CREATE POLICY admin_write ON %I FOR ALL USING (is_admin()) WITH CHECK (is_admin())', p_table);
+
+    ELSIF p_preset = 'user' THEN
+        v_owner := suparun_owner_column(p_table);
+        IF v_owner IS NULL THEN
+            RAISE EXCEPTION '[Owner] 필드가 선언되지 않아 ""유저 데이터"" 를 쓸 수 없습니다: %', p_table;
+        END IF;
+        EXECUTE format('CREATE POLICY owner_read ON %I FOR SELECT USING (%I = auth.uid()::text)', p_table, v_owner);
+        EXECUTE format('CREATE POLICY admin_all ON %I FOR ALL USING (is_admin()) WITH CHECK (is_admin())', p_table);
+
+    ELSIF p_preset = 'admin' THEN
+        EXECUTE format('CREATE POLICY admin_all ON %I FOR ALL USING (is_admin()) WITH CHECK (is_admin())', p_table);
+
+    ELSIF p_preset = 'locked' THEN
+        NULL;   -- 정책 없음 = 서버(service_role)만 접근
+
+    ELSE
+        RAISE EXCEPTION '알 수 없는 프리셋: %', p_preset;
+    END IF;
+
+    -- DDL 은 데이터 트리거가 잡지 못한다. 보안 설정 변경이라 이력이 없으면 곤란하므로 직접 남긴다.
+    INSERT INTO admin_audit_log
+        (id, admin_id, config_type, row_id, action, before_json, after_json, created_at)
+    VALUES
+        (gen_random_uuid()::text, coalesce(auth.uid()::text, 'server'),
+         p_table, NULL, 'policy', NULL, p_preset,
+         (extract(epoch from now()) * 1000)::bigint);
+END $$;
+");
+        }
+
+        /// <summary>
+        /// 타입 메타데이터를 suparun_meta 에 밀어 넣는다 (ADR-0004 결정 6·7).
+        ///
+        /// 마이그레이션 파일로 두는 이유: 서버 배포 시에도 최신 메타가 반영된다.
+        /// 컴파일 훅(<see cref="SchemaAutoSync"/>)은 **같은 SQL** 을 Management API 로 실행해
+        /// 배포 없이 갱신한다 — 두 경로가 같은 결과를 내야 하므로 생성 지점을 하나로 둔다.
+        ///
+        /// 여기에는 **리플렉션만으로 만들어지는 가벼운 것**만 넣는다. 아이콘/컴포넌트 맵은
+        /// SpriteAtlas 를 굽고 Addressables 를 훑어야 해서 <see cref="BuildAdminAssetsMetaSql"/> 로 뺐다.
+        ///
+        /// 파일명은 `_suparun_core.sql` 다음으로 실행돼야 한다(테이블이 거기서 생성됨).
+        /// `core` &lt; `meta` 라 이름순으로 자연히 뒤가 된다.
+        /// </summary>
+        public static GeneratedFile GenerateMetaUpsertMigration(Type[] specTypes, Type[] tableTypes)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("-- 어드민 타입 메타데이터 (자동 생성) — ADR-0004");
+            sb.AppendLine("-- 어드민이 이 행들을 읽어 표를 그린다. 서버 _typesJson 을 대체한다.");
+            sb.AppendLine();
+            AppendMetaUpsert(sb, "config_types", BuildConfigMetadataJson(specTypes));
+            AppendMetaUpsert(sb, "table_types", BuildTableMetadataJson(tableTypes));
+            return new GeneratedFile("Generated/Migrations/_suparun_meta.sql", sb.ToString());
+        }
+
+        /// <summary>
+        /// 아이콘 썸네일 + 어드레서블 주소 맵 UPSERT SQL (ADR-0004).
+        ///
+        /// **무겁다** — SpriteAtlas 를 열어 PNG 를 base64 로 굽고 Addressables 전체를 훑는다.
+        /// 그래서 컴파일 훅이 아니라 **어드민 페이지를 여는 시점**에만 실행한다.
+        /// 아이콘이 실제로 필요해지는 순간이고, 스프라이트를 안 건드린 컴파일에서 낭비하지 않는다.
+        /// </summary>
+        public static string BuildAdminAssetsMetaSql(Type[] specTypes)
+        {
+            var sb = new StringBuilder();
+            AppendMetaUpsert(sb, "icons", BuildIconsJson(specTypes));
+            AppendMetaUpsert(sb, "components", BuildComponentsJson(specTypes));
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// JSON 을 dollar-quoting 으로 감싸 UPSERT 한다.
+        /// 작은따옴표 이스케이프를 신경 쓰지 않아도 되고, 메타 JSON 에 `$suparun$` 가 나올 일은 없다.
+        /// </summary>
+        static void AppendMetaUpsert(StringBuilder sb, string key, string json)
+        {
+            sb.AppendLine($"INSERT INTO suparun_meta (key, value, updated_at)");
+            sb.AppendLine($"VALUES ('{key}', $suparun${json}$suparun$::jsonb, now())");
+            sb.AppendLine($"ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();");
+            sb.AppendLine();
+        }
+
         // ── admin_audit_log 마이그레이션 ──
 
         static GeneratedFile GenerateAdminAuditMigration()
@@ -1607,6 +1965,15 @@ CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DES
 
 CREATE INDEX IF NOT EXISTS idx_admin_audit_config ON admin_audit_log (config_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_admin ON admin_audit_log (admin_id, created_at DESC);
+
+-- 이력 자체는 관리자만 읽는다. 쓰기 정책은 두지 않는다 —
+-- 기록은 SECURITY DEFINER 트리거만 하고, 사람이 직접 고칠 수 있으면 감사가 아니다.
+ALTER TABLE admin_audit_log ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_audit_log' AND policyname = 'admin_read') THEN
+    CREATE POLICY admin_read ON admin_audit_log FOR SELECT USING (is_admin());
+  END IF;
+END $$;
 ");}
 
         // ── AdminUser 모델 ──
@@ -1645,6 +2012,22 @@ ALTER TABLE admin_user ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'pend
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_email ON admin_user (email) WHERE email IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHERE user_id IS NOT NULL;
+
+-- admin_user 자체: 관리자만 접근. 단 미등록 유저의 자동 등록(첫 가입자=admin)은
+-- 서버가 service_role 로 하므로 RLS 를 우회한다 — 여기서 막아도 그 흐름은 그대로 동작한다.
+ALTER TABLE admin_user ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_user' AND policyname = 'admin_all') THEN
+    CREATE POLICY admin_all ON admin_user FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+  END IF;
+END $$;
+
+-- 본인 행은 읽을 수 있게 한다 — 어드민 페이지가 ""내가 승인 대기인지"" 를 보여주려면 필요하다.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_user' AND policyname = 'self_read') THEN
+    CREATE POLICY self_read ON admin_user FOR SELECT USING (user_id = auth.uid()::text);
+  END IF;
+END $$;
 ");}
 
         // ── 공통 필드 메타데이터 생성 ──
@@ -2279,11 +2662,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHE
                 var groupPart = group != null ? $"\"group\":\"{group}\"," : "";
                 var hasUserId = fields.Any(f => f.Name == "userId" || f.Name == "user_id");
                 var userIdPart = hasUserId ? "\"hasUserId\":true," : "";
+                // [Owner] 소유자 컬럼 — RLS 정책(본인 읽기)이 auth.uid() 와 비교할 대상.
+                // 컬럼명은 소문자다 (Postgres 가 따옴표 없는 식별자를 접는다).
+                var owner = AttributeRegistry.Get(type).Owner;
+                var ownerPart = owner != null ? $"\"owner\":\"{owner.Name.ToLower()}\"," : "";
                 var item = "{" +
                     $"\"name\":\"{type.Name}\"," +
                     $"\"tableName\":\"{ToSnakeCase(type.Name)}\"," +
                     groupPart +
                     userIdPart +
+                    ownerPart +
                     $"\"fields\":[{BuildFieldsJson(type)}]" +
                     "}";
                 items.Add(item);

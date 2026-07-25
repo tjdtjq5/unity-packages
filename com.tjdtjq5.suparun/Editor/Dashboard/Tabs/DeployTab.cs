@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 
@@ -24,6 +25,9 @@ namespace Tjdtjq5.SupaRun.Editor
         // Id 상수 생성 결과
         IdGenResult? _idGenResult;
 
+        // 스키마 변경 요약 (ADR-0004)
+        string _schemaSummary;
+
         public DeployTab(SupaRunDashboard dashboard) => _dashboard = dashboard;
 
         public void OnDraw()
@@ -32,6 +36,10 @@ namespace Tjdtjq5.SupaRun.Editor
             GUILayout.Space(8);
 
             var settings = SupaRunSettings.Instance;
+
+            // 스키마 동기화 — GitHub 설정과 무관 (Supabase만 필요)
+            DrawSchemaSection(settings);
+            GUILayout.Space(8);
 
             // Id 상수 생성 — GitHub 설정과 무관 (Supabase만 필요)
             DrawIdConstantsSection();
@@ -50,6 +58,61 @@ namespace Tjdtjq5.SupaRun.Editor
             DrawCacheSection(settings);
             GUILayout.Space(8);
             DrawDeployArea(settings);
+        }
+
+        // ── 스키마 동기화 (ADR-0004) ──
+
+        void DrawSchemaSection(SupaRunSettings settings)
+        {
+            EditorGUILayout.LabelField("스키마 동기화", EditorStyles.miniLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
+                "테이블·RLS 정책·어드민 메타데이터를 Supabase에 직접 반영합니다.\n" +
+                "서버 재배포 없이 [SpecData] 변경이 어드민과 게임에 즉시 반영됩니다.",
+                EditorStyles.wordWrappedMiniLabel);
+
+            if (!settings.IsSupabaseConfigured)
+            {
+                EditorGUILayout.HelpBox("Supabase 설정이 필요합니다.", MessageType.Info);
+                EditorGUILayout.EndVertical();
+                return;
+            }
+
+            GUILayout.Space(4);
+
+            var auto = SchemaAutoSync.Enabled;
+            var newAuto = EditorGUILayout.ToggleLeft("컴파일 후 자동 반영", auto);
+            if (newAuto != auto) SchemaAutoSync.Enabled = newAuto;
+
+            if (!newAuto)
+            {
+                // 처음 켜는 순간 [UserData] 테이블에 RLS 정책이 새로 생긴다.
+                // 지금은 정책이 없어 anon 이 완전 차단인데, 그 문을 여는 변경이라 한 번은 사람이 눌러야 한다.
+                EditorGUILayout.HelpBox(
+                    "꺼져 있습니다. 처음 반영하면 [UserData] 테이블에 RLS 정책이 새로 생깁니다 " +
+                    "— 게임 클라이언트도 같은 anon key를 쓰므로 여기서 연 문은 플레이어에게도 열립니다.\n" +
+                    "\"지금 반영\"으로 한 번 적용하고 동작을 확인한 뒤 켜세요.",
+                    MessageType.Warning);
+            }
+
+            GUILayout.Space(4);
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("변경 요약", GUILayout.Height(24)))
+                _schemaSummary = SchemaAutoSync.Summarize();
+            if (GUILayout.Button("지금 반영", GUILayout.Height(24)))
+            {
+                _schemaSummary = null;
+                SchemaAutoSync.SyncNow().Forget();
+            }
+            EditorGUILayout.EndHorizontal();
+
+            if (!string.IsNullOrEmpty(_schemaSummary))
+            {
+                GUILayout.Space(4);
+                EditorGUILayout.LabelField(_schemaSummary, EditorStyles.wordWrappedMiniLabel);
+            }
+
+            EditorGUILayout.EndVertical();
         }
 
         // ── Id 상수 생성 ──

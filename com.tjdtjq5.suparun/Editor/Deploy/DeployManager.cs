@@ -36,6 +36,28 @@ namespace Tjdtjq5.SupaRun.Editor
             return (files, logicTypes, null);
         }
 
+        /// <summary>
+        /// 마이그레이션 SQL 만 생성한다 (ADR-0004 — SchemaAutoSync 용).
+        /// 아이콘 base64 굽기와 Addressables 스캔을 타지 않아 컴파일마다 돌려도 가볍다.
+        /// </summary>
+        public static List<GeneratedFile> GenerateSchemaSql()
+        {
+            var tableTypes = ScanTypes<UserDataAttribute>();
+            var specTypes = ScanTypes<SpecDataAttribute>();
+            if (tableTypes.Length == 0 && specTypes.Length == 0) return null;
+            return ServerCodeGenerator.GenerateSchemaSql(tableTypes, specTypes);
+        }
+
+        /// <summary>
+        /// 아이콘/컴포넌트 맵 UPSERT SQL (ADR-0004 — 어드민 여는 시점에만).
+        /// SpriteAtlas 굽기와 Addressables 스캔이 들어가 무겁다.
+        /// </summary>
+        public static string GenerateAdminAssetsSql()
+        {
+            var specTypes = ScanTypes<SpecDataAttribute>();
+            return specTypes.Length == 0 ? null : ServerCodeGenerator.BuildAdminAssetsMetaSql(specTypes);
+        }
+
         // ── 배포 ──
 
         public static void Deploy(SupaRunSettings settings,

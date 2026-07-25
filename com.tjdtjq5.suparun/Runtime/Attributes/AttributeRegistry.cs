@@ -24,10 +24,11 @@ namespace Tjdtjq5.SupaRun
         public readonly (FieldInfo field, object value)[] Default;
         public readonly FieldInfo[] CreatedAt;
         public readonly FieldInfo[] UpdatedAt;
+        public readonly FieldInfo? Owner;                            // [Owner] 첫 필드 (없으면 null) — RLS 정책 생성용
 
         internal TypeAttributeInfo(FieldInfo[] fields, FieldInfo? primaryKey, FieldInfo[] notNull,
             FieldInfo[] unique, (FieldInfo, int)[] maxLength, (FieldInfo, object)[] @default,
-            FieldInfo[] createdAt, FieldInfo[] updatedAt)
+            FieldInfo[] createdAt, FieldInfo[] updatedAt, FieldInfo? owner)
         {
             Fields = fields;
             PrimaryKey = primaryKey;
@@ -37,6 +38,7 @@ namespace Tjdtjq5.SupaRun
             Default = @default;
             CreatedAt = createdAt;
             UpdatedAt = updatedAt;
+            Owner = owner;
         }
 
         // ── 필드 단위 질의 (ServerCodeGenerator의 per-field 헬퍼용; 직접 GetCustomAttribute와 동등) ──
@@ -76,6 +78,7 @@ namespace Tjdtjq5.SupaRun
             var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
 
             FieldInfo? primaryKey = null;
+            FieldInfo? owner = null;
             var notNull = new List<FieldInfo>();
             var unique = new List<FieldInfo>();
             var maxLength = new List<(FieldInfo, int)>();
@@ -97,10 +100,11 @@ namespace Tjdtjq5.SupaRun
 
                 if (f.GetCustomAttribute<CreatedAtAttribute>() != null) createdAt.Add(f);
                 if (f.GetCustomAttribute<UpdatedAtAttribute>() != null) updatedAt.Add(f);
+                if (owner == null && f.GetCustomAttribute<OwnerAttribute>() != null) owner = f;
             }
 
             return new TypeAttributeInfo(fields, primaryKey, notNull.ToArray(), unique.ToArray(),
-                maxLength.ToArray(), defaults.ToArray(), createdAt.ToArray(), updatedAt.ToArray());
+                maxLength.ToArray(), defaults.ToArray(), createdAt.ToArray(), updatedAt.ToArray(), owner);
         }
     }
 }

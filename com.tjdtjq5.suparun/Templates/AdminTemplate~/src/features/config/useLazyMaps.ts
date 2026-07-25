@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { configApi } from '../../shared/api'
+import { loadMeta } from '../../shared/meta'
 
 export interface IconEntry {
   name: string
@@ -18,8 +18,13 @@ let componentCache: ComponentMap | null = null
 let iconPromise: Promise<IconMap> | null = null
 let componentPromise: Promise<ComponentMap> | null = null
 
+// 서버 `/_icons` · `/_components` 대신 suparun_meta 에서 읽는다 (ADR-0004).
+// Unity 가 **어드민을 여는 시점**에 SpriteAtlas 를 구워 넣는다 — 어드민을 한 번도 안 열었으면
+// 비어 있고, 그때는 아이콘이 텍스트로 표시된다(graceful).
+
 function loadIcons(): Promise<IconMap> {
-  iconPromise ??= configApi<IconMap>('/_icons')
+  iconPromise ??= loadMeta(['icons'])
+    .then((m) => (m.icons as IconMap | undefined) ?? {})
     .catch(() => ({}) as IconMap)
     .then((m) => {
       iconCache = m
@@ -29,7 +34,8 @@ function loadIcons(): Promise<IconMap> {
 }
 
 function loadComponents(): Promise<ComponentMap> {
-  componentPromise ??= configApi<ComponentMap>('/_components')
+  componentPromise ??= loadMeta(['components'])
+    .then((m) => (m.components as ComponentMap | undefined) ?? {})
     .catch(() => ({}) as ComponentMap)
     .then((m) => {
       componentCache = m

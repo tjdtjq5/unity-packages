@@ -76,20 +76,6 @@ export function PageHeader({
                   <i className="ti ti-download me-1" />
                   내보내기
                 </button>
-                <label className="btn btn-outline-secondary mb-0">
-                  <i className="ti ti-upload me-1" />
-                  가져오기
-                  <input
-                    type="file"
-                    accept=".json"
-                    hidden
-                    onChange={(e) => {
-                      const f = e.target.files?.[0]
-                      e.target.value = ''
-                      if (f) void actions.importData(f)
-                    }}
-                  />
-                </label>
                 <button className="btn btn-primary" onClick={() => void actions.addRow()}>
                   <i className="ti ti-plus me-1" />
                   추가

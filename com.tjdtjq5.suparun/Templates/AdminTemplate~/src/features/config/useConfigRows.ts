@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { configApi } from '../../shared/api'
+import { deleteRow as dbDelete, insertRow, selectAll, updateRow, upsertMany } from '../../shared/db'
 import { toast } from '../../shared/toast'
-import { authFetch } from '../../shared/api'
 import type { ConfigRow, ConfigType } from '../../shared/types'
 import { useAdmin } from '../shell/AdminContext'
 
@@ -23,6 +22,9 @@ interface UndoEntry {
  */
 export function useConfigRows(configType: ConfigType) {
   const { setPageSubtitle } = useAdmin()
+  // 서버를 거칠 때는 서버가 PK 를 알고 있었다. 직접 붙는 지금은 우리가 알아야 한다.
+  // 대부분 `id` 지만 메타에 있는 값을 쓰는 편이 정확하다.
+  const pk = configType.fields.find((f) => f.isPrimaryKey)?.name ?? 'id'
   const [rows, setRows] = useState<ConfigRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [savedCell, setSavedCell] = useState<string | null>(null)
@@ -37,7 +39,7 @@ export function useConfigRows(configType: ConfigType) {
     setRows(null)
     setError(null)
     try {
-      const data = await configApi<ConfigRow[]>(`/${configType.tableName}`)
+      const data = await selectAll<ConfigRow>(configType.tableName)
       setRows(data)
       setPageSubtitle(`${data.length}건`)
     } catch (e) {
@@ -60,20 +62,17 @@ export function useConfigRows(configType: ConfigType) {
   const commit = useCallback(
     async (rowId: string, patch: Record<string, unknown>) => {
       const current = rowsRef.current
-      const row = current?.find((r) => String(r.id) === rowId)
+      const row = current?.find((r) => String(r[pk]) === rowId)
       if (!row) return
       const next = { ...row, ...patch }
       try {
-        const saved = await configApi<ConfigRow | null>(
-          `/${configType.tableName}/${encodeURIComponent(rowId)}`,
-          'PUT',
-          next,
-        )
-        // 서버가 id 를 바꿔 돌려주면(PK 편집) 그 값으로 반영한다
-        const savedId = saved?.id
+        // 바뀐 필드만 보낸다 — 행 전체를 덮어쓰면 그 사이 다른 곳에서 고친 값이 지워진다.
+        const saved = await updateRow<ConfigRow>(configType.tableName, pk, rowId, patch)
+        // PK 를 편집했으면 새 값으로 반영한다
+        const savedId = saved?.[pk]
         if (savedId !== undefined && String(savedId) !== rowId) {
           setRows((prev) =>
-            (prev ?? []).map((r) => (String(r.id) === rowId ? { ...next, id: savedId } : r)),
+            (prev ?? []).map((r) => (String(r[pk]) === rowId ? { ...next, [pk]: savedId } : r)),
           )
           toast(`ID 변경: ${rowId} → ${String(savedId)}`, 'success')
         } else {
@@ -85,13 +84,13 @@ export function useConfigRows(configType: ConfigType) {
         toast('저장 실패: ' + (e instanceof Error ? e.message : String(e)), 'error')
       }
     },
-    [configType.tableName],
+    [configType.tableName, pk],
   )
 
   /** 낙관적 반영 + 디바운스 저장. 조건부 셀(VisibleIf)이 즉시 갱신되도록 상태를 먼저 바꾼다. */
   const setField = useCallback(
     (rowId: string, fieldName: string, value: unknown, immediate = false) => {
-      const row = rowsRef.current?.find((r) => String(r.id) === rowId)
+      const row = rowsRef.current?.find((r) => String(r[pk]) === rowId)
       if (row && row[fieldName] !== value) {
         undoStack.current.push({
           rowId,
@@ -101,7 +100,7 @@ export function useConfigRows(configType: ConfigType) {
         })
       }
       setRows((prev) =>
-        (prev ?? []).map((r) => (String(r.id) === rowId ? { ...r, [fieldName]: value } : r)),
+        (prev ?? []).map((r) => (String(r[pk]) === rowId ? { ...r, [fieldName]: value } : r)),
       )
 
       const key = `${rowId}_${fieldName}`
@@ -124,7 +123,7 @@ export function useConfigRows(configType: ConfigType) {
     if (!item || item.typeName !== configType.tableName) return
     setRows((prev) =>
       (prev ?? []).map((r) =>
-        String(r.id) === item.rowId ? { ...r, [item.fieldName]: item.oldValue } : r,
+        String(r[pk]) === item.rowId ? { ...r, [item.fieldName]: item.oldValue } : r,
       ),
     )
     try {
@@ -158,7 +157,7 @@ export function useConfigRows(configType: ConfigType) {
       }
     }
     try {
-      const saved = await configApi<ConfigRow>(`/${configType.tableName}`, 'POST', draft)
+      const saved = await insertRow<ConfigRow>(configType.tableName, draft)
       setRows((prev) => {
         const next = [saved, ...(prev ?? [])]
         setPageSubtitle(`${next.length}건`)
@@ -172,12 +171,12 @@ export function useConfigRows(configType: ConfigType) {
 
   const copyRow = useCallback(
     async (rowId: string) => {
-      const src = rowsRef.current?.find((r) => String(r.id) === rowId)
+      const src = rowsRef.current?.find((r) => String(r[pk]) === rowId)
       if (!src) return
       try {
-        const saved = await configApi<ConfigRow>(`/${configType.tableName}`, 'POST', {
+        const saved = await insertRow<ConfigRow>(configType.tableName, {
           ...src,
-          id: String(src.id) + '_copy',
+          [pk]: String(src[pk]) + '_copy',
         })
         setRows((prev) => {
           const next = [saved, ...(prev ?? [])]
@@ -202,9 +201,9 @@ export function useConfigRows(configType: ConfigType) {
         return
       }
       try {
-        await configApi(`/${configType.tableName}/${encodeURIComponent(rowId)}`, 'DELETE')
+        await dbDelete(configType.tableName, pk, rowId)
         setRows((prev) => {
-          const next = (prev ?? []).filter((r) => String(r.id) !== rowId)
+          const next = (prev ?? []).filter((r) => String(r[pk]) !== rowId)
           setPageSubtitle(`${next.length}건`)
           return next
         })
@@ -219,77 +218,46 @@ export function useConfigRows(configType: ConfigType) {
   /** 드래그 정렬 결과를 서버에 반영. 실패하면 원본을 다시 읽어 화면을 되돌린다. */
   const reorder = useCallback(
     async (orderedIds: string[]) => {
-      const items = orderedIds.map((id, idx) => ({ id, sort_order: idx }))
+      const items = orderedIds.map((id, idx) => ({ [pk]: id, sort_order: idx }))
       setRows((prev) => {
         if (!prev) return prev
-        const byId = new Map(prev.map((r) => [String(r.id), r]))
+        const byId = new Map(prev.map((r) => [String(r[pk]), r]))
         const next = orderedIds.map((id) => byId.get(id)).filter((r): r is ConfigRow => !!r)
         return next.length === prev.length ? next : prev
       })
       try {
-        await configApi(`/_reorder/${configType.tableName}`, 'POST', { items })
+        // upsert 는 보낸 컬럼만 갱신한다 — sort_order 외의 값은 건드리지 않는다.
+        // 서버 _reorder 는 트랜잭션이었지만, 실패하면 다시 로드해 되돌리므로 RPC 까지는 필요 없다.
+        await upsertMany(configType.tableName, items, pk)
         toast('순서가 저장되었습니다', 'success')
       } catch {
         toast('순서 저장 실패 — 다시 로드합니다', 'error')
         void load()
       }
     },
-    [configType.tableName, load],
+    [configType.tableName, load, pk],
   )
 
-  // ── Export / Import ──────────────────────────────────────
+  // ── Export ───────────────────────────────────────────────
+  // 가져오기는 제거했다 (ADR-0004 결정 9) — 테이블 하나씩 올리는 방식이라 여러 테이블을
+  // 같은 시점으로 되돌리지 못해 목적(스냅샷)을 달성할 수 없었다. 스냅샷은 별도 기능으로 만든다.
 
+  /** 서버 `_export` 대신 지금 화면의 데이터를 그대로 파일로 만든다. */
   const exportData = useCallback(async () => {
     try {
-      const res = await authFetch(
-        `/admin/api/config/_export/${configType.tableName}`,
-      )
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const url = URL.createObjectURL(await res.blob())
+      const data = await selectAll<ConfigRow>(configType.tableName)
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = `${configType.tableName}.json`
       a.click()
       URL.revokeObjectURL(url)
-      toast(`${configType.name} 내보내기 완료`, 'success')
+      toast(`${configType.name} ${data.length}건 내보내기 완료`, 'success')
     } catch (e) {
       toast('내보내기 실패: ' + (e instanceof Error ? e.message : String(e)), 'error')
     }
   }, [configType])
-
-  const importData = useCallback(
-    async (file: File) => {
-      let data: unknown
-      try {
-        data = JSON.parse(await file.text())
-      } catch {
-        toast('유효한 JSON 파일이 아닙니다', 'error')
-        return
-      }
-      if (!Array.isArray(data)) {
-        toast('JSON 배열이어야 합니다', 'error')
-        return
-      }
-      if (
-        !window.confirm(
-          `${configType.name}의 기존 데이터를 ${data.length}건으로 교체합니다. 계속?`,
-        )
-      )
-        return
-      try {
-        const res = await configApi<{ imported: number }>(
-          `/_import/${configType.tableName}`,
-          'POST',
-          data,
-        )
-        toast(`${res.imported}건 가져오기 완료`, 'success')
-        await load()
-      } catch (e) {
-        toast('가져오기 실패: ' + (e instanceof Error ? e.message : String(e)), 'error')
-      }
-    },
-    [configType, load],
-  )
 
   return {
     rows,
@@ -303,6 +271,5 @@ export function useConfigRows(configType: ConfigType) {
     deleteRow,
     reorder,
     exportData,
-    importData,
   }
 }

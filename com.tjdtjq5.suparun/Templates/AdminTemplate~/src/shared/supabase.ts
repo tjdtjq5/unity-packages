@@ -47,8 +47,46 @@ interface SupabaseAuth {
   }
 }
 
+// ── PostgREST 쿼리 (ADR-0004) ──────────────────────────────
+// 어드민이 서버를 거치지 않고 직접 붙는다. 체이닝 빌더라 실제 타입은 훨씬 복잡한데,
+// 여기서도 **쓰는 만큼만** 선언한다.
+
+export interface PostgrestResult<T> {
+  data: T | null
+  error: { message: string; code?: string } | null
+  /** `count: 'exact'` 를 요청했을 때만 채워진다. */
+  count?: number | null
+}
+
+/** PromiseLike 라 그대로 await 할 수 있다. */
+export interface PostgrestFilter<T> extends PromiseLike<PostgrestResult<T>> {
+  eq(column: string, value: unknown): PostgrestFilter<T>
+  in(column: string, values: unknown[]): PostgrestFilter<T>
+  gte(column: string, value: unknown): PostgrestFilter<T>
+  lt(column: string, value: unknown): PostgrestFilter<T>
+  order(column: string, opts?: { ascending?: boolean }): PostgrestFilter<T>
+  limit(count: number): PostgrestFilter<T>
+  range(from: number, to: number): PostgrestFilter<T>
+  select(columns?: string): PostgrestFilter<T>
+  single(): PostgrestFilter<T>
+  maybeSingle(): PostgrestFilter<T>
+}
+
+export interface PostgrestTable {
+  select<T = unknown[]>(
+    columns?: string,
+    opts?: { count?: 'exact' | 'planned' | 'estimated'; head?: boolean },
+  ): PostgrestFilter<T>
+  insert<T = unknown[]>(rows: unknown): PostgrestFilter<T>
+  update<T = unknown[]>(patch: unknown): PostgrestFilter<T>
+  upsert<T = unknown[]>(rows: unknown, opts?: { onConflict?: string }): PostgrestFilter<T>
+  delete<T = unknown[]>(): PostgrestFilter<T>
+}
+
 export interface SupabaseClient {
   auth: SupabaseAuth
+  from(table: string): PostgrestTable
+  rpc<T = unknown>(fn: string, args?: Record<string, unknown>): PostgrestFilter<T>
 }
 
 declare global {

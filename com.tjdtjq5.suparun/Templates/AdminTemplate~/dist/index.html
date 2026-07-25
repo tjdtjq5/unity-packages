@@ -1080,6 +1080,19 @@ tbody tr { animation: rowStagger 0.2s linear both; }
   to   { opacity: 1; }
 }
 
+/* ── 접근 정책 배지 (ADR-0004) ── */
+.policy-box { padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.policy-badge {
+  background: transparent; border: 1px solid var(--line); color: var(--dim);
+  font-family: var(--mono); font-size: 11px; padding: 3px 10px; cursor: pointer;
+}
+.policy-badge:hover { border-color: var(--green-2); color: var(--fg); }
+.policy-badge.danger { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+.policy-panel { display: flex; gap: 16px; flex-wrap: wrap; }
+.policy-opt { display: flex; align-items: center; gap: 5px; cursor: pointer; font-family: var(--mono); font-size: 11px; color: var(--fg); }
+.policy-opt.disabled { opacity: 0.4; cursor: not-allowed; }
+.policy-note { color: var(--very-dim); font-size: 10px; }
+
 /* ── 알림(alert) ── */
 .alert {
   /* Tabler 1.x 의 .alert 는 display:flex 라 자식 블록이 가로로 늘어선다.

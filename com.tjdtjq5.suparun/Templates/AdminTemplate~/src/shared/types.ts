@@ -92,6 +92,8 @@ export interface TableField {
 export interface TableType {
   name: string
   tableName: string
+  /** `[Owner]` 로 선언된 소유자 컬럼(소문자). 없으면 "관리자만" 정책밖에 못 쓴다. */
+  owner?: string
   fields: TableField[]
 }
 

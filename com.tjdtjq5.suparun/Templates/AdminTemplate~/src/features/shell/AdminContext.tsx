@@ -8,11 +8,13 @@ import type { Route } from './route'
  * 브릿지의 `setPageSubtitle` / `showPlayer` / `getTableTypes` 가 전부 여기로 모였다.
  */
 
-/** Config 화면이 마운트되어 있는 동안 툴바 버튼이 호출할 액션. */
+/**
+ * Config 화면이 마운트되어 있는 동안 툴바 버튼이 호출할 액션.
+ * 가져오기는 없다 — ADR-0004 결정 9 로 제거했다(스냅샷으로 대체 예정).
+ */
 export interface ToolbarActions {
   addRow(): Promise<void>
   exportData(): Promise<void>
-  importData(file: File): Promise<void>
 }
 
 export interface AdminContextValue {

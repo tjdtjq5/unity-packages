@@ -1,3 +1,4 @@
+using Cysharp.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 
@@ -36,15 +37,26 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         [MenuItem("Tjdtjq/SupaRun/Admin %#d")]
-        public static void OpenAdmin()
+        public static void OpenAdmin() => OpenAdminAsync().Forget();
+
+        static async UniTaskVoid OpenAdminAsync()
         {
             var settings = SupaRunSettings.Instance;
-            if (!string.IsNullOrEmpty(settings.cloudRunUrl))
-                Application.OpenURL(settings.cloudRunUrl.TrimEnd('/') + "/admin");
-            else if (settings.IsSupabaseConfigured)
-                EditorUtility.DisplayDialog("Admin", "서버가 아직 배포되지 않았습니다.\nDeploy 후 다시 시도하세요.", "확인");
-            else
-                EditorUtility.DisplayDialog("Admin", "Supabase 설정이 필요합니다.\nDashboard > Settings에서 연결하세요.", "확인");
+            if (string.IsNullOrEmpty(settings.cloudRunUrl))
+            {
+                if (settings.IsSupabaseConfigured)
+                    EditorUtility.DisplayDialog("Admin", "서버가 아직 배포되지 않았습니다.\nDeploy 후 다시 시도하세요.", "확인");
+                else
+                    EditorUtility.DisplayDialog("Admin", "Supabase 설정이 필요합니다.\nDashboard > Settings에서 연결하세요.", "확인");
+                return;
+            }
+
+            // 어드민은 아이콘/컴포넌트 맵을 DB 에서 읽는다 (ADR-0004). 여기가 그것들을 굽기에
+            // 정확한 시점이다 — 실제로 필요해지는 순간이고, 컴파일마다 굽는 낭비가 없다.
+            // 페이지를 열기 전에 끝내야 첫 화면부터 아이콘이 보인다.
+            await SchemaAutoSync.SyncAdminAssets();
+
+            Application.OpenURL(settings.cloudRunUrl.TrimEnd('/') + "/admin");
         }
 
         void OnEnable()

@@ -4,6 +4,7 @@ import { enableColResize } from '../../shared/colResize'
 import type { ConfigType } from '../../shared/types'
 import { useAdmin } from '../shell/AdminContext'
 import { ConfigCell } from './ConfigCell'
+import { PolicyBadge } from './PolicyBadge'
 import { useConfigRows } from './useConfigRows'
 
 /**
@@ -24,7 +25,6 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
     deleteRow,
     reorder,
     exportData,
-    importData,
   } = useConfigRows(configType)
   const { setToolbarActions } = useAdmin()
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
@@ -38,9 +38,9 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
 
   // 툴바 버튼(추가·내보내기·가져오기)은 껍데기(PageHeader)에 있으므로 동작만 올려보낸다.
   useEffect(() => {
-    setToolbarActions({ addRow, exportData, importData })
+    setToolbarActions({ addRow, exportData })
     return () => setToolbarActions(null)
-  }, [addRow, exportData, importData, setToolbarActions])
+  }, [addRow, exportData, setToolbarActions])
 
   // Ctrl+Z — 입력 중에는 무시한다 (바닐라와 동일 정책)
   useEffect(() => {
@@ -106,36 +106,52 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
     )
   }
 
+  // 정책 배지는 **데이터가 없을 때도** 보여야 한다 —
+  // 정책이 잘못돼 아무것도 못 읽는 상황이 정확히 그 경우다.
+  // SpecData 에는 [Owner] 개념이 없으므로 "유저 데이터" 프리셋은 비활성이다.
+  const badge = <PolicyBadge tableName={configType.tableName} canUseOwner={false} />
+
   if (!rows) {
     return (
-      <div className="loading-spinner">
-        <div className="spinner-border text-primary" role="status" />
-      </div>
+      <>
+        {badge}
+        <div className="loading-spinner">
+          <div className="spinner-border text-primary" role="status" />
+        </div>
+      </>
     )
   }
 
   if (rows.length === 0 && !filter) {
     return (
-      <div className="empty-state">
-        <i className="ti ti-inbox" />
-        <h3>데이터가 없습니다</h3>
-        <p>위의 &quot;+ 추가&quot; 버튼으로 첫 행을 만들어보세요.</p>
-      </div>
+      <>
+        {badge}
+        <div className="empty-state">
+          <i className="ti ti-inbox" />
+          <h3>데이터가 없습니다</h3>
+          <p>위의 &quot;+ 추가&quot; 버튼으로 첫 행을 만들어보세요.</p>
+        </div>
+      </>
     )
   }
 
   if (filtered.length === 0) {
     return (
-      <div className="empty-state">
-        <i className="ti ti-search" />
-        <h3>검색 결과 없음</h3>
-        <p>&quot;{filter}&quot;에 대한 결과가 없습니다.</p>
-      </div>
+      <>
+        {badge}
+        <div className="empty-state">
+          <i className="ti ti-search" />
+          <h3>검색 결과 없음</h3>
+          <p>&quot;{filter}&quot;에 대한 결과가 없습니다.</p>
+        </div>
+      </>
     )
   }
 
   return (
-    <div ref={hostRef}>
+    <>
+      {badge}
+      <div ref={hostRef}>
       <table className="table table-vcenter card-table table-hover table-striped">
         <thead>
           <tr>
@@ -236,6 +252,7 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
           </div>
         </Modal>
       )}
-    </div>
+      </div>
+    </>
   )
 }
