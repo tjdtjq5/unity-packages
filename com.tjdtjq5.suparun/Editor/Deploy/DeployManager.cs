@@ -260,10 +260,29 @@ namespace Tjdtjq5.SupaRun.Editor
             // Workflow
             files.Add(LoadTemplate(templateRoot, "WorkflowTemplate~/deploy.yml.template", ".github/workflows/deploy.yml", settings));
 
-            // Admin 웹 페이지
-            var adminTemplatePath = Path.Combine(templateRoot, "AdminTemplate~/index.html");
-            if (File.Exists(adminTemplatePath))
-                files.Add(LoadTemplate(templateRoot, "AdminTemplate~/index.html", "admin/index.html", settings));
+            // Admin 웹 페이지 — 빌드 산출물(dist/)을 싣는다. ADR-0003 결정 2·3.
+            //   소스는 AdminTemplate~/src/ 이고 `npm run build` 가 dist/ 를 만든다.
+            //   산출물 파일명을 고정했으므로 재귀 순회 없이 명시 등록으로 충분하다.
+            //   dist/ 는 git 에 커밋되므로 소비 프로젝트에 Node 는 필요 없다 (결정 7).
+            var adminDist = Path.Combine(templateRoot, "AdminTemplate~/dist");
+            if (File.Exists(Path.Combine(adminDist, "index.html")))
+            {
+                files.Add(LoadTemplate(templateRoot, "AdminTemplate~/dist/index.html", "admin/index.html", settings));
+
+                // CSS 는 빌드 구성에 따라 생성되지 않을 수 있다(아직 스타일 import 가 없는 단계 등).
+                foreach (var asset in new[] { "index.js", "index.css" })
+                {
+                    if (File.Exists(Path.Combine(adminDist, "assets", asset)))
+                        files.Add(LoadTemplate(templateRoot, "AdminTemplate~/dist/assets/" + asset,
+                            "admin/assets/" + asset, settings));
+                }
+            }
+            else
+            {
+                Debug.LogWarning("[SupaRun] 어드민 빌드 산출물(AdminTemplate~/dist)이 없습니다. " +
+                                 "AdminTemplate~ 에서 `npm ci && npm run build` 를 실행하세요. " +
+                                 "어드민 페이지 없이 배포를 계속합니다.");
+            }
 
             // Auth 플랫폼 (GPGS/GameCenter 활성화 시)
             if (settings.enabledAuthProviders != null)

@@ -1,18 +1,83 @@
 # AdminTemplate
 
-> **상태**: stable
+> **상태**: React 전환 완료 (ADR-0003 — 로그인부터 전 화면까지 React. 실기 확인 대기)
 > **용도**: Supabase Auth 기반 로그인과 Config/Table CRUD를 제공하는 어드민 웹 페이지 SPA 템플릿
 
 ## 의존성
 
 - `../AspNetTemplate~/` — 서버가 `/admin` 경로로 이 페이지를 정적 파일로 서빙
-- 외부 CDN: Tabler CSS/JS, Bootstrap 5, Supabase JS v2, Chart.js
+- 외부 CDN: Tabler CSS/JS, Bootstrap 5, Supabase JS v2, Chart.js, Sortable
+- 빌드: vite 8 + React 19 + TypeScript 7 (`@xyflow/react` 는 노드 그래프용, ADR-0002)
 
 ## 구조
 
-| 파일 | 설명 |
+```
+AdminTemplate~/
+├── package.json        vite / react@19 / @xyflow/react@12 / typescript@7
+├── vite.config.ts      root=src, 산출물 고정 파일명, /admin/api 프록시
+├── tsconfig.json       strict, noEmit (타입검사는 `npm run typecheck`)
+├── .env.local          (gitignore) 로컬 dotnet 서버 주소 VITE_SERVER_URL
+│
+├── src/                ← 소스
+│   ├── index.html      1,494줄(최초 3,950). CSS 1,287줄 + 인라인 JS 171줄(플레이스홀더·프리뷰 mock)
+│   ├── main.tsx        React 진입점 — #root 에 <App/> 마운트
+│   ├── App.tsx         로그인 화면 ↔ 어드민 껍데기 분기
+│   ├── shared/         api / supabase / toast / types / Modal / colResize / castValue / env / chart
+│   └── features/       화면 단위 폴더
+│       ├── auth/       로그인 · 세션 구독
+│       ├── shell/      껍데기 — 레이아웃·사이드바·툴바·라우팅·키맵·AdminContext
+│       └── …           admins / audit / table / cross / player / config
+│
+├── node_modules/       (gitignore)
+└── dist/               ← 빌드 산출물. **커밋한다** (소비 프로젝트는 Node 불필요)
+    ├── index.html
+    └── assets/index.js, index.css
+```
+
+| 명령 | 용도 |
 |------|------|
-| `index.html` | 단일 파일 SPA (HTML + CSS + JS, ~1440줄). 로그인/어드민 화면 전체 포함 |
+| `npm ci` | 의존성 설치 (최초 1회) |
+| `npm run dev` | vite 개발 서버. `/admin/api` 는 `VITE_SERVER_URL` 로 프록시 |
+| `npm run build` | `dist/` 생성 — **DeployManager 가 싣는 대상** |
+| `npm run typecheck` | `tsc --noEmit`. vite 빌드는 타입 검사를 하지 않으므로 별도로 돈다 |
+
+> ⚠ `dist/` 를 빌드하지 않으면 `DeployManager` 가 경고를 내고 **어드민 페이지 없이 배포**한다.
+> 패키지를 로컬 개발 모드(`/ft:pkg-dev`)로 쓰는 중이라면 `npm run build` 를 한 번 돌려둘 것.
+
+### 전환 진행 상황 (ADR-0003)
+
+| 단계 | 화면 | 상태 |
+|---|---|---|
+| 0 | 빌드 환경 + DeployManager | **완료** |
+| 1 | `features/admins/` 관리자 관리 | **완료** (실기 확인 완료) |
+| 2 | `features/audit/` 변경 이력 | **완료** (실기 확인 완료) |
+| 3 | `features/table/` + `cross/` + `player/` | **완료** (실기 확인 완료) |
+| 4 | `features/config/` Config CRUD | **완료** (실기 확인 완료) |
+| 5a | 죽은 코드 제거 + 키맵 모달 가드 수정 | **완료** |
+| 5b | 컬럼 유틸 → `shared/colResize.ts` | **완료** |
+| 5c | `features/shell/` 레이아웃·사이드바·툴바·라우팅 | **완료** (실기 확인 대기) |
+| 5d | 로그인 · Supabase 세션 | **완료** (실기 확인 대기) |
+
+**index.html 에 남은 것**: CSS 전량, CDN 스크립트 4종, `window.__SUPARUN_ENV` 노출,
+부팅 실패 표시(`#boot-error`), `#toast-container`, `#root`, 프리뷰 mock 블록. **바닐라 로직은 없다.**
+
+> ⚠ **플레이스홀더(`{{...}}`)는 인라인 `<script>` 에만 둘 수 있다.** vite 는 `type="module"` 이 아닌
+> 인라인 스크립트를 번들하지 않으므로 그 자리에서만 치환이 통과한다. React 번들 안에 쓰면
+> 문자열이 그대로 남아 배포가 조용히 깨진다. 그래서 `window.__SUPARUN_ENV` 로 한 번 내보내고
+> `shared/env.ts` 가 읽는다.
+
+**라우팅**: react-router 를 쓰지 않는다. 화면 6개에 해시 하나뿐이라 `features/shell/route.ts`
+30줄로 충분하다. 바닐라와 동일하게 `replaceState` — 뒤로가기로 화면을 되짚지 않는다.
+
+**인증 토큰**: 전역 변수로 들고 있지 않고 API 호출마다 `sb.auth.getSession()` 에서 읽는다.
+supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다(바닐라는 `onAuthStateChange` 에서 수동 갱신했다).
+401/403 은 `shared/api.ts` 의 `onUnauthorized` 구독으로 `App` 에 전달되어 로그인 화면으로 돌린다.
+
+> ⚠ **`position: fixed` 인 오버레이는 반드시 `document.body` 로 portal 한다.**
+> 바닐라가 `document.body.appendChild()` 로 붙이던 것을 React 이관 때 셀 안에 그대로 렌더하면
+> 표 레이아웃에 갇혀 엉뚱한 곳에 뜬다. 해당 요소는 `.icon-grid-overlay`(모달)와 `.ss-pop`(검색 드롭다운).
+> 모달은 `shared/Modal.tsx`, 드롭다운은 `SearchSelect` 가 각각 portal + 좌표 계산을 담당한다.
+> z-index 순서: `.ss-pop`(1100) > `.icon-grid-overlay`(1090) — 모달 안에서도 드롭다운이 보여야 한다.
 
 ## 플레이스홀더 변수
 

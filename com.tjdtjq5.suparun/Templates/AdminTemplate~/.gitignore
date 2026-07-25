@@ -1,0 +1,7 @@
+node_modules/
+
+# 로컬 dotnet 서버 주소 등 개발자별 설정 (ADR-0003 결정 10)
+.env.local
+.env.*.local
+
+# dist/ 는 커밋한다 — 소비 프로젝트가 Node 없이도 쓸 수 있어야 하므로 (ADR-0003 결정 7)

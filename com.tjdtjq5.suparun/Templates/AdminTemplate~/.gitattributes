@@ -1,0 +1,3 @@
+# 빌드 산출물 — 커밋은 하되 diff/리뷰에서는 접는다 (ADR-0003 결정 7)
+dist/** linguist-generated=true
+dist/** -diff
