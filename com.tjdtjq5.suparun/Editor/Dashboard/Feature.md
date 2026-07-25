@@ -29,6 +29,7 @@ Dashboard/
 ├── Tabs/
 │   ├── StatusTab.cs          # 서버 온라인/응답시간, DB 커넥션 풀, Supabase 프로젝트 정보, 요금 링크
 │   ├── DeployTab.cs          # 배포 실행 UI (캐시 관리, 빌드 검증, push, Actions 추적, 결과 표시)
+│   │                         #  + 스키마 동기화 / Id 상수 생성
 │   ├── MonitorTab.cs         # 서버 로그(server_log) 조회 — 레벨 필터, 페이징, 상세보기
 │   ├── ServicesTab.cs        # [Service] 클래스 자동 스캔 + 배포 상태 표시
 │   └── SettingsView.cs       # 설정 편집 (Supabase/GitHub/GCP/Auth/Tools/로그)

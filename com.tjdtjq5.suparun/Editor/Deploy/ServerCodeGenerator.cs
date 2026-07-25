@@ -30,6 +30,7 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 GenerateSupaRunCoreMigration(),
                 GenerateConfigMetaMigration(specTypes),
+                GenerateNodeCatalogMigration(specTypes),
                 GenerateAdminUserMigration(),
                 GenerateAdminAuditMigration(),
             }
@@ -59,6 +60,7 @@ namespace Tjdtjq5.SupaRun.Editor
             // 파일명이 `_` 로 시작해 다른 마이그레이션보다 먼저 실행된다 (ADR-0004).
             files.Add(GenerateSupaRunCoreMigration());
             files.Add(GenerateConfigMetaMigration(specTypes));
+            files.Add(GenerateNodeCatalogMigration(specTypes));
             files.Add(GenerateTableMetaMigration(tableTypes));
 
             // 서버 로그 시스템
@@ -1426,6 +1428,23 @@ END $$;
         }
 
         /// <summary>
+        /// 노드 그래프 카탈로그. `[SpecData]` 메타와 같이 **컴파일 직후** 반영된다.
+        ///
+        /// 노드 클래스를 고치는 것도 어드민 표를 고치는 것과 성질이 같다 —
+        /// 쓰는 쪽이 서버가 아니라 사람(어드민)이라 배포를 기다릴 이유가 없다.
+        /// 노드 그래프를 안 쓰는 프로젝트에서는 빈 객체가 실린다.
+        /// </summary>
+        public static GeneratedFile GenerateNodeCatalogMigration(Type[] specTypes)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("-- 노드 그래프 카탈로그 (자동 생성) — ADR-0002");
+            sb.AppendLine("-- 어드민 캔버스가 팔레트·입력칸·포트를 이 행에서 읽는다.");
+            sb.AppendLine();
+            AppendMetaUpsert(sb, "node_catalog", BuildNodeCatalogJson(specTypes));
+            return new GeneratedFile("Generated/Migrations/_suparun_meta_nodes.sql", sb.ToString());
+        }
+
+        /// <summary>
         /// [UserData] 타입 메타. **배포 때만** 반영한다.
         ///
         /// 게임이 Cloud Run 을 거치므로 서버가 최신이어야 새 필드가 동작한다.
@@ -1558,13 +1577,27 @@ END $$;
         static string BuildMemberJson(MemberInfo member, Type memberType)
         {
             var parts = new List<string>();
+
+            // NodeValue<T> — "상수 또는 PureNode 출력" 이라 표시 타입은 T 를 따른다.
+            var valueType = memberType;
+            bool isNodeValue = memberType.IsGenericType
+                && memberType.GetGenericTypeDefinition() == typeof(NodeValue<>);
+            if (isNodeValue) valueType = memberType.GetGenericArguments()[0];
+
             parts.Add($"\"name\":\"{member.Name}\"");
-            parts.Add($"\"type\":\"{GetJsType(memberType)}\"");
+            parts.Add($"\"type\":\"{GetJsType(valueType)}\"");
+            if (isNodeValue) parts.Add("\"isNodeValue\":true");
 
             if (member.GetCustomAttribute<PrimaryKeyAttribute>() != null)
                 parts.Add("\"isPrimaryKey\":true");
             if (member.GetCustomAttribute<NotNullAttribute>() != null)
                 parts.Add("\"isRequired\":true");
+
+            // NodeGraph — 이 컬럼은 텍스트가 아니라 노드 캔버스로 연다.
+            // 값은 node_catalog 의 그룹 키(컨텍스트 타입명)다.
+            var nodeGraph = member.GetCustomAttribute<NodeGraphAttribute>();
+            if (nodeGraph?.ContextType != null)
+                parts.Add($"\"nodeGraph\":\"{nodeGraph.ContextType.Name}\"");
 
             // JSON 필드 판정 + jsonSchema 생성
             var jsonAttr = member.GetCustomAttribute<JsonAttribute>();
@@ -1683,6 +1716,110 @@ END $$;
             }
             return "[" + string.Join(",", items) + "]";
         }
+
+        // ── 노드 그래프 카탈로그 ──
+        // 어드민 캔버스가 "어떤 노드를 놓을 수 있고 각 노드에 무슨 칸·포트가 있는지"를 이걸로 안다.
+        // 결과 형태: {"SkillCtx":[{"type":"DamageNode","role":"action","fields":[...],"outs":[...]}], ...}
+
+        /// <summary>
+        /// [NodeGraph] 컬럼이 지목한 컨텍스트별로 `Node&lt;TCtx&gt;` 파생을 모은다.
+        ///
+        /// 컨텍스트가 그래프 종류를 가르므로 팔레트가 섞이지 않는다 —
+        /// 스킬 효과 그래프 컬럼에는 `Node&lt;SkillCtx&gt;` 파생만 뜬다.
+        /// </summary>
+        static string BuildNodeCatalogJson(Type[] specTypes)
+        {
+            // 컨텍스트 수집 — 정렬해야 컴파일마다 "변경됨" 으로 뜨지 않는다.
+            var contexts = new SortedDictionary<string, Type>(StringComparer.Ordinal);
+            foreach (var type in specTypes)
+                foreach (var f in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    var ng = f.GetCustomAttribute<NodeGraphAttribute>();
+                    if (ng?.ContextType != null) contexts[ng.ContextType.Name] = ng.ContextType;
+                }
+
+            if (contexts.Count == 0) return "{}";
+
+            var groups = new List<string>();
+            foreach (var kv in contexts)
+            {
+                var closed = typeof(Node<>).MakeGenericType(kv.Value);
+                var nodes = UnityEditor.TypeCache.GetTypesDerivedFrom(closed)
+                    .Where(n => !n.IsAbstract && !n.ContainsGenericParameters)
+                    .OrderBy(n => n.FullName, StringComparer.Ordinal)
+                    .Select(BuildNodeJson);
+                groups.Add($"\"{kv.Key}\":[{string.Join(",", nodes)}]");
+            }
+            return "{" + string.Join(",", groups) + "}";
+        }
+
+        /// <summary>노드 하나의 카탈로그 항목. 포트([NodeOut])는 입력칸에서 빼 outs 로 옮긴다.</summary>
+        static string BuildNodeJson(Type nodeType)
+        {
+            var fields = new List<string>();
+            var outs = new List<string>();
+
+            foreach (var f in nodeType.GetFields(BindingFlags.Public | BindingFlags.Instance))
+            {
+                var port = f.GetCustomAttribute<NodeOutAttribute>();
+                if (port == null)
+                {
+                    fields.Add(BuildMemberJson(f, f.FieldType));
+                    continue;
+                }
+                // 포트는 캔버스 연결이지 사람이 채우는 칸이 아니다.
+                var label = string.IsNullOrEmpty(port.Label) ? f.Name : port.Label;
+                var listPart = f.FieldType.IsArray ? ",\"list\":true" : "";
+                outs.Add($"{{\"name\":\"{f.Name}\",\"label\":\"{EscapeJson(label)}\"{listPart}}}");
+            }
+
+            var pureOut = PureOutTypeOf(nodeType);
+            var outTypePart = pureOut != null ? $",\"outType\":\"{pureOut}\"" : "";
+
+            return "{" +
+                $"\"type\":\"{nodeType.Name}\"," +
+                $"\"label\":\"{EscapeJson(NodeLabelOf(nodeType))}\"," +
+                $"\"role\":\"{NodeRoleOf(nodeType)}\"" + outTypePart + "," +
+                $"\"fields\":[{string.Join(",", fields)}]," +
+                $"\"outs\":[{string.Join(",", outs)}]" +
+                "}";
+        }
+
+        /// <summary>
+        /// 캔버스가 노드를 어떻게 그릴지 정하는 역할. base 체인을 거슬러 올라가며 가장 가까운 것을 쓴다.
+        /// Branch/Sequence/Loop 가 FlowNode 보다 아래라 자연히 먼저 잡힌다.
+        /// </summary>
+        static string NodeRoleOf(Type t)
+        {
+            for (var b = t.BaseType; b != null; b = b.BaseType)
+            {
+                if (!b.IsGenericType) continue;
+                var g = b.GetGenericTypeDefinition();
+                if (g == typeof(EntryNode<>)) return "entry";
+                if (g == typeof(ActionNode<>)) return "action";
+                if (g == typeof(BranchNode<>)) return "branch";
+                if (g == typeof(SequenceNode<>)) return "sequence";
+                if (g == typeof(LoopNode<>)) return "loop";
+                if (g == typeof(PureNode<,>)) return "pure";
+                if (g == typeof(FlowNode<>)) return "flow";
+            }
+            return "node";
+        }
+
+        /// <summary>PureNode&lt;TCtx,TOut&gt; 의 TOut. 입력칸에 꽂을 수 있는지 판정하는 데 쓴다.</summary>
+        static string PureOutTypeOf(Type t)
+        {
+            for (var b = t.BaseType; b != null; b = b.BaseType)
+                if (b.IsGenericType && b.GetGenericTypeDefinition() == typeof(PureNode<,>))
+                    return GetJsType(b.GetGenericArguments()[1]);
+            return null;
+        }
+
+        /// <summary>팔레트 표시명. `DamageNode` → `Damage`.</summary>
+        static string NodeLabelOf(Type t)
+            => t.Name.Length > 4 && t.Name.EndsWith("Node")
+                ? t.Name.Substring(0, t.Name.Length - 4)
+                : t.Name;
 
         // ── [Icon] 아틀라스 sprite 썸네일 추출 (에디터 codegen 시) ──
         // 결과 형태: {"Common/FieldOrb":[{"name":"Baton","thumb":"data:image/png;base64,..."}], ...}

@@ -44,6 +44,10 @@ export interface ConfigField {
   componentType?: string
   visibleIf?: FieldCondition
   hiddenIf?: FieldCondition
+  /** `[NodeGraph(typeof(TCtx))]` — 이 컬럼은 노드 캔버스로 연다. 값은 node_catalog 의 그룹 키. */
+  nodeGraph?: string
+  /** `NodeValue<T>` — 상수 대신 Pure 노드 출력을 꽂을 수 있는 칸(노드 안에서만 나온다). */
+  isNodeValue?: boolean
 }
 
 /**
@@ -72,6 +76,51 @@ export interface ConfigType {
 }
 
 export type ConfigRow = Record<string, unknown> & { id?: unknown }
+
+// ── 노드 그래프 (ADR-0002) ─────────────────────────────
+
+/**
+ * 노드가 캔버스에서 어떻게 그려지는지를 가르는 역할.
+ * C# 상속 계층(`ActionNode<T>` 등)에서 그대로 뽑아낸 값이다.
+ */
+export type NodeRole = 'entry' | 'action' | 'branch' | 'sequence' | 'loop' | 'pure' | 'flow' | 'node'
+
+/** 나가는 실행 포트. `list` 면 개수가 가변이다(SequenceNode.steps). */
+export interface NodePort {
+  name: string
+  label: string
+  list?: boolean
+}
+
+/** 팔레트에 뜨는 노드 1종. `fields` 는 표 컬럼과 같은 메타라 렌더러를 공유한다. */
+export interface NodeSpec {
+  type: string
+  label: string
+  role: NodeRole
+  /** PureNode 의 출력 타입. 이 값이 맞는 칸에만 꽂을 수 있다. */
+  outType?: string
+  fields: ConfigField[]
+  outs: NodePort[]
+}
+
+/** 컨텍스트 이름 → 그 그래프에 놓을 수 있는 노드들. */
+export type NodeCatalog = Record<string, NodeSpec[]>
+
+/** 컬럼에 저장되는 그래프. 인덱스가 곧 연결이다. */
+export interface GraphDoc {
+  nodes: GraphNodeData[]
+  entry: number
+  /** 캔버스 좌표. 실행에 영향이 없어 Unity 는 무시한다. */
+  layout?: { x: number; y: number }[]
+}
+
+/** 노드 1개. `type` 외의 키는 전부 그 노드의 필드·포트 값이다. */
+export type GraphNodeData = Record<string, unknown> & { type: string }
+
+/** `NodeValue<T>` 의 연결 형태. 상수면 이 모양이 아니라 값이 그대로 들어간다. */
+export interface NodeValueLink {
+  $node: number
+}
 
 /** FK 드롭다운 옵션. 서버 `_types` 응답의 fkSources 항목. */
 export interface FkOption {

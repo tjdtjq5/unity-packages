@@ -5,6 +5,7 @@ import type { ConfigField, ConfigRow } from '../../shared/types'
 import { FkListCell } from './FkListEditor'
 import { IconCell } from './IconPicker'
 import { JsonEditorModal, formatJsonArray } from './JsonEditor'
+import { NodeGraphModal } from '../nodegraph/NodeGraphModal'
 import { RewardsCell } from './RewardsEditor'
 import { SearchSelect } from './SearchSelect'
 import { isFieldDisabled } from './fieldVisibility'
@@ -58,7 +59,8 @@ export function ConfigCell({ row, field, saved, onChange }: CellProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [jsonOpen, setJsonOpen] = useState(false)
-  const fkSources = useAdmin().fkSources
+  const [graphOpen, setGraphOpen] = useState(false)
+  const { fkSources, nodeCatalog } = useAdmin()
 
   if (isFieldDisabled(row, field)) {
     return (
@@ -137,6 +139,33 @@ export function ConfigCell({ row, field, saved, onChange }: CellProps) {
   }
 
   // ── 아이콘 (아틀라스 썸네일 그리드) ──
+  // ── 노드 그래프 (캔버스 모달) ──
+  // isJson 보다 먼저 본다 — 컬럼 이름이 `..._json` 이어도 캔버스가 이겨야 한다.
+  if (field.nodeGraph) {
+    const specs = nodeCatalog[field.nodeGraph] ?? []
+    return (
+      <td data-field={field.name}>
+        <span
+          className="badge bg-purple-lt json-badge"
+          title={specs.length === 0 ? `${field.nodeGraph} 노드가 카탈로그에 없습니다` : shown || '(비어 있음)'}
+          onClick={() => setGraphOpen(true)}
+        >
+          <i className="ti ti-binary-tree me-1" />
+          {countGraphNodes(shown)}
+        </span>
+        {graphOpen && (
+          <NodeGraphModal
+            title={`${field.name} — ${field.nodeGraph}`}
+            specs={specs}
+            initialJson={shown}
+            onSave={(json) => onChange(field.name, json, true)}
+            onClose={() => setGraphOpen(false)}
+          />
+        )}
+      </td>
+    )
+  }
+
   if (field.iconAtlas) {
     return (
       <td data-field={field.name}>
@@ -240,4 +269,15 @@ export function ConfigCell({ row, field, saved, onChange }: CellProps) {
       )}
     </td>
   )
+}
+
+/** 그래프 배지 문구. 파싱이 깨져도 셀은 떠야 하므로 조용히 "비어 있음" 으로 떨어진다. */
+function countGraphNodes(json: string): string {
+  if (!json.trim()) return '비어 있음'
+  try {
+    const nodes = (JSON.parse(json) as { nodes?: unknown[] }).nodes
+    return Array.isArray(nodes) && nodes.length > 0 ? `노드 ${nodes.length}` : '비어 있음'
+  } catch {
+    return '비어 있음'
+  }
 }

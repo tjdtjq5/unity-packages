@@ -31,6 +31,8 @@ Attributes/
 ├── HiddenAttribute.cs        # [Hidden] 클라이언트 응답에서 필드 제외
 ├── VisibleIfAttribute.cs     # [VisibleIf] 어드민에서 조건 일치 시 필드 활성화
 ├── HiddenIfAttribute.cs      # [HiddenIf] 어드민에서 조건 일치 시 필드 비활성화
+├── NodeGraphAttribute.cs     # [NodeGraph(typeof(TCtx))] 이 컬럼을 노드 캔버스로 연다
+├── NodeOutAttribute.cs       # [NodeOut] 노드의 int 필드가 나가는 실행 포트임을 표시
 ├── PublicAttribute.cs        # [Public] 인증 없이 호출 가능한 API
 ├── PrivateAttribute.cs       # [Private] 관리자만 호출 가능한 API
 └── RenamedFromAttribute.cs   # [RenamedFrom("old")] 필드 이름 변경 시 마이그레이션용
@@ -75,6 +77,8 @@ Attributes/
 | `[VisibleIf("field", "val1", ...)]` | Field/Property | 어드민에서 조건 필드 값 일치 시 활성화. bool/enum 단일/복수 지원. |
 | `[HiddenIf("field", "val1", ...)]` | Field/Property | 어드민에서 조건 필드 값 일치 시 비활성화. VisibleIf의 역조건. |
 | `[RenamedFrom("oldName")]` | Field/Property | 필드 이름 변경 시 마이그레이션 감지용. |
+| `[NodeGraph(typeof(TCtx))]` | Field/Property | 이 string 컬럼이 노드 그래프. 어드민이 캔버스로 연다. TCtx 가 팔레트를 가른다. |
+| `[NodeOut("표시명")]` | Field | 노드 클래스의 `int`/`int[]` 필드가 나가는 실행 포트임을 표시. 값은 대상 노드 인덱스. |
 
 ## 주의사항
 

@@ -26,7 +26,9 @@ AdminTemplate~/
 │   └── features/       화면 단위 폴더
 │       ├── auth/       로그인 · 세션 구독
 │       ├── shell/      껍데기 — 레이아웃·사이드바·툴바·라우팅·키맵·AdminContext
-│       └── …           admins / audit / table / cross / player / config
+│       ├── nodegraph/  [NodeGraph] 컬럼이 여는 노드 캔버스 (ADR-0002)
+│       │               NodeGraphModal / GraphNode / graphIO / validate / nodegraph.css
+│       └── …           admins / audit / table / config
 │
 ├── node_modules/       (gitignore)
 └── dist/               ← 빌드 산출물. **커밋한다** (소비 프로젝트는 Node 불필요)
@@ -110,6 +112,16 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다(바
 - **`[HiddenIf]`**: 조건 필드 값 일치 시 셀 비활성화 (VisibleIf 역조건)
 - **비활성화 UI**: 회색 배경 + "—" 텍스트 + 편집 불가 (`.cell-na` 클래스)
 - **실시간 갱신**: enum/FK/bool 변경 시 해당 row의 조건부 셀 즉시 재평가 (`refreshRowConditions`)
+
+### 노드 그래프 편집 (ADR-0002)
+- **진입**: `[NodeGraph(typeof(TCtx))]` 컬럼 셀의 배지 → 전체화면 캔버스(`createPortal` → body)
+- **팔레트**: `suparun_meta.node_catalog` 에서 읽는다. 컨텍스트가 그래프 종류를 갈라서 섞이지 않는다
+- **노드 입력칸**: 카탈로그의 `fields` 가 표 컬럼과 **같은 메타**라 `[EnumType]` 드롭다운 등이 그대로 동작한다
+- **두 종류의 연결**: 실행선(파랑 실선, `[NodeOut]` 포트) / 값선(청록 점선, `NodeValue` 칸에 Pure 노드)
+- **연결 제약**: 값선은 타입이 맞는 칸에만, 실행선은 Pure 로 못 간다. 포트당 연결 1개(새로 꽂으면 기존이 빠짐)
+- **저장 전 검증**: 진입점 1개 / 포트 중복 / 실행·값 순환 / 도달 불가. 오류가 있으면 저장 버튼이 잠긴다
+- **인덱스 재매김**: 노드를 지워 생긴 구멍은 **저장 시점에** 0부터 다시 매긴다. 연결도 함께 옮겨진다
+- **좌표**: `layout` 키로 따로 실린다 — 노드를 옮긴 것만으로 게임이 달라지면 안 되기 때문
 
 ### JSON 편집
 - **Rewards 모달**: `rewards` / `*_rewards` 필드 전용 — 재화/아이템 타입 + ID 드롭다운 + 수량

@@ -76,11 +76,12 @@ export function Shell({ email, onLogout }: { email: string; onLogout: () => void
       tableTypes: data.tableTypes,
       fkSources: data.fkSources,
       rewardSources: data.rewardSources,
+      nodeCatalog: data.nodeCatalog,
       setPageSubtitle: setSubtitle,
       navigate,
       setToolbarActions: setActions,
     }),
-    [data.types, data.tableTypes, data.fkSources, data.rewardSources, navigate],
+    [data.types, data.tableTypes, data.fkSources, data.rewardSources, data.nodeCatalog, navigate],
   )
 
   const view = describeRoute(route, data.types, data.tableTypes)
