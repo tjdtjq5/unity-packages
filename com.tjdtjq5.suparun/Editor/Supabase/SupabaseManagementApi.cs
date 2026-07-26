@@ -242,6 +242,45 @@ namespace Tjdtjq5.SupaRun.Editor
             return r.Ok ? SupabaseResult<bool>.Success(true, r.HttpStatus, r.Raw) : r.CarryFailure<bool>();
         }
 
+        // ── Edge Function ──
+        // 소스를 **문자열 그대로** 올린다. `POST .../functions` 는 eszip 번들과 JSON 둘 다 받는데,
+        // JSON 쪽은 `{slug, name, body, verify_jwt}` 만 있으면 되고 Supabase 가 서버에서 번들링한다.
+        // 그 덕에 에디터에 Deno 툴체인이 없어도 배포가 된다.
+
+        /// <summary>있으면 현재 버전, 없으면 NotFound.</summary>
+        public static async Task<SupabaseResult<string>> GetFunction(
+            string projectRef, string token, string slug)
+            => await RequestJson("GET", $"{BASE}/{projectRef}/functions/{slug}", token);
+
+        public static async Task<SupabaseResult<bool>> CreateFunction(
+            string projectRef, string token, string slug, string name, string source, bool verifyJwt)
+        {
+            var body = new JObject
+            {
+                ["slug"] = slug,
+                ["name"] = name,
+                ["body"] = source,
+                ["verify_jwt"] = verifyJwt,
+            }.ToString(Formatting.None);
+
+            var r = await RequestJson("POST", $"{BASE}/{projectRef}/functions", token, body);
+            return r.Ok ? SupabaseResult<bool>.Success(true, r.HttpStatus, r.Raw) : r.CarryFailure<bool>();
+        }
+
+        public static async Task<SupabaseResult<bool>> UpdateFunction(
+            string projectRef, string token, string slug, string name, string source, bool verifyJwt)
+        {
+            var body = new JObject
+            {
+                ["name"] = name,
+                ["body"] = source,
+                ["verify_jwt"] = verifyJwt,
+            }.ToString(Formatting.None);
+
+            var r = await RequestJson("PATCH", $"{BASE}/{projectRef}/functions/{slug}", token, body);
+            return r.Ok ? SupabaseResult<bool>.Success(true, r.HttpStatus, r.Raw) : r.CarryFailure<bool>();
+        }
+
         /// <summary>
         /// 프로젝트 하위 경로를 그대로 GET 한다. 응답은 파싱하지 않고 본문 그대로 준다.
         ///

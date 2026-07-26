@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { availableRegions, createProject } from '../../shared/bridge'
+import { availableRegions, createProject } from '../../shared/projects'
 import { Modal } from '../../shared/Modal'
 import { Spinner } from '../../shared/Spinner'
 import { toast } from '../../shared/toast'

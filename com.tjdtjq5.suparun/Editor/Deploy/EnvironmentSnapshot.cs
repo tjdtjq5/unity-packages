@@ -52,27 +52,14 @@ namespace Tjdtjq5.SupaRun.Editor
 
             var payload = list.ToString(Formatting.None);
 
-            // 로그인 방식도 함께 싣는다. 어드민이 **잠금 여부를 스스로 판단**해야 하는데,
-            // 지금까지는 이 값이 빌드에 구워져 있어 프로바이더를 켜도 재배포 전에는 몰랐다.
-            // (`{{AUTH_PROVIDERS_JSON}}` 은 fallback 으로 남는다 — 옛 배포가 깨지지 않게)
-            // Guest/GPGS/GameCenter 는 게임 클라이언트용이라 웹에서 누를 수 없다.
-            // 그것들까지 세면 "로그인 수단이 있다"고 잘못 판단해 어드민이 들어갈 수 없게 잠긴다.
-            var providers = new JArray();
-            foreach (var p in settings.enabledAuthProviders)
-            {
-                var v = p?.Trim();
-                if (string.IsNullOrEmpty(v)) continue;
-                if (v is "Guest" or "GPGS" or "GameCenter") continue;
-                providers.Add(v.ToLowerInvariant());
-            }
-            var authPayload = new JObject { ["providers"] = providers }.ToString(Formatting.None);
+            // 로그인 프로바이더 목록은 **여기서 쓰지 않는다.** 진실은 Supabase 의 auth 설정이고,
+            // 어드민은 `/whoami` 로 그것을 직접 읽는다. 예전에는 이 자리에서 로컬 설정
+            // (`enabledAuthProviders`)을 근거로 사본을 썼는데, 웹에서 켠 프로바이더가 Unity 가
+            // 한 번 돌 때마다 지워졌다 — 같은 값을 두 곳이 다른 근거로 쓰면 반드시 어긋난다.
 
             var sql =
                 "INSERT INTO suparun_meta(key, value, updated_at) " +
                 $"VALUES ('environments', $envjson${payload}$envjson$::jsonb, now()) " +
-                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now(); " +
-                "INSERT INTO suparun_meta(key, value, updated_at) " +
-                $"VALUES ('auth_config', $authjson${authPayload}$authjson$::jsonb, now()) " +
                 "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();";
 
             var r = await SupabaseManagementApi.RunQuery(targetId, targetToken, sql);

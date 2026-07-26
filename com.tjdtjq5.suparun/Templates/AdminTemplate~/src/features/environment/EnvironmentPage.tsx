@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { listProjects, pingBridge, type BridgeProject } from '../../shared/bridge'
+import { listProjects, type SupabaseProject } from '../../shared/projects'
 import {
   formatAge,
   formatBytes,
@@ -31,8 +31,8 @@ function currentProjectRef(): string {
  * 환경 현황판 — **카드 하나 = 프로젝트 하나**.
  *
  * 두 출처를 겹쳐 그린다:
- *   환경 메타(`suparun_meta`) — Unity 가 넣어 둔 지표. **Unity 가 꺼져도 보인다**(낡을 수 있음)
- *   브리지 목록              — 지금 이 순간의 Supabase 계정 상태. Unity 가 켜져야 온다
+ *   환경 메타(`suparun_meta`) — Unity 가 넣어 둔 지표. 지표는 Unity 만 모을 수 있다(낡을 수 있음)
+ *   프로젝트 목록            — 지금 이 순간의 Supabase 계정 상태
  *
  * 겹치는 이유: 새로 만든 프로젝트는 아직 어느 환경에도 속하지 않아 메타에 없다.
  * 그래도 목록에는 떠야 "만들었는데 안 보인다" 가 없다.
@@ -41,7 +41,7 @@ export function EnvironmentPage() {
   const { navigate } = useAdmin()
   const here = currentProjectRef()
   const [envs, setEnvs] = useState<EnvironmentInfo[] | null>(null)
-  const [projects, setProjects] = useState<BridgeProject[] | null>(null)
+  const [projects, setProjects] = useState<SupabaseProject[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [online, setOnline] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -54,17 +54,13 @@ export function EnvironmentPage() {
       setError(e instanceof Error ? e.message : String(e))
     }
 
-    // 브리지는 따로 — 없어도 화면은 떠야 한다.
-    const ping = await pingBridge()
-    setOnline(!!ping)
-    if (!ping) {
-      setProjects(null)
-      return
-    }
+    // 목록은 따로 — 못 받아도 환경 메타로 화면은 떠야 한다.
     try {
       setProjects(await listProjects())
+      setOnline(true)
     } catch {
       setProjects(null)
+      setOnline(false)
     }
   }, [])
 
@@ -88,11 +84,11 @@ export function EnvironmentPage() {
   const byRef = new Map<string, EnvironmentInfo>()
   for (const e of envs) if (e.project_ref) byRef.set(e.project_ref, e)
 
-  // 브리지가 살아있으면 계정의 모든 프로젝트가 기준이 된다(미연결 포함).
-  // 꺼져 있으면 아는 것은 환경 메타뿐이다.
+  // 목록을 받았으면 계정의 모든 프로젝트가 기준이 된다(아직 환경으로 등록 안 한 것 포함).
+  // 못 받았으면 아는 것은 환경 메타뿐이다.
   const cards = online && projects
     ? projects.map((p) => ({ key: p.ref, env: byRef.get(p.ref), project: p }))
-    : envs.map((e) => ({ key: e.name, env: e, project: undefined as BridgeProject | undefined }))
+    : envs.map((e) => ({ key: e.name, env: e, project: undefined as SupabaseProject | undefined }))
 
   return (
     <div className="env-list">
@@ -108,7 +104,7 @@ export function EnvironmentPage() {
           <button
             className="btn btn-sm btn-primary"
             disabled={!online}
-            title={online ? '' : 'Unity 에디터가 실행 중이어야 합니다'}
+            title={online ? '' : '프로젝트 목록을 받지 못했습니다'}
             onClick={() => setCreating(true)}
           >
             <i className="ti ti-plus me-1" />
@@ -157,7 +153,7 @@ function EnvCard({
   onEnter,
 }: {
   env?: EnvironmentInfo
-  project?: BridgeProject
+  project?: SupabaseProject
   busy: boolean
   /** 이 어드민이 붙어 있는 프로젝트인가. 그러면 입장이 화면 전환이고, 아니면 다른 사이트로 이동이다. */
   isHere: boolean

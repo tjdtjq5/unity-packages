@@ -242,111 +242,17 @@ display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
                     return;
                 }
 
-                switch (path)
-                {
-                    case "/projects" when req.HttpMethod == "GET":
-                        await ListProjects(res);
-                        return;
-                    case "/projects" when req.HttpMethod == "POST":
-                        await CreateProject(res, ReadBody(req));
-                        return;
-                    case "/projects" when req.HttpMethod == "DELETE":
-                        await DeleteProject(res, req.QueryString["ref"]);
-                        return;
-                    case "/projects/restore":
-                        await RestoreProject(res, req.QueryString["ref"]);
-                        return;
-                    case "/regions":
-                        await Regions(res);
-                        return;
-                    default:
-                        Write(res, 404, Err($"알 수 없는 경로: {path}"));
-                        return;
-                }
+                // 프로젝트·리전은 `suparun-admin` Edge Function 으로 옮겼다.
+                // 브리지를 거치면 Unity 가 켜져 있어야만 되는데, 그건 기획자가 웹만 여는 경우를 막는다.
+                // 여기 남는 것은 **로컬에서만 할 수 있는 일**뿐이다.
+                Write(res, 404, Err($"알 수 없는 경로: {path}"));
+                return;
             }
             catch (Exception ex)
             {
                 // 브리지가 죽으면 어드민은 이유를 모른다. 예외도 응답으로 돌려준다.
                 try { Write(res, 500, Err(ex.Message)); } catch { }
             }
-        }
-
-        // ── 명령 ──
-
-        static string EditorToken() => SupaRunSettings.Instance.SupabaseAccessToken;
-
-        static async UniTask ListProjects(HttpListenerResponse res)
-        {
-            var r = await SupabaseManagementApi.ListProjects(EditorToken());
-            if (!r.Ok) { Write(res, 502, Err(r.Message, r.Hint)); return; }
-
-            var arr = new JArray();
-            foreach (var p in r.Value)
-                arr.Add(new JObject
-                {
-                    ["ref"] = p.id, ["name"] = p.name, ["status"] = p.status,
-                    ["region"] = p.region, ["url"] = p.Url,
-                });
-            Write(res, 200, new JObject { ["projects"] = arr });
-        }
-
-        static async UniTask CreateProject(HttpListenerResponse res, JObject body)
-        {
-            var name = (string)body?["name"];
-            if (string.IsNullOrWhiteSpace(name)) { Write(res, 400, Err("이름이 필요합니다")); return; }
-
-            var org = await SupabaseManagementApi.ListOrganizations(EditorToken());
-            if (!org.Ok || org.Value.Length == 0)
-            { Write(res, 502, Err("조직을 찾지 못했습니다")); return; }
-
-            var r = await SupabaseManagementApi.CreateProject(EditorToken(),
-                new SupabaseManagementApi.CreateProjectRequest
-                {
-                    name = name.Trim(),
-                    organizationSlug = org.Value[0].slug,
-                    dbPass = GeneratePassword(),
-                    region = (string)body["region"],
-                    plan = (string)body["plan"],
-                });
-
-            if (!r.Ok) { Write(res, 502, Err(r.Message, r.Hint)); return; }
-
-            // 만든 프로젝트는 아직 준비 중(COMING_UP)이다. 어드민이 상태를 폴링한다.
-            Write(res, 200, new JObject
-            {
-                ["ref"] = r.Value.id, ["name"] = r.Value.name, ["status"] = r.Value.status,
-            });
-        }
-
-        static async UniTask DeleteProject(HttpListenerResponse res, string projectRef)
-        {
-            if (string.IsNullOrEmpty(projectRef)) { Write(res, 400, Err("ref 가 필요합니다")); return; }
-            var r = await SupabaseManagementApi.DeleteProject(projectRef, EditorToken());
-            if (!r.Ok) { Write(res, 502, Err(r.Message, r.Hint)); return; }
-            Write(res, 200, new JObject { ["ok"] = true });
-        }
-
-        static async UniTask RestoreProject(HttpListenerResponse res, string projectRef)
-        {
-            if (string.IsNullOrEmpty(projectRef)) { Write(res, 400, Err("ref 가 필요합니다")); return; }
-            var r = await SupabaseManagementApi.RestoreProject(projectRef, EditorToken());
-            if (!r.Ok) { Write(res, 502, Err(r.Message, r.Hint)); return; }
-            Write(res, 200, new JObject { ["ok"] = true });
-        }
-
-        static async UniTask Regions(HttpListenerResponse res)
-        {
-            // 리전 목록은 조직마다 다르다 — slug 없이 부르면 400 이다.
-            var org = await SupabaseManagementApi.ListOrganizations(EditorToken());
-            if (!org.Ok || org.Value.Length == 0)
-            { Write(res, 502, Err("조직을 찾지 못했습니다")); return; }
-
-            var r = await SupabaseManagementApi.AvailableRegions(EditorToken(), org.Value[0].slug);
-            if (!r.Ok) { Write(res, 502, Err(r.Message, r.Hint)); return; }
-            var arr = new JArray();
-            foreach (var x in r.Value)
-                arr.Add(new JObject { ["code"] = x.code, ["label"] = x.Label });
-            Write(res, 200, new JObject { ["regions"] = arr });
         }
 
         // ── 접속 정보 게시 ──
@@ -407,17 +313,6 @@ display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
             var sb = new StringBuilder(bytes.Length);
             foreach (var b in bytes) sb.Append(chars[b % chars.Length]);
             return sb.ToString();
-        }
-
-        static JObject ReadBody(HttpListenerRequest req)
-        {
-            try
-            {
-                using var reader = new System.IO.StreamReader(req.InputStream, Encoding.UTF8);
-                var text = reader.ReadToEnd();
-                return string.IsNullOrWhiteSpace(text) ? new JObject() : JObject.Parse(text);
-            }
-            catch { return new JObject(); }
         }
 
         static JObject Err(string message, string hint = null)
