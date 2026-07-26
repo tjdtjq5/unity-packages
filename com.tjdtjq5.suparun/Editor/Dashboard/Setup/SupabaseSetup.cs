@@ -225,13 +225,14 @@ namespace Tjdtjq5.SupaRun.Editor
             _projectsError = null;
             _dashboard.Repaint();
 
-            var (ok, projects, error) = await SupabaseManagementApi.ListProjects(
+            var r = await SupabaseManagementApi.ListProjects(
                 SupaRunSettings.Instance.SupabaseAccessToken);
 
             _loadingProjects = false;
 
-            if (ok)
+            if (r.Ok)
             {
+                var projects = r.Value;
                 _projects = projects;
                 _projectLabels = new string[projects.Length];
                 for (var i = 0; i < projects.Length; i++)
@@ -255,7 +256,8 @@ namespace Tjdtjq5.SupaRun.Editor
             }
             else
             {
-                _projectsError = error;
+                // 종류에 따라 할 일이 다르므로 안내까지 함께 보여준다(토큰 만료 vs 네트워크 vs 권한).
+                _projectsError = $"{r.Message}\n{r.Hint}";
             }
 
             _dashboard.Repaint();
@@ -281,12 +283,12 @@ namespace Tjdtjq5.SupaRun.Editor
             _anonKeyState = AnonKeyState.Loading;
             _dashboard.Repaint();
 
-            var (ok, anonKey, error) = await SupabaseManagementApi.GetAnonKey(
+            var r = await SupabaseManagementApi.GetAnonKey(
                 projectRef, SupaRunSettings.Instance.SupabaseAccessToken);
 
-            if (ok)
+            if (r.Ok)
             {
-                SupaRunSettings.Instance.SupabaseAnonKey = anonKey;
+                SupaRunSettings.Instance.SupabaseAnonKey = r.Value;
                 _anonKeyState = AnonKeyState.Done;
 
                 // 익명 로그인 + Auth URL 자동 설정
@@ -295,7 +297,7 @@ namespace Tjdtjq5.SupaRun.Editor
             else
             {
                 _anonKeyState = AnonKeyState.Failed;
-                _anonKeyError = error;
+                _anonKeyError = $"{r.Message}\n{r.Hint}";
             }
 
             _dashboard.Repaint();
@@ -318,11 +320,11 @@ namespace Tjdtjq5.SupaRun.Editor
                 $"\"uri_allow_list\":\"{redirectUrls}\"" +
                 "}";
 
-            var (ok, error) = await SupabaseManagementApi.PatchAuthConfig(projectRef, token, body);
-            if (ok)
+            var r = await SupabaseManagementApi.PatchAuthConfig(projectRef, token, body);
+            if (r.Ok)
                 Debug.Log("[SupaRun] 자동 Auth 설정 완료: 익명 로그인 + Auth URL");
             else
-                Debug.LogWarning($"[SupaRun] Auth 자동 설정 실패: {error}");
+                r.LogIfFailed("Auth 자동 설정");
         }
 
         // ── 연결 테스트 ──

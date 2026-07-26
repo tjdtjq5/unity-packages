@@ -156,12 +156,20 @@ namespace Tjdtjq5.SupaRun
                 try
                 {
                     var json = System.IO.File.ReadAllText(settingsPath);
-                    var dict = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
-                    if (dict != null)
+                    var settings = Newtonsoft.Json.JsonConvert.DeserializeObject<EditorSettingsDto>(json);
+                    if (settings != null)
                     {
-                        options.CloudRunUrl = dict.TryGetValue("cloudRunUrl", out var u) ? u?.ToString() ?? "" : "";
-                        options.SupabaseUrl = dict.TryGetValue("supabaseUrl", out var s) ? s?.ToString() ?? "" : "";
-                        options.AnonKey = dict.TryGetValue("supabaseAnonKey", out var k) ? k?.ToString() ?? "" : "";
+                        // 에디터 플레이는 **editorEnvironment 가 가리키는 환경**에 붙는다.
+                        // 이 한 줄이 "컴파일이 곧 라이브 반영" 을 끊는다 — 에디터가 dev 를 보면
+                        // 스키마 자동 반영도, 플레이 중 읽는 데이터도 전부 dev 다.
+                        var env = settings.environments?.Find(e => e.name == settings.editorEnvironment)
+                                  ?? (settings.environments != null && settings.environments.Count > 0
+                                        ? settings.environments[0] : null);
+
+                        // 환경이 아직 없는 옛 설정 파일이면 평면 필드로 물러난다.
+                        options.CloudRunUrl = env?.cloudRunUrl ?? settings.cloudRunUrl ?? "";
+                        options.SupabaseUrl = env?.supabaseUrl ?? settings.supabaseUrl ?? "";
+                        options.AnonKey = env?.supabaseAnonKey ?? settings.supabaseAnonKey ?? "";
                     }
                 }
                 catch (Exception ex)
@@ -196,6 +204,33 @@ namespace Tjdtjq5.SupaRun
 
             return options;
         }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// 에디터 설정 파일에서 **읽는 것만** 담은 형태. 쓰기는 SupaRunSettings(Editor 어셈블리)가 한다.
+        /// 여기서 Editor 어셈블리를 참조할 수 없으므로 필요한 모양만 따로 선언한다.
+        /// </summary>
+        [System.Serializable]
+        class EditorSettingsDto
+        {
+            public List<EditorEnvDto> environments;
+            public string editorEnvironment;
+
+            // 환경 도입 전 형식 — 옛 설정 파일을 만나면 이쪽으로 물러난다.
+            public string supabaseUrl;
+            public string supabaseAnonKey;
+            public string cloudRunUrl;
+        }
+
+        [System.Serializable]
+        class EditorEnvDto
+        {
+            public string name;
+            public string supabaseUrl;
+            public string supabaseAnonKey;
+            public string cloudRunUrl;
+        }
+#endif
 
         // ── 데이터 API ──
 

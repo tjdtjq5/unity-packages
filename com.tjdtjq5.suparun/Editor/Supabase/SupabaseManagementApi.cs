@@ -1,200 +1,297 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 
 namespace Tjdtjq5.SupaRun.Editor
 {
-    /// <summary>Supabase Management API 유틸리티. Access Token 기반.</summary>
+    /// <summary>
+    /// Supabase Management API. Access Token(PAT) 기반.
+    ///
+    /// 모든 메서드가 <see cref="SupabaseResult{T}"/> 를 돌려준다 — 실패의 종류(401 인지 402 인지 409 인지)에
+    /// 따라 사용자가 할 일이 완전히 다른데, 예전처럼 `"HTTP 402: {...}"` 문자열 하나로 뭉개면
+    /// 화면에서 그걸 되살릴 방법이 없다.
+    ///
+    /// **재시도하지 않는다.** 프로젝트 생성처럼 멱등하지 않은 호출에서 '응답만 유실된' 재시도는
+    /// 프로젝트를 두 개 만들고, 그건 곧 과금과 한도로 이어진다.
+    /// </summary>
     public static class SupabaseManagementApi
     {
-        const string BASE = "https://api.supabase.com/v1/projects";
+        const string ROOT = "https://api.supabase.com/v1";
+        const string BASE = ROOT + "/projects";
 
-        // ── 프로젝트 목록/정보 ──
+        // ── 모델 ──
 
         public struct ProjectInfo
         {
             public string id;     // ref
             public string name;
-            public string status;
+            public string status; // ACTIVE_HEALTHY / INACTIVE / COMING_UP …
             public string region;
+            public string organizationId;
+            public string createdAt;
+
+            /// <summary>일시정지 상태인가. 무료 플랜은 안 쓰면 자동으로 여기 들어간다.</summary>
+            public bool IsInactive =>
+                string.Equals(status, "INACTIVE", StringComparison.OrdinalIgnoreCase);
+
+            /// <summary>바로 쓸 수 있는 상태인가.</summary>
+            public bool IsHealthy =>
+                string.Equals(status, "ACTIVE_HEALTHY", StringComparison.OrdinalIgnoreCase);
+
+            public string Url => string.IsNullOrEmpty(id) ? "" : $"https://{id}.supabase.co";
         }
 
-        /// <summary>계정의 전체 프로젝트 목록 조회.</summary>
-        public static async Task<(bool ok, ProjectInfo[] projects, string error)>
-            ListProjects(string token)
+        public struct OrganizationInfo
         {
-            var (code, body) = await Request("GET", BASE, token);
-            if (code != 200)
-                return (false, null, $"HTTP {code}: {body}");
+            public string id;
+            public string slug;
+            public string name;
+        }
 
-            try
+        public struct RegionInfo
+        {
+            /// <summary>API 에 넘기는 값 (`ap-northeast-1`).</summary>
+            public string code;
+            /// <summary>사람이 읽는 이름. 없으면 code 를 그대로 쓴다.</summary>
+            public string displayName;
+
+            public string Label => string.IsNullOrEmpty(displayName) ? code : $"{displayName} ({code})";
+        }
+
+        /// <summary>프로젝트 생성 요청. 필수는 이름·비밀번호·조직이다.</summary>
+        public struct CreateProjectRequest
+        {
+            public string name;
+            public string organizationSlug;
+            public string dbPass;
+            /// <summary>비우면 Supabase 기본값. 생성 이후에는 바꿀 수 없다.</summary>
+            public string region;
+            /// <summary>`free` 또는 `pro`. 비우면 조직 기본값.</summary>
+            public string plan;
+        }
+
+        // ── 조직 ──
+
+        public static async Task<SupabaseResult<OrganizationInfo[]>> ListOrganizations(string token)
+        {
+            var r = await RequestJson("GET", $"{ROOT}/organizations", token);
+            if (!r.Ok) return r.CarryFailure<OrganizationInfo[]>();
+
+            return Parse(r, tok =>
             {
-                var list = new System.Collections.Generic.List<ProjectInfo>();
-                var searchIdx = 0;
-                while (searchIdx < body.Length)
-                {
-                    var objStart = body.IndexOf('{', searchIdx);
-                    if (objStart < 0) break;
-
-                    // 중첩 객체 건너뛰기 위해 brace depth 추적
-                    var depth = 0;
-                    var objEnd = objStart;
-                    for (var i = objStart; i < body.Length; i++)
+                var list = new List<OrganizationInfo>();
+                foreach (var o in tok as JArray ?? new JArray())
+                    list.Add(new OrganizationInfo
                     {
-                        if (body[i] == '{') depth++;
-                        else if (body[i] == '}') depth--;
-                        if (depth == 0) { objEnd = i; break; }
-                    }
-
-                    var obj = body.Substring(objStart, objEnd - objStart + 1);
-                    searchIdx = objEnd + 1;
-
-                    var id = JsonHelper.GetString(obj, "id");
-                    var name = JsonHelper.GetString(obj, "name");
-                    if (string.IsNullOrEmpty(id)) continue;
-
-                    list.Add(new ProjectInfo
-                    {
-                        id = id,
-                        name = name,
-                        status = JsonHelper.GetString(obj, "status"),
-                        region = JsonHelper.GetString(obj, "region"),
+                        id = (string)o["id"],
+                        slug = (string)o["slug"],
+                        name = (string)o["name"],
                     });
-                }
-
-                return (true, list.ToArray(), null);
-            }
-            catch (Exception ex)
-            {
-                return (false, null, ex.Message);
-            }
+                return list.ToArray();
+            });
         }
 
-        /// <summary>프로젝트 상태 조회. 연결 검증용.</summary>
-        public static async Task<(bool ok, string name, string status, string region, string error)>
-            GetProjectInfo(string projectRef, string token)
-        {
-            var (code, body) = await Request("GET", $"{BASE}/{projectRef}", token);
-            if (code != 200)
-                return (false, null, null, null, $"HTTP {code}: {body}");
+        // ── 프로젝트 ──
 
-            try
+        public static async Task<SupabaseResult<ProjectInfo[]>> ListProjects(string token)
+        {
+            var r = await RequestJson("GET", BASE, token);
+            if (!r.Ok) return r.CarryFailure<ProjectInfo[]>();
+
+            return Parse(r, tok =>
             {
-                var name = JsonHelper.GetString(body, "name");
-                var status = JsonHelper.GetString(body, "status");
-                var region = JsonHelper.GetString(body, "region");
-                return (true, name, status, region, null);
-            }
-            catch (Exception ex)
+                var list = new List<ProjectInfo>();
+                foreach (var p in tok as JArray ?? new JArray())
+                    list.Add(ToProject(p));
+                return list.ToArray();
+            });
+        }
+
+        public static async Task<SupabaseResult<ProjectInfo>> GetProject(string projectRef, string token)
+        {
+            var r = await RequestJson("GET", $"{BASE}/{projectRef}", token);
+            if (!r.Ok) return r.CarryFailure<ProjectInfo>();
+            return Parse(r, ToProject);
+        }
+
+        /// <summary>
+        /// 프로젝트 생성. 응답은 즉시 오지만 **DB 는 아직 뜨는 중**(status=COMING_UP)이다.
+        /// 쓸 수 있게 되기까지 보통 2분 넘게 걸리므로 호출한 쪽이 상태를 폴링해야 한다.
+        /// </summary>
+        public static async Task<SupabaseResult<ProjectInfo>> CreateProject(
+            string token, CreateProjectRequest req)
+        {
+            var body = new JObject
             {
-                return (false, null, null, null, ex.Message);
-            }
+                ["name"] = req.name,
+                ["organization_slug"] = req.organizationSlug,
+                ["db_pass"] = req.dbPass,
+            };
+            if (!string.IsNullOrEmpty(req.region)) body["region"] = req.region;
+            if (!string.IsNullOrEmpty(req.plan)) body["plan"] = req.plan;
+
+            var r = await RequestJson("POST", BASE, token, body.ToString(Formatting.None));
+            if (!r.Ok) return r.CarryFailure<ProjectInfo>();
+            return Parse(r, ToProject);
+        }
+
+        /// <summary>프로젝트 삭제. **되돌릴 수 없다** — 데이터·백업·스냅샷이 함께 사라진다.</summary>
+        public static async Task<SupabaseResult<bool>> DeleteProject(string projectRef, string token)
+        {
+            var r = await RequestJson("DELETE", $"{BASE}/{projectRef}", token);
+            return r.Ok ? SupabaseResult<bool>.Success(true, r.HttpStatus, r.Raw) : r.CarryFailure<bool>();
+        }
+
+        /// <summary>이름 변경. PATCH 가 바꿀 수 있는 것은 이름뿐이다 — 리전은 생성 후 못 바꾼다.</summary>
+        public static async Task<SupabaseResult<bool>> RenameProject(
+            string projectRef, string token, string newName)
+        {
+            var body = new JObject { ["name"] = newName }.ToString(Formatting.None);
+            var r = await RequestJson("PATCH", $"{BASE}/{projectRef}", token, body);
+            return r.Ok ? SupabaseResult<bool>.Success(true, r.HttpStatus, r.Raw) : r.CarryFailure<bool>();
+        }
+
+        /// <summary>일시정지된 프로젝트를 되살린다.</summary>
+        public static async Task<SupabaseResult<bool>> RestoreProject(string projectRef, string token)
+        {
+            var r = await RequestJson("POST", $"{BASE}/{projectRef}/restore", token, "{}");
+            return r.Ok ? SupabaseResult<bool>.Success(true, r.HttpStatus, r.Raw) : r.CarryFailure<bool>();
+        }
+
+        /// <summary>프로젝트 일시정지.</summary>
+        public static async Task<SupabaseResult<bool>> PauseProject(string projectRef, string token)
+        {
+            var r = await RequestJson("POST", $"{BASE}/{projectRef}/pause", token, "{}");
+            return r.Ok ? SupabaseResult<bool>.Success(true, r.HttpStatus, r.Raw) : r.CarryFailure<bool>();
+        }
+
+        /// <summary>생성 시 고를 수 있는 리전 목록.</summary>
+        public static async Task<SupabaseResult<RegionInfo[]>> AvailableRegions(string token)
+        {
+            var r = await RequestJson("GET", $"{BASE}/available-regions", token);
+            if (!r.Ok) return r.CarryFailure<RegionInfo[]>();
+
+            return Parse(r, tok =>
+            {
+                var list = new List<RegionInfo>();
+                // 응답 형태가 문자열 배열일 수도, 객체 배열일 수도 있어 둘 다 받는다.
+                foreach (var x in tok as JArray ?? new JArray())
+                {
+                    if (x.Type == JTokenType.String)
+                        list.Add(new RegionInfo { code = (string)x });
+                    else
+                        list.Add(new RegionInfo
+                        {
+                            code = (string)(x["name"] ?? x["code"] ?? x["region"]),
+                            displayName = (string)(x["display_name"] ?? x["displayName"] ?? x["label"]),
+                        });
+                }
+                list.RemoveAll(r2 => string.IsNullOrEmpty(r2.code));
+                return list.ToArray();
+            });
         }
 
         // ── API Keys ──
 
-        /// <summary>Anon Key 자동 조회.</summary>
-        public static async Task<(bool ok, string anonKey, string error)>
-            GetAnonKey(string projectRef, string token)
+        /// <summary>anon key 조회. 새 프로젝트를 환경에 등록할 때 자동으로 채워 넣는다.</summary>
+        public static async Task<SupabaseResult<string>> GetAnonKey(string projectRef, string token)
         {
-            var (code, body) = await Request("GET", $"{BASE}/{projectRef}/api-keys", token);
-            if (code != 200)
-                return (false, null, $"HTTP {code}: {body}");
+            var r = await RequestJson("GET", $"{BASE}/{projectRef}/api-keys", token);
+            if (!r.Ok) return r.CarryFailure<string>();
 
-            try
+            var parsed = Parse(r, tok =>
             {
-                // 배열에서 name="anon" 또는 "publishable" 타입 항목 찾기
-                // 배열의 각 객체를 순회하면서 anon key를 찾음
-                string anonKey = null;
-                var searchIdx = 0;
-                while (searchIdx < body.Length)
-                {
-                    var objStart = body.IndexOf('{', searchIdx);
-                    if (objStart < 0) break;
+                foreach (var k in tok as JArray ?? new JArray())
+                    if ((string)k["name"] == "anon")
+                        return (string)k["api_key"];
+                return null;
+            });
 
-                    // 중첩 없는 단순 객체이므로 다음 }를 찾음
-                    var objEnd = body.IndexOf('}', objStart);
-                    if (objEnd < 0) break;
-
-                    var obj = body.Substring(objStart, objEnd - objStart + 1);
-                    searchIdx = objEnd + 1;
-
-                    var name = JsonHelper.GetString(obj, "name");
-                    if (name != "anon") continue;
-
-                    anonKey = JsonHelper.GetString(obj, "api_key");
-                    break;
-                }
-
-                if (string.IsNullOrEmpty(anonKey))
-                    return (false, null, "anon key를 찾을 수 없습니다");
-
-                return (true, anonKey, null);
-            }
-            catch (Exception ex)
-            {
-                return (false, null, ex.Message);
-            }
+            if (parsed.Ok && string.IsNullOrEmpty(parsed.Value))
+                return SupabaseResult<string>.Failure(r.HttpStatus,
+                    "{\"message\":\"응답에 anon key 가 없습니다. 프로젝트가 아직 준비 중일 수 있습니다.\"}");
+            return parsed;
         }
 
         // ── Auth Config ──
 
-        /// <summary>현재 Auth 설정 조회.</summary>
-        public static async Task<(bool ok, string json, string error)>
-            GetAuthConfig(string projectRef, string token)
+        public static async Task<SupabaseResult<string>> GetAuthConfig(string projectRef, string token)
         {
-            var (code, body) = await Request("GET", $"{BASE}/{projectRef}/config/auth", token);
-            if (code != 200)
-                return (false, null, $"HTTP {code}: {body}");
-            return (true, body, null);
+            var r = await RequestJson("GET", $"{BASE}/{projectRef}/config/auth", token);
+            return r.Ok ? SupabaseResult<string>.Success(r.Raw, r.HttpStatus, r.Raw) : r.CarryFailure<string>();
         }
 
-        /// <summary>Auth 설정 변경 (PATCH).</summary>
-        public static async Task<(bool ok, string error)>
-            PatchAuthConfig(string projectRef, string token, string jsonBody)
+        public static async Task<SupabaseResult<bool>> PatchAuthConfig(
+            string projectRef, string token, string jsonBody)
         {
-            var (code, body) = await Request("PATCH", $"{BASE}/{projectRef}/config/auth", token, jsonBody);
-            if (code == 200)
-                return (true, null);
-            return (false, $"HTTP {code}: {body}");
+            var r = await RequestJson("PATCH", $"{BASE}/{projectRef}/config/auth", token, jsonBody);
+            return r.Ok ? SupabaseResult<bool>.Success(true, r.HttpStatus, r.Raw) : r.CarryFailure<bool>();
         }
 
         // ── Database ──
 
-        /// <summary>SQL 쿼리 원격 실행 (Beta).</summary>
-        public static async Task<(bool ok, string result, string error)>
-            RunQuery(string projectRef, string token, string sql)
+        /// <summary>SQL 원격 실행. 반환은 응답 본문(JSON 배열) 원문이다.</summary>
+        public static async Task<SupabaseResult<string>> RunQuery(
+            string projectRef, string token, string sql)
         {
-            var jsonBody = $"{{\"query\":\"{EscapeJson(sql)}\"}}";
-            var (code, body) = await Request("POST", $"{BASE}/{projectRef}/database/query", token, jsonBody);
-            if (code == 200 || code == 201)
-                return (true, body, null);
-            return (false, null, $"HTTP {code}: {body}");
+            var body = new JObject { ["query"] = sql }.ToString(Formatting.None);
+            var r = await RequestJson("POST", $"{BASE}/{projectRef}/database/query", token, body);
+            return r.Ok ? SupabaseResult<string>.Success(r.Raw, r.HttpStatus, r.Raw) : r.CarryFailure<string>();
         }
 
-        // ── Subscription ──
-
-        /// <summary>DB의 max_connections 조회로 실제 연결 한도를 감지.</summary>
-        public static async Task<(bool ok, int maxConnections, string error)>
-            GetMaxConnections(string projectRef, string token)
+        /// <summary>DB 의 max_connections. 스케일링 값 추천에 쓴다.</summary>
+        public static async Task<SupabaseResult<int>> GetMaxConnections(string projectRef, string token)
         {
-            var (queryOk, result, queryErr) = await RunQuery(projectRef, token, "SHOW max_connections;");
-            if (!queryOk)
-                return (false, 0, queryErr);
+            var q = await RunQuery(projectRef, token, "SHOW max_connections;");
+            if (!q.Ok) return q.CarryFailure<int>();
 
-            // 응답에서 숫자 추출 — "max_connections":"60" 또는 [{"max_connections":"60"}]
-            var val = JsonHelper.GetString(result, "max_connections");
-            if (!string.IsNullOrEmpty(val) && int.TryParse(val, out var maxConn))
-                return (true, maxConn, null);
+            try
+            {
+                var arr = JToken.Parse(q.Value) as JArray;
+                var val = arr != null && arr.Count > 0 ? (string)((JObject)arr[0])["max_connections"] : null;
+                if (int.TryParse(val, out var n)) return SupabaseResult<int>.Success(n, q.HttpStatus, q.Raw);
+            }
+            catch { /* 아래에서 실패로 처리 */ }
 
-            return (false, 0, $"max_connections not found in: {result[..Math.Min(300, result.Length)]}");
+            return SupabaseResult<int>.Failure(q.HttpStatus,
+                "{\"message\":\"응답에서 max_connections 를 찾지 못했습니다.\"}");
         }
 
-        // ── HTTP 헬퍼 ──
+        // ── 내부 ──
 
-        static async Task<(long code, string body)> Request(string method, string url, string token, string jsonBody = null)
+        static ProjectInfo ToProject(JToken p) => new()
+        {
+            id = (string)(p["id"] ?? p["ref"]),
+            name = (string)p["name"],
+            status = (string)p["status"],
+            region = (string)p["region"],
+            organizationId = (string)p["organization_id"],
+            createdAt = (string)p["created_at"],
+        };
+
+        /// <summary>본문을 파싱해 T 로 바꾼다. 파싱이 깨지면 그것도 실패로 만든다(예외를 밖으로 던지지 않는다).</summary>
+        static SupabaseResult<T> Parse<T>(SupabaseResult<string> raw, Func<JToken, T> map)
+        {
+            try
+            {
+                var token = string.IsNullOrWhiteSpace(raw.Value) ? null : JToken.Parse(raw.Value);
+                return SupabaseResult<T>.Success(map(token), raw.HttpStatus, raw.Raw);
+            }
+            catch (Exception ex)
+            {
+                return SupabaseResult<T>.Failure(raw.HttpStatus,
+                    new JObject { ["message"] = $"응답을 해석하지 못했습니다: {ex.Message}" }.ToString());
+            }
+        }
+
+        /// <summary>HTTP 한 번. 성공이면 Value 에 본문이 담긴다.</summary>
+        static async Task<SupabaseResult<string>> RequestJson(
+            string method, string url, string token, string jsonBody = null)
         {
             try
             {
@@ -210,62 +307,16 @@ namespace Tjdtjq5.SupaRun.Editor
                 while (!op.isDone)
                     await Task.Yield();
 
-                return (request.responseCode, request.downloadHandler.text);
+                var code = request.responseCode;
+                var body = request.downloadHandler.text;
+
+                return code is >= 200 and < 300
+                    ? SupabaseResult<string>.Success(body, code, body)
+                    : SupabaseResult<string>.Failure(code, body);
             }
             catch (Exception ex)
             {
-                return (-1, ex.Message);
-            }
-        }
-
-        static string EscapeJson(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "");
-        }
-
-        // ── 간이 JSON 파서 ──
-
-        static class JsonHelper
-        {
-            public static string GetString(string json, string key)
-            {
-                var pattern = $"\"{key}\"";
-                var idx = json.IndexOf(pattern, StringComparison.Ordinal);
-                if (idx < 0) return null;
-
-                idx += pattern.Length;
-                // : 찾기
-                idx = json.IndexOf(':', idx);
-                if (idx < 0) return null;
-                idx++;
-
-                // 공백 스킵
-                while (idx < json.Length && (json[idx] == ' ' || json[idx] == '\t'))
-                    idx++;
-
-                if (idx >= json.Length) return null;
-
-                // "문자열" 파싱
-                if (json[idx] == '"')
-                {
-                    idx++;
-                    var end = json.IndexOf('"', idx);
-                    return end < 0 ? null : json.Substring(idx, end - idx);
-                }
-
-                // null
-                if (json[idx] == 'n') return null;
-
-                // 숫자/bool
-                var valEnd = json.IndexOfAny(new[] { ',', '}', ']' }, idx);
-                return valEnd < 0 ? json.Substring(idx).Trim() : json.Substring(idx, valEnd - idx).Trim();
-            }
-
-            public static bool GetBool(string json, string key)
-            {
-                var val = GetString(json, key);
-                return val == "true";
+                return SupabaseResult<string>.Failure(ex);
             }
         }
     }

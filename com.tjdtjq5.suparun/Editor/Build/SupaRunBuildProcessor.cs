@@ -29,13 +29,26 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             var settings = SupaRunSettings.Instance;
 
-            // 1. Config JSON
+            // 1. Config JSON — **buildEnvironment** 를 굽는다. 에디터가 보는 환경이 아니다.
+            // dev 를 보면서 prod 빌드를 뽑는 것이 정상 상태이므로 둘을 절대 같은 것으로 읽지 않는다.
+            var buildEnv = settings.GetEnvironment(settings.BuildEnvironment);
+            if (buildEnv == null)
+            {
+                Debug.LogWarning(
+                    $"[SupaRun:Build] 빌드 환경 '{settings.BuildEnvironment}' 을 찾을 수 없어 " +
+                    "현재 편집 환경으로 대신 굽습니다. 대시보드 > Settings 에서 빌드 환경을 확인하세요.");
+                buildEnv = settings.Current;
+            }
+
             var config = new SupaRunRuntimeConfig
             {
-                supabaseUrl = settings.supabaseUrl,
-                supabaseAnonKey = SupaRunSettings.Instance.SupabaseAnonKey,
-                cloudRunUrl = settings.cloudRunUrl
+                supabaseUrl = buildEnv.supabaseUrl,
+                supabaseAnonKey = buildEnv.supabaseAnonKey,
+                cloudRunUrl = buildEnv.cloudRunUrl
             };
+
+            // 빌드 산출물이 어느 환경을 보는지는 나중에 되짚기 어렵다. 로그로 남긴다.
+            Debug.Log($"[SupaRun:Build] 빌드 환경 = {buildEnv.name} ({buildEnv.supabaseUrl})");
 
             if (!Directory.Exists(ResourcesDir))
             {
@@ -49,11 +62,11 @@ namespace Tjdtjq5.SupaRun.Editor
             Debug.Log($"[SupaRun:Build] Config 생성: {ConfigPath}");
 
             // 서버 URL 미설정 경고 (빌드에서는 항상 서버 호출이므로 필수)
-            if (string.IsNullOrEmpty(settings.cloudRunUrl))
+            if (string.IsNullOrEmpty(buildEnv.cloudRunUrl))
             {
                 Debug.LogWarning(
-                    "[SupaRun:Build] cloudRunUrl이 설정되지 않았습니다. " +
-                    "빌드에서 서버 API 호출이 실패합니다. 배포를 먼저 진행하세요.");
+                    $"[SupaRun:Build] 환경 '{buildEnv.name}' 에 cloudRunUrl 이 없습니다. " +
+                    "빌드에서 서버 API 호출이 실패합니다. 그 환경으로 배포를 먼저 진행하세요.");
             }
 
             // 2. Android 딥링크 (소셜 로그인 활성화 시)

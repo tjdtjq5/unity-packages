@@ -85,6 +85,8 @@ namespace Tjdtjq5.SupaRun.Editor
                 MessageType.Warning);
             GUILayout.Space(4);
 
+            DrawEnvironmentCard(settings);
+            ProjectManager.Draw(settings);
             DrawSupabaseCard(settings);
             DrawGitHubCard(settings, gh);
             DrawGcpCard(settings, gcloud);
@@ -203,6 +205,116 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         // ── Supabase 카드 ──
+
+        // ── 프로젝트 관리 ──
+
+        ProjectManagerUI _projectManager;
+
+        /// <summary>
+        /// 환경 카드 바로 아래에 둔다 — "어느 프로젝트를 쓰는가"(환경)와
+        /// "그 프로젝트가 실제로 있는가"(여기)는 같이 봐야 판단이 된다.
+        /// </summary>
+        ProjectManagerUI ProjectManager => _projectManager ??= new ProjectManagerUI(
+            () => SupaRunSettings.Instance.SupabaseAccessToken,
+            () => _dashboard.Repaint());
+
+        // ── 환경 카드 ──
+
+        bool _envExpanded = true;
+        string _newEnvName = "";
+
+        /// <summary>
+        /// 환경 선택. 아래 Supabase/GCP 카드가 전부 **여기서 고른 환경**의 값을 보여준다.
+        ///
+        /// 편집 환경과 빌드 환경을 따로 두는 이유: dev 를 보면서 prod 빌드를 뽑는 것이 정상이다.
+        /// 하나로 묶으면 빌드할 때마다 편집 환경을 바꿔야 하고, 되돌리는 것을 잊으면
+        /// 그 다음 컴파일이 prod 스키마를 건드린다.
+        /// </summary>
+        void DrawEnvironmentCard(SupaRunSettings settings)
+        {
+            var envs = settings.Environments;
+            var names = new string[envs.Count];
+            for (int i = 0; i < envs.Count; i++) names[i] = envs[i].name;
+
+            var editorIdx = System.Array.IndexOf(names, settings.EditorEnvironment);
+            var buildIdx = System.Array.IndexOf(names, settings.BuildEnvironment);
+
+            var summary = names.Length == 0
+                ? "환경이 없습니다"
+                : $"편집 {settings.EditorEnvironment}  →  빌드 {settings.BuildEnvironment}";
+
+            var expanded = BeginServiceCard("환경", $"{names.Length}개", names.Length > 0 ? 1 : 0,
+                summary, ref _envExpanded);
+
+            if (expanded)
+            {
+                GUILayout.Space(4);
+
+                var newEditorIdx = EditorGUILayout.Popup(
+                    new GUIContent("편집 환경", "컴파일 시 스키마 자동 반영·어드민·에디터 플레이가 향하는 곳"),
+                    editorIdx, names);
+                if (newEditorIdx != editorIdx && newEditorIdx >= 0)
+                    settings.EditorEnvironment = names[newEditorIdx];
+
+                var newBuildIdx = EditorGUILayout.Popup(
+                    new GUIContent("빌드 환경", "빌드 산출물에 구워지는 곳. 편집 환경과 달라도 된다"),
+                    buildIdx, names);
+                if (newBuildIdx != buildIdx && newBuildIdx >= 0)
+                    settings.BuildEnvironment = names[newBuildIdx];
+
+                // 라이브를 직접 편집 중이라는 사실은 눈에 띄어야 한다.
+                if (LooksLikeProduction(settings.EditorEnvironment))
+                {
+                    EditorGUILayout.HelpBox(
+                        $"편집 환경이 '{settings.EditorEnvironment}' 입니다. " +
+                        "이 상태로 컴파일하면 스키마가 라이브에 반영되고, 어드민도 라이브를 가리킵니다.",
+                        MessageType.Warning);
+                }
+
+                GUILayout.Space(6);
+                EditorGUILayout.LabelField("환경 추가/삭제", EditorStyles.miniBoldLabel);
+                EditorGUILayout.BeginHorizontal();
+                _newEnvName = EditorGUILayout.TextField(_newEnvName);
+                using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(_newEnvName)))
+                {
+                    if (GUILayout.Button("추가", GUILayout.Width(60)))
+                    {
+                        settings.AddEnvironment(_newEnvName.Trim());
+                        _newEnvName = "";
+                        GUI.FocusControl(null);
+                    }
+                }
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.HelpBox(
+                    "새 환경은 값이 비어 있습니다. 편집 환경을 그쪽으로 바꾼 뒤 " +
+                    "아래 Supabase/GCP 카드에서 채우세요.", MessageType.Info);
+
+                using (new EditorGUI.DisabledScope(envs.Count <= 1))
+                {
+                    if (GUILayout.Button($"현재 편집 환경 '{settings.EditorEnvironment}' 삭제"))
+                    {
+                        if (EditorUtility.DisplayDialog("환경 삭제",
+                            $"'{settings.EditorEnvironment}' 환경 설정을 지웁니다.\n" +
+                            "Supabase 프로젝트나 배포된 서버는 그대로 남습니다.", "삭제", "취소"))
+                        {
+                            settings.RemoveEnvironment(settings.EditorEnvironment);
+                        }
+                    }
+                }
+            }
+
+            // 접힘 여부와 무관하게 닫는다 — BeginServiceCard 가 항상 BeginVertical 을 열기 때문이다.
+            EndServiceCard();
+        }
+
+        /// <summary>이름만 보고 라이브로 의심되는지. 경고 표시에만 쓴다.</summary>
+        static bool LooksLikeProduction(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            var n = name.ToLowerInvariant();
+            return n.Contains("prod") || n.Contains("live") || n.Contains("release");
+        }
 
         void DrawSupabaseCard(SupaRunSettings settings)
         {
@@ -766,12 +878,12 @@ namespace Tjdtjq5.SupaRun.Editor
             // Supabase는 대부분 provider에 _email_optional이 없고 글로벌 설정
             body += "}";
 
-            var (ok, error) = await SupabaseManagementApi.PatchAuthConfig(projectRef, token, body);
+            var r = await SupabaseManagementApi.PatchAuthConfig(projectRef, token, body);
 
-            _providerApplyState[providerKey] = ok ? "done" : $"error:{error}";
+            _providerApplyState[providerKey] = r.Ok ? "done" : $"error:{r.Message}";
 
             // 적용 성공 시 auth config 캐시 갱신
-            if (ok) _authConfigLoaded = false;
+            if (r.Ok) _authConfigLoaded = false;
         }
 
         static string EscapeJson(string s) => s?.Replace("\\", "\\\\").Replace("\"", "\\\"") ?? "";
@@ -840,12 +952,12 @@ namespace Tjdtjq5.SupaRun.Editor
         async UniTaskVoid FetchAuthConfig(SupaRunSettings settings)
         {
             _authConfigLoading = true;
-            var (ok, json, _) = await SupabaseManagementApi.GetAuthConfig(
+            var r = await SupabaseManagementApi.GetAuthConfig(
                 settings.SupabaseProjectId, SupaRunSettings.Instance.SupabaseAccessToken);
             _authConfigLoading = false;
-            if (ok)
+            if (r.Ok)
             {
-                _authConfigJson = json;
+                _authConfigJson = r.Value;
                 _authConfigLoaded = true;
             }
             _dashboard.Repaint();
@@ -879,12 +991,13 @@ namespace Tjdtjq5.SupaRun.Editor
         async UniTaskVoid FetchSettingsProjects()
         {
             _settingsLoadingProjects = true;
-            var (ok, projects, _) = await SupabaseManagementApi.ListProjects(
+            var r = await SupabaseManagementApi.ListProjects(
                 SupaRunSettings.Instance.SupabaseAccessToken);
             _settingsLoadingProjects = false;
 
-            if (ok)
+            if (r.Ok)
             {
+                var projects = r.Value;
                 _settingsProjects = projects;
                 _settingsProjectLabels = new string[projects.Length];
                 for (var i = 0; i < projects.Length; i++)
@@ -905,16 +1018,16 @@ namespace Tjdtjq5.SupaRun.Editor
 
         async UniTaskVoid FetchAnonKey(SupaRunSettings settings)
         {
-            var (ok, anonKey, error) = await SupabaseManagementApi.GetAnonKey(
+            var r = await SupabaseManagementApi.GetAnonKey(
                 settings.SupabaseProjectId, SupaRunSettings.Instance.SupabaseAccessToken);
-            if (ok)
+            if (r.Ok)
             {
-                SupaRunSettings.Instance.SupabaseAnonKey = anonKey;
+                SupaRunSettings.Instance.SupabaseAnonKey = r.Value;
                 _dashboard.ShowNotification("Anon Key 자동 조회 완료", SupaRunUI.NotificationType.Success);
             }
             else
             {
-                _dashboard.ShowNotification($"조회 실패: {error}", SupaRunUI.NotificationType.Error);
+                _dashboard.ShowNotification($"조회 실패: {r.ToShortString()}", SupaRunUI.NotificationType.Error);
             }
         }
 
@@ -930,13 +1043,13 @@ namespace Tjdtjq5.SupaRun.Editor
             // Phase 1: Management API (프로젝트 상태)
             _dashboard.ShowNotification("1/2 프로젝트 상태 확인 중...", SupaRunUI.NotificationType.Info);
 
-            var (ok, name, status, region, error) = await SupabaseManagementApi.GetProjectInfo(
-                settings.SupabaseProjectId, token);
-            if (!ok)
+            var info = await SupabaseManagementApi.GetProject(settings.SupabaseProjectId, token);
+            if (!info.Ok)
             {
-                _dashboard.ShowNotification($"연결 실패: {error}", SupaRunUI.NotificationType.Error);
+                _dashboard.ShowNotification($"연결 실패: {info.ToShortString()}", SupaRunUI.NotificationType.Error);
                 return;
             }
+            var (name, status, region) = (info.Value.name, info.Value.status, info.Value.region);
 
             // Phase 2: DB Connection (Password 검증)
             var dbPw = SupaRunSettings.Instance.SupabaseDbPassword;
@@ -972,13 +1085,13 @@ namespace Tjdtjq5.SupaRun.Editor
             if (prefix == null) return;
 
             var body = $"{{\"{prefix}_enabled\":true}}";
-            var (ok, error) = await SupabaseManagementApi.PatchAuthConfig(
+            var r = await SupabaseManagementApi.PatchAuthConfig(
                 settings.SupabaseProjectId, token, body);
 
-            if (ok)
+            if (r.Ok)
                 Debug.Log($"[SupaRun] {provider} Supabase에 자동 활성화됨");
             else
-                Debug.LogWarning($"[SupaRun] {provider} 활성화 실패: {error}");
+                r.LogIfFailed($"{provider} 활성화");
         }
 
         /// <summary>Provider를 Supabase에서 비활성화.</summary>
@@ -991,10 +1104,10 @@ namespace Tjdtjq5.SupaRun.Editor
             if (prefix == null) return;
 
             var body = $"{{\"{prefix}_enabled\":false}}";
-            var (ok, _) = await SupabaseManagementApi.PatchAuthConfig(
+            var r = await SupabaseManagementApi.PatchAuthConfig(
                 settings.SupabaseProjectId, token, body);
 
-            if (ok)
+            if (r.Ok)
                 Debug.Log($"[SupaRun] {provider} Supabase에서 비활성화됨");
         }
 

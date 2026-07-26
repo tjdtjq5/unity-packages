@@ -19,15 +19,15 @@ namespace Tjdtjq5.SupaRun.Editor
                 return (false, "Access Token이 필요합니다");
 
             // pg_authid에서 SCRAM 해시 조회
-            var (queryOk, result, queryErr) = await SupabaseManagementApi.RunQuery(
+            var q = await SupabaseManagementApi.RunQuery(
                 projectRef, accessToken,
                 "SELECT rolpassword FROM pg_authid WHERE rolname = 'postgres'");
 
-            if (!queryOk)
-                return (false, $"해시 조회 실패: {queryErr}");
+            if (!q.Ok)
+                return (false, $"해시 조회 실패: {q.ToShortString()}");
 
             // JSON 파싱: [{"rolpassword":"SCRAM-SHA-256$4096:salt$StoredKey:ServerKey"}]
-            var hash = ExtractField(result, "rolpassword");
+            var hash = ExtractField(q.Value, "rolpassword");
             if (string.IsNullOrEmpty(hash) || !hash.StartsWith("SCRAM-SHA-256$"))
                 return (false, "SCRAM 해시를 가져올 수 없습니다");
 

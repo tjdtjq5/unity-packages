@@ -39,6 +39,33 @@ namespace Tjdtjq5.SupaRun.Editor
         [MenuItem("Tjdtjq/SupaRun/Admin %#d")]
         public static void OpenAdmin() => OpenAdminAsync().Forget();
 
+        /// <summary>
+        /// 창을 열고 설정 화면으로 바로 간다. 툴바에서 들어올 때 쓴다 —
+        /// 거기서는 "대시보드를 열고 톱니를 누르세요" 라고 안내할 자리가 없다.
+        /// </summary>
+        public static void OpenSettingsWindow()
+        {
+            Open();
+            var wnd = GetWindow<SupaRunDashboard>("SupaRun");
+            wnd._mode = Mode.Settings;
+            wnd.Repaint();
+        }
+
+        /// <summary>
+        /// 창을 열고 Deploy 탭을 띄운다.
+        ///
+        /// 배포를 툴바에서 곧장 실행하지 않는 이유: 몇 분이 걸리고 진행 로그를 봐야 하는 작업인데
+        /// 툴바에는 그것을 띄울 자리가 없다. 여기서는 **버튼까지 데려다주는 것**이 할 일이다.
+        /// </summary>
+        public static void OpenDeployTab()
+        {
+            Open();
+            var wnd = GetWindow<SupaRunDashboard>("SupaRun");
+            wnd._mode = Mode.Dashboard;
+            wnd._activeTab = 1;   // DashboardTabs 의 Deploy
+            wnd.Repaint();
+        }
+
         static async UniTaskVoid OpenAdminAsync()
         {
             var settings = SupaRunSettings.Instance;

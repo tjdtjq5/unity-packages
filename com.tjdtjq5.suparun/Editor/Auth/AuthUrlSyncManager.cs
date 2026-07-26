@@ -87,10 +87,10 @@ namespace Tjdtjq5.SupaRun.Editor
                 var redirectUrls = BuildRedirectUrlList(current);
                 var body = $"{{\"site_url\":\"{Escape(siteUrl)}\",\"uri_allow_list\":\"{Escape(redirectUrls)}\"}}";
 
-                var (ok, error) = await SupabaseManagementApi.PatchAuthConfig(
+                var r = await SupabaseManagementApi.PatchAuthConfig(
                     projectRef, SupaRunSettings.Instance.SupabaseAccessToken, body);
 
-                if (ok)
+                if (r.Ok)
                 {
                     SaveCachedValues(current);
                     LastState = SyncState.Synced;
@@ -101,11 +101,11 @@ namespace Tjdtjq5.SupaRun.Editor
                 else
                 {
                     LastState = SyncState.Error;
-                    LastError = error;
-                    // 401/403이면 토큰 만료
-                    if (error != null && (error.Contains("HTTP 401") || error.Contains("HTTP 403")))
-                        IsTokenExpired = true;
-                    Debug.LogWarning($"[SupaRun:Auth] 동기화 실패: {error}");
+                    LastError = r.Message;
+                    // 예전에는 에러 문자열에서 "HTTP 401" 을 찾았다. 문구가 바뀌면 조용히 틀리는 방식이라
+                    // 상태코드로 분류된 Kind 를 본다.
+                    IsTokenExpired = r.Kind is SupabaseErrorKind.Auth or SupabaseErrorKind.Forbidden;
+                    Debug.LogWarning($"[SupaRun:Auth] 동기화 실패: {r.ToShortString()}");
                 }
             }
             catch (System.Exception ex)

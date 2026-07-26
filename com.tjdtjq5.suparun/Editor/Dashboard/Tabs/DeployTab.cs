@@ -39,6 +39,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
             // 스키마 동기화 — GitHub 설정과 무관 (Supabase만 필요)
             DrawSchemaSection(settings);
+            DrawPromoteSection(settings);
             GUILayout.Space(8);
 
             // Id 상수 생성 — GitHub 설정과 무관 (Supabase만 필요)
@@ -64,11 +65,12 @@ namespace Tjdtjq5.SupaRun.Editor
 
         void DrawSchemaSection(SupaRunSettings settings)
         {
-            EditorGUILayout.LabelField("스키마 동기화", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField($"스키마 동기화 — 편집 환경 [{settings.EditorEnvironment}]", EditorStyles.miniLabel);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField(
                 "테이블·RLS 정책·어드민 메타데이터를 Supabase에 직접 반영합니다.\n" +
-                "서버 재배포 없이 [SpecData] 변경이 어드민과 게임에 즉시 반영됩니다.",
+                "서버 재배포 없이 [SpecData] 변경이 어드민과 게임에 즉시 반영됩니다.\n" +
+                "아래 자동 반영은 **편집 환경에만** 적용됩니다. 다른 환경은 승격 섹션에서 지정해 반영하세요.",
                 EditorStyles.wordWrappedMiniLabel);
 
             if (!settings.IsSupabaseConfigured)
@@ -113,6 +115,96 @@ namespace Tjdtjq5.SupaRun.Editor
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        // ── 승격 (환경 → 환경) ──
+
+        int _promoteTargetIdx = -1;
+        bool _promoteRunning;
+
+        /// <summary>
+        /// 다른 환경에 스키마를 반영하고 데이터를 올린다.
+        ///
+        /// 편집 환경을 잠깐 바꿔서 처리하는 방식을 쓰지 않는 이유: 되돌리는 것을 잊으면
+        /// 그 다음 컴파일이 곧바로 라이브 스키마를 건드린다. 대상은 항상 명시적으로 고른다.
+        /// </summary>
+        void DrawPromoteSection(SupaRunSettings settings)
+        {
+            var envs = settings.Environments;
+            if (envs.Count < 2) return;   // 환경이 하나면 승격할 곳이 없다
+
+            GUILayout.Space(6);
+            EditorGUILayout.LabelField("환경 승격", EditorStyles.miniLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
+                $"편집 환경 [{settings.EditorEnvironment}] 의 [SpecData] 를 다른 환경으로 올립니다.\n" +
+                "적용 직전 대상 환경 스냅샷이 자동으로 저장되므로 되돌릴 수 있습니다.",
+                EditorStyles.wordWrappedMiniLabel);
+
+            // 대상 후보 = 편집 환경을 제외한 나머지
+            var names = new List<string>();
+            foreach (var e in envs) if (e.name != settings.EditorEnvironment) names.Add(e.name);
+            if (names.Count == 0) { EditorGUILayout.EndVertical(); return; }
+            if (_promoteTargetIdx < 0 || _promoteTargetIdx >= names.Count) _promoteTargetIdx = 0;
+
+            GUILayout.Space(4);
+            _promoteTargetIdx = EditorGUILayout.Popup("대상 환경", _promoteTargetIdx, names.ToArray());
+            var target = settings.GetEnvironment(names[_promoteTargetIdx]);
+
+            using (new EditorGUI.DisabledScope(_promoteRunning || target == null))
+            {
+                EditorGUILayout.BeginHorizontal();
+
+                // 스키마가 먼저다 — 대상에 테이블이 없으면 데이터를 넣을 자리가 없다.
+                if (GUILayout.Button($"1. '{names[_promoteTargetIdx]}' 에 스키마 반영", GUILayout.Height(24)))
+                {
+                    if (EditorUtility.DisplayDialog("스키마 반영",
+                        $"환경 '{target.name}' 에 테이블·정책·메타를 반영합니다.\n" +
+                        "구조만 바뀌고 데이터는 그대로입니다.", "반영", "취소"))
+                    {
+                        RunSchemaSync(target).Forget();
+                    }
+                }
+
+                if (GUILayout.Button($"2. 데이터 승격", GUILayout.Height(24)))
+                {
+                    if (EditorUtility.DisplayDialog("데이터 승격",
+                        $"'{settings.EditorEnvironment}' 의 [SpecData] 전체를 '{target.name}' 에 덮어씁니다.\n\n" +
+                        $"'{target.name}' 의 현재 데이터는 지워지지만, 직전 스냅샷이 자동 저장되어 되돌릴 수 있습니다.\n" +
+                        "플레이어 데이터([UserData])는 건드리지 않습니다.",
+                        "승격", "취소"))
+                    {
+                        RunPromote(settings.Current, target).Forget();
+                    }
+                }
+                EditorGUILayout.EndHorizontal();
+            }
+
+            if (_promoteRunning)
+                EditorGUILayout.LabelField("진행 중…", EditorStyles.miniLabel);
+
+            EditorGUILayout.EndVertical();
+        }
+
+        /// <summary>버튼이 두 번 눌리지 않게 진행 플래그를 쥐고 도는 래퍼.</summary>
+        async UniTaskVoid RunSchemaSync(SupaRunSettings.EnvironmentData target)
+        {
+            _promoteRunning = true;
+            try { await SchemaAutoSync.SyncToEnvironment(target); }
+            finally { _promoteRunning = false; }
+        }
+
+        async UniTaskVoid RunPromote(
+            SupaRunSettings.EnvironmentData from, SupaRunSettings.EnvironmentData to)
+        {
+            _promoteRunning = true;
+            try
+            {
+                var ok = await EnvironmentPromoter.PromoteAsync(from, to);
+                if (ok)
+                    _dashboard.ShowNotification($"'{to.name}' 승격 완료", SupaRunUI.NotificationType.Success);
+            }
+            finally { _promoteRunning = false; }
         }
 
         // ── Id 상수 생성 ──

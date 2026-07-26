@@ -189,9 +189,9 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token)) return;
-            var (ok, _) = await SupabaseManagementApi.PatchAuthConfig(
+            var r = await SupabaseManagementApi.PatchAuthConfig(
                 settings.SupabaseProjectId, token, "{\"mailer_autoconfirm\":true}");
-            if (ok) Debug.Log("[SupaRun:Deploy] autoconfirm 설정 완료");
+            if (r.Ok) Debug.Log("[SupaRun:Deploy] autoconfirm 설정 완료");
         }
 
         /// <summary>pg_cron 잡 관리. [Cron] 있으면 활성화+등록, 없으면 기존 잡 삭제.</summary>
@@ -230,10 +230,10 @@ namespace Tjdtjq5.SupaRun.Editor
                     var allOk = true;
                     foreach (var sql in scheduleSqls)
                     {
-                        var (ok, _, error) = await SupabaseManagementApi.RunQuery(projectId, accessToken, sql);
-                        if (!ok)
+                        var r = await SupabaseManagementApi.RunQuery(projectId, accessToken, sql);
+                        if (!r.Ok)
                         {
-                            Debug.LogWarning($"[SupaRun:Deploy] pg_cron 잡 등록 실패: {error}\nSQL: {sql}");
+                            Debug.LogWarning($"[SupaRun:Deploy] pg_cron 잡 등록 실패: {r.ToShortString()}\nSQL: {sql}");
                             allOk = false;
                         }
                     }
@@ -257,8 +257,8 @@ namespace Tjdtjq5.SupaRun.Editor
 
         static async System.Threading.Tasks.Task RunCronQuery(string projectId, string token, string sql)
         {
-            var (ok, _, error) = await SupabaseManagementApi.RunQuery(projectId, token, sql);
-            if (!ok) Debug.LogWarning($"[SupaRun:Deploy] pg_cron SQL 실패: {error}");
+            var r = await SupabaseManagementApi.RunQuery(projectId, token, sql);
+            r.LogIfFailed("pg_cron SQL");
         }
 
         // [UserData]/[SpecData]/[Service] 부착된 모든 user 타입을 수집한다.

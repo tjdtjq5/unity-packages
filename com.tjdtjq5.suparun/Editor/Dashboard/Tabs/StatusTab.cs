@@ -291,20 +291,20 @@ namespace Tjdtjq5.SupaRun.Editor
             var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token)) return;
 
-            var (ok, name, status, region, _) = await SupabaseManagementApi.GetProjectInfo(
-                settings.SupabaseProjectId, token);
+            var info = await SupabaseManagementApi.GetProject(settings.SupabaseProjectId, token);
 
-            if (ok)
+            if (info.Ok)
             {
-                _projectName = name;
-                _projectStatus = status;
-                _projectRegion = region;
+                _projectName = info.Value.name;
+                _projectStatus = info.Value.status;
+                _projectRegion = info.Value.region;
             }
 
-            var (qOk, result, _) = await SupabaseManagementApi.RunQuery(
+            var q = await SupabaseManagementApi.RunQuery(
                 settings.SupabaseProjectId, token, "SELECT version();");
-            if (qOk)
+            if (q.Ok)
             {
+                var result = q.Value;
                 var idx = result.IndexOf("PostgreSQL", StringComparison.Ordinal);
                 if (idx >= 0)
                 {
@@ -321,11 +321,10 @@ namespace Tjdtjq5.SupaRun.Editor
             var token = SupaRunSettings.Instance.SupabaseAccessToken;
             if (string.IsNullOrEmpty(token)) return;
 
-            var (ok, maxConn, _) = await SupabaseManagementApi.GetMaxConnections(
-                settings.SupabaseProjectId, token);
+            var r = await SupabaseManagementApi.GetMaxConnections(settings.SupabaseProjectId, token);
 
-            if (ok)
-                _dbMaxConnections = maxConn;
+            if (r.Ok)
+                _dbMaxConnections = r.Value;
         }
     }
 }

@@ -29,7 +29,42 @@ namespace Tjdtjq5.SupaRun.Editor
     public static class SchemaAutoSync
     {
         const string EnabledKey = "SupaRun.AutoSyncSchema";
-        const string HashFile = "ProjectSettings/SupaRunSchemaHash.txt";
+        const string LegacyHashFile = "ProjectSettings/SupaRunSchemaHash.txt";
+
+        /// <summary>
+        /// 반영 상태는 **환경마다 다르다.** 파일 하나를 공유하면 dev 에 반영한 해시 때문에
+        /// prod 반영이 "변경 없음" 으로 스킵되고, 그것도 조용히 스킵된다.
+        /// </summary>
+        static string HashFileFor(string envName) =>
+            $"ProjectSettings/SupaRunSchemaHash.{Sanitize(envName)}.txt";
+
+        static string Sanitize(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "default";
+            var sb = new StringBuilder(name.Length);
+            foreach (var c in name)
+                sb.Append(char.IsLetterOrDigit(c) || c == '-' || c == '_' ? c : '_');
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 환경 도입 전의 해시 파일을 첫 환경 것으로 물려받는다. 멱등.
+        /// 물려받지 않으면 이미 반영된 스키마를 전부 다시 밀어 넣게 된다(멱등이라 무해하지만 느리다).
+        /// </summary>
+        static void MigrateLegacyHashFile(string envName)
+        {
+            try
+            {
+                var target = HashFileFor(envName);
+                if (File.Exists(target) || !File.Exists(LegacyHashFile)) return;
+                File.Move(LegacyHashFile, target);
+                Debug.Log($"[SupaRun:Schema] 반영 기록을 환경 '{envName}' 것으로 옮겼습니다.");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[SupaRun:Schema] 반영 기록 이관 실패 — {ex.Message}");
+            }
+        }
 
         /// <summary>
         /// **기본 꺼짐.** 켜면 컴파일할 때마다 실제 DB 에 스키마가 반영된다.
@@ -71,7 +106,9 @@ namespace Tjdtjq5.SupaRun.Editor
                 addColumns += CountOccurrences(f.Content, "ADD COLUMN IF NOT EXISTS ");
             }
 
-            var stored = ReadStoredHashes();
+            // 요약도 **편집 환경 기준**이다. 반영 기록이 환경마다 다르므로
+            // 어느 환경을 보고 있는지에 따라 "변경됨" 판정이 달라진다.
+            var stored = ReadStoredHashes(HashFileFor(SupaRunSettings.Instance.EditorEnvironment));
             var changed = files
                 .Where(f => !stored.TryGetValue(Path.GetFileName(f.Path), out var h) || h != HashOf(f.Content))
                 .Select(f => Path.GetFileName(f.Path))
@@ -108,8 +145,17 @@ namespace Tjdtjq5.SupaRun.Editor
             EditorApplication.delayCall += () => Sync(silent: true).Forget();
         }
 
-        /// <summary>대시보드 버튼용 — 해시가 같아도 강제로 밀어 넣는다.</summary>
+        /// <summary>대시보드 버튼용 — 해시가 같아도 강제로 밀어 넣는다. 대상은 현재 편집 환경.</summary>
         public static UniTask SyncNow() => Sync(silent: false, force: true);
+
+        /// <summary>
+        /// **지정한 환경**에 스키마를 반영한다. prod 는 컴파일로 자동 반영되지 않으므로 이 경로로만 바뀐다.
+        ///
+        /// 편집 환경을 prod 로 잠깐 바꿔서 반영하는 방식은 쓰지 않는다 —
+        /// 되돌리는 것을 잊으면 그 다음 컴파일이 곧바로 라이브 스키마를 건드린다.
+        /// </summary>
+        public static UniTask SyncToEnvironment(SupaRunSettings.EnvironmentData env, bool force = true) =>
+            Sync(silent: false, force: force, target: env);
 
         /// <summary>
         /// 아이콘 썸네일 + 어드레서블 주소 맵을 suparun_meta 에 반영한다.
@@ -135,9 +181,10 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (string.IsNullOrEmpty(sql)) return;
 
                 EditorUtility.DisplayProgressBar("SupaRun", "어드민 자산 반영 중…", 0.7f);
-                var (ok, _, error) = await SupabaseManagementApi.RunQuery(projectId, token, sql);
-                if (!ok)
-                    Debug.LogWarning($"[SupaRun:Schema] 어드민 자산 반영 실패 — {error}\n아이콘이 텍스트로 표시됩니다.");
+                // 어드민을 여는 흐름 중이라 모달을 띄우지 않는다 — 아이콘이 없어도 어드민은 열린다.
+                var r = await SupabaseManagementApi.RunQuery(projectId, token, sql);
+                if (!r.LogIfFailed("어드민 자산 반영"))
+                    Debug.LogWarning("[SupaRun:Schema] 아이콘이 텍스트로 표시됩니다.");
             }
             catch (Exception ex)
             {
@@ -149,17 +196,24 @@ namespace Tjdtjq5.SupaRun.Editor
             }
         }
 
-        static async UniTask Sync(bool silent, bool force = false)
+        static async UniTask Sync(bool silent, bool force = false,
+            SupaRunSettings.EnvironmentData target = null)
         {
             var settings = SupaRunSettings.Instance;
             if (settings == null) return;
-            var token = settings.SupabaseAccessToken;
-            var projectId = settings.SupabaseProjectId;
+
+            // 대상 미지정이면 편집 환경. 컴파일 훅이 이 경로로 들어온다.
+            var env = target ?? settings.Current;
+            var token = env.supabaseAccessToken;
+            var projectId = SupaRunSettings.ProjectIdOf(env.supabaseUrl);
+            var hashFile = HashFileFor(env.name);
+            MigrateLegacyHashFile(settings.Environments.Count > 0 ? settings.Environments[0].name : env.name);
 
             if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(projectId))
             {
                 if (!silent)
-                    Debug.LogWarning("[SupaRun:Schema] Supabase Access Token 또는 프로젝트가 설정되지 않았습니다.");
+                    Debug.LogWarning(
+                        $"[SupaRun:Schema] 환경 '{env.name}' 에 Supabase Access Token 또는 URL 이 없습니다.");
                 return;
             }
 
@@ -184,19 +238,19 @@ namespace Tjdtjq5.SupaRun.Editor
             // 파일별로 비교해 **바뀐 것만** 고른다.
             // 전체를 한 덩어리로 해시하면 테이블 하나만 고쳐도 22개를 전부 다시 밀어 넣게 되고,
             // 파일마다 API 를 왕복하므로 20초 넘게 걸린다.
-            var stored = force ? new Dictionary<string, string>() : ReadStoredHashes();
+            var stored = force ? new Dictionary<string, string>() : ReadStoredHashes(hashFile);
             var changed = sqlFiles
                 .Where(f => !stored.TryGetValue(Path.GetFileName(f.Path), out var h) || h != HashOf(f.Content))
                 .ToList();
 
             if (changed.Count == 0)
             {
-                if (!silent) Debug.Log("[SupaRun:Schema] 변경 없음 — 스킵");
+                if (!silent) Debug.Log($"[SupaRun:Schema] '{env.name}' 변경 없음 — 스킵");
                 return;
             }
 
             var names = changed.Select(f => Path.GetFileName(f.Path)).ToList();
-            Debug.Log($"[SupaRun:Schema] 변경 {changed.Count}개 적용 중 — {string.Join(", ", names)}");
+            Debug.Log($"[SupaRun:Schema] '{env.name}' 에 변경 {changed.Count}개 적용 중 — {string.Join(", ", names)}");
 
             // 변경분을 하나로 묶어 1회만 왕복한다. 이름순이라 의존 순서가 지켜진다
             // (`_suparun_core.sql` 의 is_admin() 이 다른 파일의 정책보다 먼저).
@@ -208,27 +262,29 @@ namespace Tjdtjq5.SupaRun.Editor
                 batch.AppendLine();
             }
 
-            var (ok, _, error) = await SupabaseManagementApi.RunQuery(projectId, token, batch.ToString());
+            var batchResult = await SupabaseManagementApi.RunQuery(projectId, token, batch.ToString());
 
-            if (!ok)
+            if (!batchResult.Ok)
             {
                 // 묶어 보내면 어느 파일이 문제인지 알 수 없다 — 그때만 개별로 다시 돌려 범인을 찾는다.
-                Debug.LogWarning($"[SupaRun:Schema] 묶음 실행 실패 — {error}\n개별 실행으로 원인을 찾습니다…");
+                // 컴파일 훅으로도 들어오는 경로라 모달은 띄우지 않는다(에디터를 가로막는다).
+                Debug.LogWarning(
+                    $"[SupaRun:Schema] 묶음 실행 실패 — {batchResult.ToShortString()}\n개별 실행으로 원인을 찾습니다…");
                 var succeeded = new Dictionary<string, string>(stored);
                 var failed = new List<string>();
                 foreach (var f in changed)
                 {
                     var name = Path.GetFileName(f.Path);
-                    var (fileOk, _, fileErr) = await SupabaseManagementApi.RunQuery(projectId, token, f.Content);
-                    if (fileOk) succeeded[name] = HashOf(f.Content);
+                    var fileResult = await SupabaseManagementApi.RunQuery(projectId, token, f.Content);
+                    if (fileResult.Ok) succeeded[name] = HashOf(f.Content);
                     else
                     {
                         failed.Add(name);
-                        Debug.LogWarning($"[SupaRun:Schema] {name} 실패 — {fileErr}");
+                        Debug.LogWarning($"[SupaRun:Schema] {name} 실패 — {fileResult.ToShortString()}");
                     }
                 }
                 // 성공한 것까지 다시 밀 이유는 없으므로 거기까지는 해시를 남긴다.
-                WriteStoredHashes(succeeded);
+                WriteStoredHashes(hashFile, succeeded);
                 Debug.LogWarning(
                     $"[SupaRun:Schema] {failed.Count}/{changed.Count}개 실패: {string.Join(", ", failed)}\n" +
                     "다음 컴파일에 재시도합니다. 반복되면 SQL 을 확인하세요.");
@@ -236,8 +292,8 @@ namespace Tjdtjq5.SupaRun.Editor
             }
 
             foreach (var f in changed) stored[Path.GetFileName(f.Path)] = HashOf(f.Content);
-            WriteStoredHashes(Prune(stored, sqlFiles));
-            Debug.Log($"[SupaRun:Schema] 반영 완료 — {changed.Count}개. 어드민을 새로고침하면 보입니다.");
+            WriteStoredHashes(hashFile, Prune(stored, sqlFiles));
+            Debug.Log($"[SupaRun:Schema] '{env.name}' 반영 완료 — {changed.Count}개. 어드민을 새로고침하면 보입니다.");
         }
 
         /// <summary>
@@ -262,13 +318,13 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         /// <summary>`파일명=해시` 줄 단위. 형식이 깨지면 빈 맵 — 전부 다시 밀어 넣을 뿐이라 멱등하게 안전하다.</summary>
-        static Dictionary<string, string> ReadStoredHashes()
+        static Dictionary<string, string> ReadStoredHashes(string hashFile)
         {
             var map = new Dictionary<string, string>();
             try
             {
-                if (!File.Exists(HashFile)) return map;
-                foreach (var line in File.ReadAllLines(HashFile))
+                if (!File.Exists(hashFile)) return map;
+                foreach (var line in File.ReadAllLines(hashFile))
                 {
                     var i = line.IndexOf('=');
                     if (i > 0) map[line.Substring(0, i).Trim()] = line.Substring(i + 1).Trim();
@@ -278,14 +334,14 @@ namespace Tjdtjq5.SupaRun.Editor
             return map;
         }
 
-        static void WriteStoredHashes(Dictionary<string, string> map)
+        static void WriteStoredHashes(string hashFile, Dictionary<string, string> map)
         {
             try
             {
                 var sb = new StringBuilder();
                 foreach (var kv in map.OrderBy(k => k.Key, StringComparer.Ordinal))
                     sb.AppendLine($"{kv.Key}={kv.Value}");
-                File.WriteAllText(HashFile, sb.ToString());
+                File.WriteAllText(hashFile, sb.ToString());
             }
             catch (Exception ex)
             {

@@ -2000,9 +2000,7 @@ END $$;
         /// <summary>[Json(typeof(T))]의 T 클래스에서 프로퍼티/필드 메타데이터를 생성한다.</summary>
         static string BuildJsonSchemaJson(Type jsonType)
         {
-            var elementType = jsonType;
-            if (jsonType.IsGenericType && jsonType.GetGenericTypeDefinition() == typeof(List<>))
-                elementType = jsonType.GetGenericArguments()[0];
+            var elementType = JsonElementType(jsonType);
 
             var members = new List<string>();
             foreach (var p in elementType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
@@ -2048,34 +2046,75 @@ END $$;
         {
             // 정렬해야 컴파일마다 "변경됨" 으로 뜨지 않는다.
             var bases = new SortedDictionary<string, Type>(StringComparer.Ordinal);
+            var visited = new HashSet<Type>();
 
             foreach (var type in specTypes)
-                foreach (var f in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
-                {
-                    // 노드 그래프 — Node<TCtx> 로 닫아서 그 컨텍스트의 노드만 모은다.
-                    var ng = f.GetCustomAttribute<NodeGraphAttribute>();
-                    if (ng?.ContextType != null)
-                        bases[ng.ContextType.Name] = typeof(Node<>).MakeGenericType(ng.ContextType);
-
-                    // 다형 필드 — base 를 그대로 쓴다.
-                    var poly = f.GetCustomAttribute<PolymorphicAttribute>();
-                    if (poly?.BaseType != null)
-                        bases[poly.BaseType.Name] = poly.BaseType;
-                }
+                CollectCatalogBases(type, bases, visited);
 
             if (bases.Count == 0) return "{}";
 
             var groups = new List<string>();
             foreach (var kv in bases)
             {
-                var derived = UnityEditor.TypeCache.GetTypesDerivedFrom(kv.Value)
-                    .Where(n => !n.IsAbstract && !n.ContainsGenericParameters)
-                    .OrderBy(n => n.FullName, StringComparer.Ordinal)
-                    .Select(BuildNodeJson);
+                var derived = DerivedConcreteTypes(kv.Value).Select(BuildNodeJson);
                 groups.Add($"\"{kv.Key}\":[{string.Join(",", derived)}]");
             }
             return "{" + string.Join(",", groups) + "}";
         }
+
+        static IEnumerable<Type> DerivedConcreteTypes(Type baseType)
+            => UnityEditor.TypeCache.GetTypesDerivedFrom(baseType)
+                .Where(n => !n.IsAbstract && !n.ContainsGenericParameters)
+                .OrderBy(n => n.FullName, StringComparer.Ordinal);
+
+        /// <summary>
+        /// `[NodeGraph]` · `[Polymorphic]` base 를 **깊이 제한 없이** 모은다.
+        ///
+        /// 최상위 `[SpecData]` 필드만 훑으면 안 되는 이유는 base 가 어느 깊이에나 있을 수 있기 때문이다.
+        ///   PerkData.activation(다형) → SummonActivationData.behavior(다형)
+        ///   PerkData.activation(다형) → FieldOrbActivationData.tiers(json) → pattern(다형)
+        /// 하나라도 빠지면 그 base 만 카탈로그에 없어 어드민 드롭다운이 빈 채로 뜬다.
+        ///
+        /// 파생 타입 안으로도 들어간다 — base 만 봐서는 파생이 무엇을 품는지 알 수 없다.
+        /// </summary>
+        static void CollectCatalogBases(Type owner, SortedDictionary<string, Type> bases, HashSet<Type> visited)
+        {
+            // 자기 자신을 품는 타입이 있으면 무한히 돈다.
+            if (owner == null || !visited.Add(owner)) return;
+
+            foreach (var f in owner.GetFields(BindingFlags.Public | BindingFlags.Instance))
+            {
+                // 노드 그래프 — Node<TCtx> 로 닫아서 그 컨텍스트의 노드만 모은다.
+                var ng = f.GetCustomAttribute<NodeGraphAttribute>();
+                if (ng?.ContextType != null)
+                {
+                    var closed = typeof(Node<>).MakeGenericType(ng.ContextType);
+                    bases[ng.ContextType.Name] = closed;
+                    foreach (var node in DerivedConcreteTypes(closed))
+                        CollectCatalogBases(node, bases, visited);
+                }
+
+                // 다형 필드 — base 를 그대로 쓴다.
+                var poly = f.GetCustomAttribute<PolymorphicAttribute>();
+                if (poly?.BaseType != null)
+                {
+                    bases[poly.BaseType.Name] = poly.BaseType;
+                    foreach (var derived in DerivedConcreteTypes(poly.BaseType))
+                        CollectCatalogBases(derived, bases, visited);
+                }
+
+                // 중첩 JSON — 그 안의 요소도 다형을 품을 수 있다.
+                var json = f.GetCustomAttribute<JsonAttribute>();
+                if (json?.TargetType != null)
+                    CollectCatalogBases(JsonElementType(json.TargetType), bases, visited);
+            }
+        }
+
+        /// <summary>`[Json(typeof(List&lt;T&gt;))]` 의 T. 리스트가 아니면 그 타입 자신.</summary>
+        static Type JsonElementType(Type jsonType)
+            => jsonType.IsGenericType && jsonType.GetGenericTypeDefinition() == typeof(List<>)
+                ? jsonType.GetGenericArguments()[0]
+                : jsonType;
 
         /// <summary>노드 하나의 카탈로그 항목. 포트([NodeOut])는 입력칸에서 빼 outs 로 옮긴다.</summary>
         static string BuildNodeJson(Type nodeType)

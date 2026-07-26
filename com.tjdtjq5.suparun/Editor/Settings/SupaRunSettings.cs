@@ -20,16 +20,51 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── 데이터 클래스 (분리) ──
 
+        /// <summary>
+        /// 환경 하나(dev / staging / prod …). **환경마다 달라야 하는 값만** 담는다.
+        ///
+        /// 나누는 기준은 "환경을 갈아탈 때 같이 갈아타야 하는가"다.
+        /// Supabase 는 프로젝트 자체가 갈리므로 URL·키·PAT 가 전부 환경별이고,
+        /// Cloud Run 은 서비스를 따로 띄우므로 서비스명·URL 이 환경별이다.
+        /// 반대로 GCP 프로젝트·GitHub 레포는 하나를 공유하므로 여기 없다.
+        /// </summary>
         [Serializable]
-        class ProjectData
+        public class EnvironmentData
         {
-            // Supabase
+            public string name = "";
+
+            // Supabase — 환경마다 별도 프로젝트
             public string supabaseUrl = "";
             public string supabaseAnonKey = "";
             public string supabaseDbPassword = "";
             public string supabaseAccessToken = "";
 
-            // Google Cloud
+            // Cloud Run — 환경마다 별도 서비스 (어드민 URL 도 따라서 갈린다)
+            public string gcpServiceName = "";
+            public string cloudRunUrl = "";
+            public string cronSecret = "";
+        }
+
+        [Serializable]
+        class ProjectData
+        {
+            // ── 환경 (ADR-0004 후속) ──
+            public System.Collections.Generic.List<EnvironmentData> environments = new();
+            /// <summary>에디터가 보는 환경. 컴파일 시 스키마 자동 반영이 여기로 간다.</summary>
+            public string editorEnvironment = "";
+            /// <summary>빌드에 구워지는 환경. 에디터와 **별개여야 한다** —
+            /// dev 를 보면서 prod 빌드를 뽑는 것이 정상 상태다.</summary>
+            public string buildEnvironment = "";
+
+            // ── 레거시 평면 필드 ──
+            // 환경 도입 전 형식. MigrateEnvironments() 가 environments[0] 으로 옮긴 뒤 비운다.
+            // 필드를 지우면 옛 설정 파일에서 값을 못 읽어 마이그레이션 자체가 불가능해지므로 남긴다.
+            public string supabaseUrl = "";
+            public string supabaseAnonKey = "";
+            public string supabaseDbPassword = "";
+            public string supabaseAccessToken = "";
+
+            // Google Cloud — 프로젝트/리전/서비스계정은 환경 공통
             public string gcpProjectId = "";
             public string gcpRegion = "asia-northeast3";
             public string gcpServiceName = "";
@@ -106,9 +141,120 @@ namespace Tjdtjq5.SupaRun.Editor
                 {
                     MigrateIfNeeded();
                     _project ??= LoadProject();
+                    MigrateEnvironments(_project);
                 }
                 return _project;
             }
+        }
+
+        // ── 환경 ────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 평면 필드 → environments[0] 이관. 멱등 — 환경이 하나라도 있으면 아무것도 하지 않는다.
+        ///
+        /// 이름을 dev 로 짓는 이유: 기존 프로젝트는 그동안 개발용으로 쓰던 것이고,
+        /// prod 는 깨끗한 새 프로젝트로 따로 만든다는 결정을 따른다.
+        /// </summary>
+        static void MigrateEnvironments(ProjectData p)
+        {
+            p.environments ??= new System.Collections.Generic.List<EnvironmentData>();
+            if (p.environments.Count > 0)
+            {
+                // 선택이 사라진 환경을 가리키면(이름 변경·삭제) 첫 환경으로 되돌린다.
+                if (!p.environments.Exists(e => e.name == p.editorEnvironment))
+                    p.editorEnvironment = p.environments[0].name;
+                if (!p.environments.Exists(e => e.name == p.buildEnvironment))
+                    p.buildEnvironment = p.editorEnvironment;
+                return;
+            }
+
+            // 평면 필드가 통째로 비어 있으면 이관할 것이 없다(신규 프로젝트).
+            if (string.IsNullOrEmpty(p.supabaseUrl) && string.IsNullOrEmpty(p.cloudRunUrl)) return;
+
+            p.environments.Add(new EnvironmentData
+            {
+                name = "dev",
+                supabaseUrl = p.supabaseUrl,
+                supabaseAnonKey = p.supabaseAnonKey,
+                supabaseDbPassword = p.supabaseDbPassword,
+                supabaseAccessToken = p.supabaseAccessToken,
+                gcpServiceName = p.gcpServiceName,
+                cloudRunUrl = p.cloudRunUrl,
+                cronSecret = p.cronSecret,
+            });
+            p.editorEnvironment = "dev";
+            p.buildEnvironment = "dev";
+
+            // 평면 필드를 비운다 — 두 곳에 값이 남으면 어느 쪽이 진실인지 알 수 없다.
+            p.supabaseUrl = p.supabaseAnonKey = p.supabaseDbPassword = p.supabaseAccessToken = "";
+            p.gcpServiceName = p.cloudRunUrl = p.cronSecret = "";
+
+            SaveProject();
+            Debug.Log("[SupaRun] 기존 설정을 환경 'dev' 로 옮겼습니다. 대시보드 > Settings 에서 환경을 추가할 수 있습니다.");
+        }
+
+        /// <summary>환경 목록(읽기 전용 뷰). 편집은 AddEnvironment/RemoveEnvironment 로.</summary>
+        public System.Collections.Generic.IReadOnlyList<EnvironmentData> Environments => P.environments;
+
+        /// <summary>에디터가 보는 환경 이름. 컴파일 시 스키마 반영·어드민·대시보드가 전부 이걸 따른다.</summary>
+        public string EditorEnvironment
+        {
+            get => P.editorEnvironment;
+            set { P.editorEnvironment = value; SaveProject(); }
+        }
+
+        /// <summary>빌드에 구워지는 환경 이름.</summary>
+        public string BuildEnvironment
+        {
+            get => P.buildEnvironment;
+            set { P.buildEnvironment = value; SaveProject(); }
+        }
+
+        /// <summary>이름으로 환경을 찾는다. 없으면 null — 승격 도구가 양쪽을 집을 때 쓴다.</summary>
+        public EnvironmentData GetEnvironment(string name) =>
+            P.environments.Find(e => e.name == name);
+
+        /// <summary>
+        /// 현재 편집 환경. 하나도 없으면 빈 환경을 만들어 돌려준다 —
+        /// 설정 화면이 null 검사 없이 그릴 수 있어야 하고, 첫 실행이 정확히 그 상태다.
+        /// </summary>
+        public EnvironmentData Current
+        {
+            get
+            {
+                var env = GetEnvironment(P.editorEnvironment);
+                if (env != null) return env;
+                if (P.environments.Count == 0)
+                {
+                    P.environments.Add(new EnvironmentData { name = "dev" });
+                    P.editorEnvironment = P.buildEnvironment = "dev";
+                }
+                return P.environments[0];
+            }
+        }
+
+        /// <summary>환경 추가. 이름이 겹치면 기존 것을 그대로 돌려준다.</summary>
+        public EnvironmentData AddEnvironment(string name)
+        {
+            var existing = GetEnvironment(name);
+            if (existing != null) return existing;
+            var env = new EnvironmentData { name = name };
+            P.environments.Add(env);
+            SaveProject();
+            return env;
+        }
+
+        /// <summary>환경 삭제. 마지막 하나는 지우지 않는다(설정이 통째로 사라지는 것을 막는다).</summary>
+        public bool RemoveEnvironment(string name)
+        {
+            if (P.environments.Count <= 1) return false;
+            var env = GetEnvironment(name);
+            if (env == null) return false;
+            P.environments.Remove(env);
+            if (P.editorEnvironment == name) P.editorEnvironment = P.environments[0].name;
+            if (P.buildEnvironment == name) P.buildEnvironment = P.environments[0].name;
+            SaveProject();
+            return true;
         }
 
         static UserData U
@@ -181,30 +327,32 @@ namespace Tjdtjq5.SupaRun.Editor
             SaveUser();
         }
 
-        // ── Supabase ──
+        // ── Supabase (현재 편집 환경) ──
+        // 이 프로퍼티들은 **EditorEnvironment 가 가리키는 환경**의 값을 읽고 쓴다.
+        // 시그니처를 그대로 둔 덕분에 이걸 참조하는 20여 개 파일이 수정 없이 환경을 따라간다.
 
         public string supabaseUrl
         {
-            get => P.supabaseUrl;
-            set { P.supabaseUrl = value; }
+            get => Current.supabaseUrl;
+            set { Current.supabaseUrl = value; }
         }
 
         public string SupabaseAnonKey
         {
-            get => P.supabaseAnonKey;
-            set { P.supabaseAnonKey = value; SaveProject(); }
+            get => Current.supabaseAnonKey;
+            set { Current.supabaseAnonKey = value; SaveProject(); }
         }
 
         public string SupabaseDbPassword
         {
-            get => P.supabaseDbPassword;
-            set { P.supabaseDbPassword = value; SaveProject(); }
+            get => Current.supabaseDbPassword;
+            set { Current.supabaseDbPassword = value; SaveProject(); }
         }
 
         public string SupabaseAccessToken
         {
-            get => P.supabaseAccessToken;
-            set { P.supabaseAccessToken = value; SaveProject(); }
+            get => Current.supabaseAccessToken;
+            set { Current.supabaseAccessToken = value; SaveProject(); }
         }
 
         // ── Google Cloud ──
@@ -221,10 +369,11 @@ namespace Tjdtjq5.SupaRun.Editor
             set { P.gcpRegion = value; }
         }
 
+        /// <summary>Cloud Run 서비스명 — 환경마다 별도 서비스를 띄우므로 환경별이다.</summary>
         public string gcpServiceName
         {
-            get => P.gcpServiceName;
-            set { P.gcpServiceName = value; }
+            get => Current.gcpServiceName;
+            set { Current.gcpServiceName = value; }
         }
 
         public int gcpMinInstances
@@ -347,14 +496,14 @@ namespace Tjdtjq5.SupaRun.Editor
 
         public string cloudRunUrl
         {
-            get => P.cloudRunUrl;
-            set { P.cloudRunUrl = value; }
+            get => Current.cloudRunUrl;
+            set { Current.cloudRunUrl = value; }
         }
 
         public string CronSecret
         {
-            get => P.cronSecret;
-            set { P.cronSecret = value; SaveProject(); }
+            get => Current.cronSecret;
+            set { Current.cronSecret = value; SaveProject(); }
         }
 
         // ── 설정 완료 판단 ──
@@ -378,18 +527,18 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── Supabase 프로젝트 ID 추출 ──
 
-        public string SupabaseProjectId
+        public string SupabaseProjectId => ProjectIdOf(supabaseUrl);
+
+        /// <summary>`https://xxx.supabase.co` → `xxx`. 환경을 지정해 다루는 쪽(승격·스키마 반영)이 쓴다.</summary>
+        public static string ProjectIdOf(string url)
         {
-            get
+            if (string.IsNullOrEmpty(url)) return "";
+            try
             {
-                if (string.IsNullOrEmpty(supabaseUrl)) return "";
-                try
-                {
-                    var uri = new Uri(supabaseUrl);
-                    return uri.Host.Split('.')[0];
-                }
-                catch { return ""; }
+                var uri = new Uri(url);
+                return uri.Host.Split('.')[0];
             }
+            catch { return ""; }
         }
 
         public string SupabaseApiSettingsUrl =>

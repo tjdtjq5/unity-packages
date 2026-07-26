@@ -22,6 +22,43 @@
 | `ActionsTracker.cs` | `static class` | GitHub Actions 워크플로우 상태 폴링 (5초 간격, head_sha 필터링) + 성공/실패 결과 수집 |
 | `ServerCacheHealthChecker.cs` | `static class` | 배포 스냅샷 저장, 코드 변경 감지(SHA256), .NET 버전 변경/캐시 만료 경고 |
 | `ServerCacheTypes.cs` | `static class` | 서버 캐시 타입 상수 정의 (NuGet, Docker, Skip) |
+| `EnvironmentPromoter.cs` | `static class` | 환경 간 [SpecData] 승격 — 대상 스냅샷 → 원본 추출 → 대상 주입 |
+
+## 환경 (dev / prod …)
+
+설정은 `SupaRunSettings.EnvironmentData` 목록으로 들고, **편집 환경**과 **빌드 환경**을 따로 가리킨다.
+
+| 축 | 무엇이 따라가는가 |
+|---|---|
+| `editorEnvironment` | 컴파일 시 스키마 자동 반영 · 어드민 · 대시보드 · 에디터 플레이 |
+| `buildEnvironment` | 빌드 산출물의 `Resources/SupaRunConfig.json` |
+
+둘을 나눈 이유는 **dev 를 보면서 prod 빌드를 뽑는 것이 정상 상태**이기 때문이다. 하나로 묶으면
+빌드마다 편집 환경을 바꿔야 하고, 되돌리기를 잊으면 그 다음 컴파일이 라이브 스키마를 건드린다.
+
+- `settings.supabaseUrl` 등 기존 프로퍼티는 **현재 편집 환경의 값**을 돌려준다.
+  덕분에 `SupaRunSettings` 를 참조하는 20여 곳이 수정 없이 환경을 따라간다
+- 환경별인 것: Supabase URL/키/DB비번/PAT, Cloud Run 서비스명·URL, cronSecret
+  공통인 것: GCP 프로젝트·리전·서비스계정, GitHub 레포·토큰, 스케일링, 캐시, authProviders
+- ⚠ **반영 기록(해시)은 환경마다 별도 파일**이다 (`ProjectSettings/SupaRunSchemaHash.<env>.txt`).
+  하나로 두면 dev 에 반영한 해시 때문에 prod 반영이 "변경 없음" 으로 **조용히 스킵된다**
+
+### 승격 (dev → prod)
+
+**스키마는 옮기지 않는다.** 마이그레이션이 코드 생성 + 멱등이라 대상에서 실행하면 같은 구조가 나온다.
+그래서 순서가 ① 스키마 반영 ② 데이터 승격이다.
+
+- 데이터는 **전체 통째**. 부분 승격을 두지 않는 이유는 두 환경이 서서히 달라지는 것을 막기 위해서다
+- 적용 직전 **대상 환경 스냅샷이 자동 저장**되므로 되돌릴 수 있다
+- `jsonb_populate_recordset` 으로 넣는다 — 대상 테이블 정의 기준이라 **원본에만 있는 컬럼은 무시되고
+  대상에만 있는 컬럼은 기본값으로 남는다**. 컬럼이 어긋나도 승격이 죽지 않는다
+- 페이로드는 세션 변수(`suparun.promote_payload`)에 올린다. TEMP TABLE 은 트랜잭션 경계에 따라
+  사라질 수 있고, 인라인 반복은 테이블 수만큼 SQL 을 복제한다
+- 실행 위치가 에디터인 이유: **두 환경의 PAT 를 동시에 쥔 곳이 여기뿐**이다.
+  어드민은 환경 하나만 보므로 이 일을 할 수 없다
+- 대상 스냅샷은 어드민 RPC 를 그대로 쓰되, Management API 에는 로그인 사용자가 없으므로
+  `set_config` 로 **관리자 신원을 트랜잭션 동안만 빌린다**. 대상에 관리자가 없으면 여기서 막히는데,
+  그건 실제로 승격하면 안 되는 상태다
 
 ## API
 
