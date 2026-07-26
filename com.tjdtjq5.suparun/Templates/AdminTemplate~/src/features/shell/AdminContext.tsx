@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { ConfigType, FkOption, NodeCatalog, TableType } from '../../shared/types'
+import type { ConfigType, FkOption, TypeCatalog, TableType } from '../../shared/types'
 import type { Route } from './route'
 
 /**
@@ -25,7 +25,7 @@ export interface AdminContextValue {
   /** Rewards 모달용 재화/아이템 목록 (`currency_def`, `inventory_item_def`). */
   rewardSources: Record<string, FkOption[]>
   /** `[NodeGraph]` 컬럼이 여는 캔버스의 팔레트 (컨텍스트 이름 → 노드 목록). */
-  nodeCatalog: NodeCatalog
+  typeCatalog: TypeCatalog
   /** 페이지 제목 옆 부제. 화면이 건수 같은 자기 상태를 알릴 때 쓴다. */
   setPageSubtitle(text: string): void
   navigate(route: Route): void

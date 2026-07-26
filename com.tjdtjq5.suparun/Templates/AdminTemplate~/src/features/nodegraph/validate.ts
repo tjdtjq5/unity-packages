@@ -20,23 +20,20 @@ export function validateGraph(nodes: FlowNode[], edges: Edge[]): GraphIssue[] {
   if (nodes.length === 0) return issues
 
   // ── 진입점 ──
-  // 진입점이 될 수 있는 건 EntryNode 파생뿐이다. 그러라고 만든 계층이라
-  // 아무 노드나 시작점이 되면 역할 구분이 무의미해진다.
+  // 시점은 컬럼이 가르므로(ADR-0002 결정 27) 진입 전용 노드 타입이 없다.
+  // 실행 흐름에 놓이는 노드면 무엇이든 시작점이 될 수 있고, 하나여야 한다.
   const entries = nodes.filter((n) => n.data.isEntry)
-  const entryRoleNodes = nodes.filter((n) => n.data.spec.role === 'entry')
 
-  if (entryRoleNodes.length === 0)
-    issues.push({ level: 'error', message: '시작 노드가 없습니다. 팔레트의 "시작" 에서 하나 놓으세요.' })
-  else if (entries.length === 0)
+  if (entries.length === 0)
     issues.push({ level: 'error', message: '어느 노드에서 시작할지 지정되지 않았습니다.' })
   else if (entries.length > 1)
     issues.push({ level: 'error', message: `진입점이 ${entries.length}개입니다. 하나만 둘 수 있습니다.` })
 
   for (const n of entries)
-    if (n.data.spec.role !== 'entry')
+    if (n.data.spec.role === 'pure')
       issues.push({
         level: 'error',
-        message: `${n.data.spec.label} 은 시작 노드가 아닙니다.`,
+        message: `${n.data.spec.label} 은 값 노드라 시작점이 될 수 없습니다.`,
         nodeId: n.id,
       })
 

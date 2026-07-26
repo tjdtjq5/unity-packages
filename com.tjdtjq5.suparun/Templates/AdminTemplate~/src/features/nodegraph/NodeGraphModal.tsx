@@ -127,9 +127,8 @@ function Canvas({
             data: {
               spec,
               values: defaultValues(spec),
-              // 첫 EntryNode 는 놓는 즉시 진입점이 된다 — 대부분 하나뿐이라
-              // 따로 지정하게 하면 잊기만 쉽다.
-              isEntry: spec.role === 'entry' && !ns.some((n) => n.data.isEntry),
+              // 처음 놓는 실행 노드가 곧 시작점이 된다 — 따로 지정하게 하면 잊기만 쉽다.
+              isEntry: spec.role !== 'pure' && !ns.some((n) => n.data.isEntry),
             },
           } satisfies FlowNode,
         ]

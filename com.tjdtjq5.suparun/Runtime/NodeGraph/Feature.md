@@ -61,7 +61,16 @@ Runtime/NodeGraph/               ← Tjdtjq5.SupaRun.NodeGraph (순수)
 
 Runtime/Serialization/           ← Tjdtjq5.SupaRun.Runtime (Newtonsoft)
 ├── NodeGraphSerializer.cs   # 컬럼 JSON ↔ C# 객체
+│                            #  Parse/Serialize       — 그래프(노드 배열 + 진입점)
+│                            #  ParseOne/SerializeOne — [Polymorphic] 값 하나
 └── NodeValueConverter.cs    # NodeValue<T> ↔ `25` / `{"$node":3}`
+```
+
+> 카탈로그는 `suparun_meta` 의 **`type_catalog`** 한 키에 노드와 다형 타입이 함께 실린다.
+> 둘은 같은 것이다 — "base 의 파생 중 하나를 고르고 필드를 채운다".
+> 노드 그래프는 거기에 연결을 얹은 것이라 `outs` 를 쓰고, 다형 필드는 `outs` 가 빈 배열이다.
+
+```
 ```
 
 어트리뷰트가 계층과 같은 어셈블리에 있는 이유는 `[NodeOut]` 이 **노드 클래스에 붙기** 때문이다.

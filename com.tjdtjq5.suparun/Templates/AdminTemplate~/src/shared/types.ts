@@ -44,8 +44,10 @@ export interface ConfigField {
   componentType?: string
   visibleIf?: FieldCondition
   hiddenIf?: FieldCondition
-  /** `[NodeGraph(typeof(TCtx))]` — 이 컬럼은 노드 캔버스로 연다. 값은 node_catalog 의 그룹 키. */
+  /** `[NodeGraph(typeof(TCtx))]` — 이 컬럼은 노드 캔버스로 연다. 값은 type_catalog 의 그룹 키. */
   nodeGraph?: string
+  /** `[Polymorphic(typeof(TBase))]` — 타입 드롭다운 + 그 타입의 필드 폼으로 연다. 값은 type_catalog 의 그룹 키. */
+  polymorphic?: string
   /** `NodeValue<T>` — 상수 대신 Pure 노드 출력을 꽂을 수 있는 칸(노드 안에서만 나온다). */
   isNodeValue?: boolean
 }
@@ -77,11 +79,15 @@ export interface ConfigType {
 
 export type ConfigRow = Record<string, unknown> & { id?: unknown }
 
-// ── 노드 그래프 (ADR-0002) ─────────────────────────────
+// ── 타입 카탈로그 (ADR-0002 노드 그래프 / ADR-0005 다형 필드) ─────────
+//
+// 둘은 같은 것이다 — "base 의 파생 중 하나를 고르고 필드를 채운다".
+// 노드 그래프는 거기에 연결을 얹은 것이라 `outs` 를 쓰고, 다형 필드는 `outs` 가 빈 배열이다.
 
 /**
  * 노드가 캔버스에서 어떻게 그려지는지를 가르는 역할.
  * C# 상속 계층(`ActionNode<T>` 등)에서 그대로 뽑아낸 값이다.
+ * 다형 필드에는 해당 계층이 없어 `node` 로 온다.
  */
 export type NodeRole = 'entry' | 'action' | 'branch' | 'sequence' | 'loop' | 'pure' | 'flow' | 'node'
 
@@ -104,7 +110,7 @@ export interface NodeSpec {
 }
 
 /** 컨텍스트 이름 → 그 그래프에 놓을 수 있는 노드들. */
-export type NodeCatalog = Record<string, NodeSpec[]>
+export type TypeCatalog = Record<string, NodeSpec[]>
 
 /** 컬럼에 저장되는 그래프. 인덱스가 곧 연결이다. */
 export interface GraphDoc {

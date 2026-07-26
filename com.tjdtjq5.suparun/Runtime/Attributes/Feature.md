@@ -31,6 +31,7 @@ Attributes/
 ├── HiddenAttribute.cs        # [Hidden] 클라이언트 응답에서 필드 제외
 ├── VisibleIfAttribute.cs     # [VisibleIf] 어드민에서 조건 일치 시 필드 활성화
 ├── HiddenIfAttribute.cs      # [HiddenIf] 어드민에서 조건 일치 시 필드 비활성화
+├── PolymorphicAttribute.cs   # [Polymorphic(typeof(TBase))] 이 컬럼이 파생 중 하나를 담는다
 │                             #  ※ [NodeGraph] / [NodeOut] 은 Runtime/NodeGraph/ 로 옮겼다 —
 │                             #    노드 클래스에 붙는 어트리뷰트라 계층과 같은 어셈블리여야 한다
 ├── PublicAttribute.cs        # [Public] 인증 없이 호출 가능한 API
@@ -79,6 +80,7 @@ Attributes/
 | `[RenamedFrom("oldName")]` | Field/Property | 필드 이름 변경 시 마이그레이션 감지용. |
 | `[NodeGraph(typeof(TCtx))]` | Field/Property | 이 string 컬럼이 노드 그래프. 어드민이 캔버스로 연다. TCtx 가 팔레트를 가른다. |
 | `[NodeOut("표시명")]` | Field | 노드 클래스의 `int`/`int[]` 필드가 나가는 실행 포트임을 표시. 값은 대상 노드 인덱스. |
+| `[Polymorphic(typeof(TBase))]` | Field/Property | 이 string 컬럼이 TBase 파생 **하나**를 담는다. 어드민이 타입 드롭다운 + 그 타입 폼으로 연다. 컬럼 하나가 행마다 다른 뜻을 갖던 구조를 푸는 데 쓴다. |
 
 ## 주의사항
 

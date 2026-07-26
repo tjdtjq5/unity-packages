@@ -110,9 +110,9 @@ namespace Tjdtjq5.SupaRun
         int EnterLoop(int index, LoopNode<TCtx> loop, ref TCtx ctx)
         {
             int count = loop.Count(this, ref ctx);
-            if (count <= 0) return loop.completed;
+            // 첫 회차부터 들어갈 수 없으면(대상 없음) 본문을 건너뛴다.
+            if (count <= 0 || !loop.Enter(this, ref ctx, 0)) return loop.completed;
 
-            loop.Enter(this, ref ctx, 0);
             Push(new StackEntry { IsLoop = true, Target = index, Iter = 1, Count = count });
             return loop.body;
         }
@@ -128,9 +128,9 @@ namespace Tjdtjq5.SupaRun
             var loop = _nodes[e.Target] as LoopNode<TCtx>;
             if (loop == null) return -1;
 
-            if (e.Iter >= e.Count) return loop.completed;
+            // 횟수를 채웠거나, 도중에 갈 곳이 떨어졌으면 완료 갈래로 빠진다.
+            if (e.Iter >= e.Count || !loop.Enter(this, ref ctx, e.Iter)) return loop.completed;
 
-            loop.Enter(this, ref ctx, e.Iter);
             e.Iter++;
             Push(e);
             return loop.body;

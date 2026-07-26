@@ -33,10 +33,11 @@ export function GraphNode({ id, data, selected }: NodeProps<FlowNode>) {
         <span className="ng-title">{spec.label}</span>
         <span className="ng-role">{spec.role}</span>
         {/*
-          진입점은 EntryNode 파생만 될 수 있다 — 그러라고 만든 계층이다.
-          하나뿐이면 놓는 순간 자동 지정되므로 이 버튼은 여러 개일 때만 쓰인다.
+          어느 실행 노드든 시작점이 될 수 있다. 시점(적중/발동/만료)은 노드가 아니라
+          **컬럼**이 가르기로 했으므로(ADR-0002 결정 27) 진입 전용 노드를 두지 않는다.
+          Pure 는 실행 흐름에 없어 제외한다.
         */}
-        {spec.role === 'entry' &&
+        {!isPure &&
           (isEntry ? (
             <span className="ng-entry-mark" title="이 노드에서 시작합니다">시작</span>
           ) : (

@@ -30,7 +30,7 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 GenerateSupaRunCoreMigration(),
                 GenerateConfigMetaMigration(specTypes),
-                GenerateNodeCatalogMigration(specTypes),
+                GenerateTypeCatalogMigration(specTypes),
                 GenerateAdminUserMigration(),
                 GenerateAdminAuditMigration(),
             }
@@ -60,7 +60,7 @@ namespace Tjdtjq5.SupaRun.Editor
             // 파일명이 `_` 로 시작해 다른 마이그레이션보다 먼저 실행된다 (ADR-0004).
             files.Add(GenerateSupaRunCoreMigration());
             files.Add(GenerateConfigMetaMigration(specTypes));
-            files.Add(GenerateNodeCatalogMigration(specTypes));
+            files.Add(GenerateTypeCatalogMigration(specTypes));
             files.Add(GenerateTableMetaMigration(tableTypes));
 
             // 서버 로그 시스템
@@ -1428,20 +1428,20 @@ END $$;
         }
 
         /// <summary>
-        /// 노드 그래프 카탈로그. `[SpecData]` 메타와 같이 **컴파일 직후** 반영된다.
+        /// 타입 카탈로그. `[SpecData]` 메타와 같이 **컴파일 직후** 반영된다.
         ///
-        /// 노드 클래스를 고치는 것도 어드민 표를 고치는 것과 성질이 같다 —
+        /// 노드·다형 클래스를 고치는 것도 어드민 표를 고치는 것과 성질이 같다 —
         /// 쓰는 쪽이 서버가 아니라 사람(어드민)이라 배포를 기다릴 이유가 없다.
-        /// 노드 그래프를 안 쓰는 프로젝트에서는 빈 객체가 실린다.
+        /// 둘 다 안 쓰는 프로젝트에서는 빈 객체가 실린다.
         /// </summary>
-        public static GeneratedFile GenerateNodeCatalogMigration(Type[] specTypes)
+        public static GeneratedFile GenerateTypeCatalogMigration(Type[] specTypes)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("-- 노드 그래프 카탈로그 (자동 생성) — ADR-0002");
-            sb.AppendLine("-- 어드민 캔버스가 팔레트·입력칸·포트를 이 행에서 읽는다.");
+            sb.AppendLine("-- 타입 카탈로그 (자동 생성) — ADR-0002 / ADR-0005");
+            sb.AppendLine("-- [NodeGraph] 캔버스의 팔레트와 [Polymorphic] 셀의 타입 목록을 이 행에서 읽는다.");
             sb.AppendLine();
-            AppendMetaUpsert(sb, "node_catalog", BuildNodeCatalogJson(specTypes));
-            return new GeneratedFile("Generated/Migrations/_suparun_meta_nodes.sql", sb.ToString());
+            AppendMetaUpsert(sb, "type_catalog", BuildTypeCatalogJson(specTypes));
+            return new GeneratedFile("Generated/Migrations/_suparun_meta_types.sql", sb.ToString());
         }
 
         /// <summary>
@@ -1594,10 +1594,16 @@ END $$;
                 parts.Add("\"isRequired\":true");
 
             // NodeGraph — 이 컬럼은 텍스트가 아니라 노드 캔버스로 연다.
-            // 값은 node_catalog 의 그룹 키(컨텍스트 타입명)다.
+            // 값은 type_catalog 의 그룹 키(컨텍스트 타입명)다.
             var nodeGraph = member.GetCustomAttribute<NodeGraphAttribute>();
             if (nodeGraph?.ContextType != null)
                 parts.Add($"\"nodeGraph\":\"{nodeGraph.ContextType.Name}\"");
+
+            // Polymorphic — 타입 드롭다운 + 그 타입의 필드 폼으로 연다.
+            // 값은 type_catalog 의 그룹 키(base 타입명)다.
+            var polymorphic = member.GetCustomAttribute<PolymorphicAttribute>();
+            if (polymorphic?.BaseType != null)
+                parts.Add($"\"polymorphic\":\"{polymorphic.BaseType.Name}\"");
 
             // JSON 필드 판정 + jsonSchema 생성
             var jsonAttr = member.GetCustomAttribute<JsonAttribute>();
@@ -1717,38 +1723,48 @@ END $$;
             return "[" + string.Join(",", items) + "]";
         }
 
-        // ── 노드 그래프 카탈로그 ──
-        // 어드민 캔버스가 "어떤 노드를 놓을 수 있고 각 노드에 무슨 칸·포트가 있는지"를 이걸로 안다.
+        // ── 타입 카탈로그 ──
+        // "base 타입의 파생 중 하나를 고르고 그 필드를 채운다" 를 쓰는 두 자리가 공유한다:
+        //   [NodeGraph]   — 여러 개 + 연결 (캔버스)
+        //   [Polymorphic] — 하나, 연결 없음 (드롭다운 + 폼)
+        // 다형 필드는 사실 연결 없는 노드 하나라 생성기·역직렬화·필드 렌더러를 나눌 이유가 없다.
         // 결과 형태: {"SkillCtx":[{"type":"DamageNode","role":"action","fields":[...],"outs":[...]}], ...}
 
         /// <summary>
-        /// [NodeGraph] 컬럼이 지목한 컨텍스트별로 `Node&lt;TCtx&gt;` 파생을 모은다.
+        /// `[NodeGraph]`/`[Polymorphic]` 컬럼이 지목한 base 별로 파생 타입을 모은다.
         ///
-        /// 컨텍스트가 그래프 종류를 가르므로 팔레트가 섞이지 않는다 —
-        /// 스킬 효과 그래프 컬럼에는 `Node&lt;SkillCtx&gt;` 파생만 뜬다.
+        /// 그룹 키는 어드민이 컬럼 메타(`nodeGraph`/`polymorphic`)로 찾아오는 이름이다 —
+        /// 노드는 컨텍스트 타입명, 다형 필드는 base 타입명.
         /// </summary>
-        static string BuildNodeCatalogJson(Type[] specTypes)
+        static string BuildTypeCatalogJson(Type[] specTypes)
         {
-            // 컨텍스트 수집 — 정렬해야 컴파일마다 "변경됨" 으로 뜨지 않는다.
-            var contexts = new SortedDictionary<string, Type>(StringComparer.Ordinal);
+            // 정렬해야 컴파일마다 "변경됨" 으로 뜨지 않는다.
+            var bases = new SortedDictionary<string, Type>(StringComparer.Ordinal);
+
             foreach (var type in specTypes)
                 foreach (var f in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
                 {
+                    // 노드 그래프 — Node<TCtx> 로 닫아서 그 컨텍스트의 노드만 모은다.
                     var ng = f.GetCustomAttribute<NodeGraphAttribute>();
-                    if (ng?.ContextType != null) contexts[ng.ContextType.Name] = ng.ContextType;
+                    if (ng?.ContextType != null)
+                        bases[ng.ContextType.Name] = typeof(Node<>).MakeGenericType(ng.ContextType);
+
+                    // 다형 필드 — base 를 그대로 쓴다.
+                    var poly = f.GetCustomAttribute<PolymorphicAttribute>();
+                    if (poly?.BaseType != null)
+                        bases[poly.BaseType.Name] = poly.BaseType;
                 }
 
-            if (contexts.Count == 0) return "{}";
+            if (bases.Count == 0) return "{}";
 
             var groups = new List<string>();
-            foreach (var kv in contexts)
+            foreach (var kv in bases)
             {
-                var closed = typeof(Node<>).MakeGenericType(kv.Value);
-                var nodes = UnityEditor.TypeCache.GetTypesDerivedFrom(closed)
+                var derived = UnityEditor.TypeCache.GetTypesDerivedFrom(kv.Value)
                     .Where(n => !n.IsAbstract && !n.ContainsGenericParameters)
                     .OrderBy(n => n.FullName, StringComparer.Ordinal)
                     .Select(BuildNodeJson);
-                groups.Add($"\"{kv.Key}\":[{string.Join(",", nodes)}]");
+                groups.Add($"\"{kv.Key}\":[{string.Join(",", derived)}]");
             }
             return "{" + string.Join(",", groups) + "}";
         }

@@ -50,7 +50,7 @@ namespace Tjdtjq5.SupaRun
             var array = root["nodes"] as JArray;
             if (array == null || array.Count == 0) return empty;
 
-            var map = GetTypeMap<TCtx>();
+            var map = GetTypeMap(typeof(Node<TCtx>));
             var nodes = new Node<TCtx>[array.Count];
             var unknown = new List<string>();
 
@@ -80,6 +80,49 @@ namespace Tjdtjq5.SupaRun
             };
         }
 
+        /// <summary>
+        /// `[Polymorphic]` 컬럼 하나를 복원한다 — 연결 없는 노드 하나와 같은 형태다.
+        ///
+        /// <code>{"type":"GunPatternData","range":10,"magazine_size":3}</code>
+        ///
+        /// 모르는 타입이거나 비어 있으면 null 을 돌려준다. 예외를 던지지 않는 이유는
+        /// 클래스 이름을 바꾼 뒤에도 나머지 행은 읽혀야 하기 때문이다 — 대신
+        /// <paramref name="unknownType"/> 에 무엇을 못 찾았는지 남긴다.
+        /// </summary>
+        public static TBase ParseOne<TBase>(string json, out string unknownType) where TBase : class
+        {
+            unknownType = null;
+            if (string.IsNullOrWhiteSpace(json)) return null;
+
+            JObject obj;
+            try { obj = JObject.Parse(json); }
+            catch (JsonException) { return null; }
+
+            var typeName = obj["type"]?.Value<string>();
+            if (string.IsNullOrEmpty(typeName)) return null;
+
+            if (!GetTypeMap(typeof(TBase)).TryGetValue(typeName, out var type))
+            {
+                unknownType = typeName;
+                return null;
+            }
+
+            try { return (TBase)obj.ToObject(type, _serializer); }
+            catch (JsonException) { unknownType = typeName; return null; }
+        }
+
+        public static TBase ParseOne<TBase>(string json) where TBase : class
+            => ParseOne<TBase>(json, out _);
+
+        /// <summary>다형 값 하나를 저장 형식으로 되돌린다. 이관 도구가 쓴다.</summary>
+        public static string SerializeOne(object value)
+        {
+            if (value == null) return null;
+            var obj = JObject.FromObject(value, _serializer);
+            obj.AddFirst(new JProperty("type", value.GetType().Name));
+            return obj.ToString(Formatting.None);
+        }
+
         /// <summary>복원한 그래프를 저장 형식으로 되돌린다. 왕복 검증과 마이그레이션 도구용.</summary>
         public static string Serialize<TCtx>(NodeGraphData<TCtx> data)
         {
@@ -101,15 +144,15 @@ namespace Tjdtjq5.SupaRun
         }
 
         /// <summary>
-        /// `Node&lt;TCtx&gt;` 파생을 어셈블리에서 찾아 이름표를 만든다.
-        /// 런타임이라 TypeCache 를 쓸 수 없어 직접 훑는다 — 대신 컨텍스트당 1회만 한다.
+        /// base 타입의 파생을 어셈블리에서 찾아 이름표를 만든다.
+        /// 그래프는 `Node&lt;TCtx&gt;` 를, 다형 필드는 그 base 를 그대로 넘긴다.
+        ///
+        /// 런타임이라 TypeCache 를 쓸 수 없어 직접 훑는다 — 대신 base 당 1회만 한다.
         /// </summary>
-        static Dictionary<string, Type> GetTypeMap<TCtx>()
+        static Dictionary<string, Type> GetTypeMap(Type baseType)
         {
-            var ctx = typeof(TCtx);
-            if (_typeMaps.TryGetValue(ctx, out var cached)) return cached;
+            if (_typeMaps.TryGetValue(baseType, out var cached)) return cached;
 
-            var baseType = typeof(Node<TCtx>);
             var map = new Dictionary<string, Type>(StringComparer.Ordinal);
 
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
@@ -129,7 +172,7 @@ namespace Tjdtjq5.SupaRun
                 }
             }
 
-            _typeMaps[ctx] = map;
+            _typeMaps[baseType] = map;
             return map;
         }
 

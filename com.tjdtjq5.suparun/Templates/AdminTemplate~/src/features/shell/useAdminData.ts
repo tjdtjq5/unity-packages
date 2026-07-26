@@ -6,7 +6,7 @@ import type {
   ConfigType,
   FkOption,
   JsonSchemaField,
-  NodeCatalog,
+  TypeCatalog,
   TableType,
 } from '../../shared/types'
 
@@ -20,7 +20,7 @@ export interface AdminData {
   fkSources: Record<string, FkOption[]>
   rewardSources: Record<string, FkOption[]>
   /** 컨텍스트별 노드 팔레트. `[NodeGraph]` 컬럼이 없으면 빈 객체다. */
-  nodeCatalog: NodeCatalog
+  typeCatalog: TypeCatalog
   /** 타입 목록 로드가 끝났는가. 라우트 복원은 이게 true 가 된 뒤라야 한다. */
   ready: boolean
 }
@@ -30,7 +30,7 @@ const EMPTY: AdminData = {
   tableTypes: [],
   fkSources: {},
   rewardSources: {},
-  nodeCatalog: {},
+  typeCatalog: {},
   ready: false,
 }
 
@@ -55,13 +55,13 @@ export function useAdminData(): AdminData {
     void (async () => {
       // 타입 메타 — 서버 /_types 가 아니라 suparun_meta 에서 읽는다 (ADR-0004).
       // Unity 가 컴파일할 때 밀어 넣은 것이라 서버 재배포 없이 최신이다.
-      const meta = await loadMeta(['config_types', 'table_types', 'node_catalog'])
+      const meta = await loadMeta(['config_types', 'table_types', 'type_catalog'])
       const types = (meta.config_types as ConfigType[] | undefined) ?? []
       const tableTypes = (meta.table_types as TableType[] | undefined) ?? []
-      const nodeCatalog = (meta.node_catalog as NodeCatalog | undefined) ?? {}
+      const typeCatalog = (meta.type_catalog as TypeCatalog | undefined) ?? {}
       if (!alive) return
       // 사이드바를 먼저 띄우고 참조 데이터는 뒤따라 채운다.
-      setData((d) => ({ ...d, types, tableTypes, nodeCatalog, ready: true }))
+      setData((d) => ({ ...d, types, tableTypes, typeCatalog, ready: true }))
 
       const rewardSources: Record<string, FkOption[]> = {}
       for (const t of types) {

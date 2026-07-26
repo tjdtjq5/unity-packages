@@ -60,7 +60,7 @@ export function ConfigCell({ row, field, saved, onChange }: CellProps) {
   const [draft, setDraft] = useState('')
   const [jsonOpen, setJsonOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
-  const { fkSources, nodeCatalog } = useAdmin()
+  const { fkSources, typeCatalog } = useAdmin()
 
   if (isFieldDisabled(row, field)) {
     return (
@@ -142,7 +142,7 @@ export function ConfigCell({ row, field, saved, onChange }: CellProps) {
   // ── 노드 그래프 (캔버스 모달) ──
   // isJson 보다 먼저 본다 — 컬럼 이름이 `..._json` 이어도 캔버스가 이겨야 한다.
   if (field.nodeGraph) {
-    const specs = nodeCatalog[field.nodeGraph] ?? []
+    const specs = typeCatalog[field.nodeGraph] ?? []
     return (
       <td data-field={field.name}>
         <span
