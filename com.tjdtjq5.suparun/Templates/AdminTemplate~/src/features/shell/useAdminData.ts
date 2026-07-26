@@ -35,14 +35,29 @@ const EMPTY: AdminData = {
 }
 
 /**
- * FK 참조 대상 수집 — 평면 컬럼과 nested jsonSchema 를 모두 훑는다.
- * nested 를 빠뜨리면 JSON 모달 안 FK 드롭다운이 빈 채로 뜬다.
+ * FK 참조 대상 수집 — 평면 컬럼, nested jsonSchema, `[Polymorphic]` 파생 타입을 모두 훑는다.
+ *
+ * 셋 다 훑어야 하는 이유는 FK 가 어느 깊이에나 있을 수 있기 때문이다.
+ * 예: PerkData.activation(다형) → FieldOrbActivationData.tiers(json) → field_orb_id(FK).
+ * 하나라도 빠뜨리면 그 드롭다운만 빈 채로 뜬다 — 값은 보이지만 고를 수가 없다.
  */
-function collectFkTargets(fields: (ConfigField | JsonSchemaField)[] | undefined, out: Set<string>): void {
+function collectFkTargets(
+  fields: (ConfigField | JsonSchemaField)[] | undefined,
+  out: Set<string>,
+  catalog: TypeCatalog,
+  seen: Set<string> = new Set(),
+): void {
   for (const f of fields || []) {
     if (f.foreignKey) out.add(f.foreignKey)
     if ('foreignKeyList' in f && f.foreignKeyList) out.add(f.foreignKeyList)
-    if (f.isJson && f.jsonSchema) collectFkTargets(f.jsonSchema, out)
+    if (f.isJson && f.jsonSchema) collectFkTargets(f.jsonSchema, out, catalog, seen)
+    if ('polymorphic' in f && f.polymorphic && !seen.has(f.polymorphic)) {
+      // 같은 base 를 두 번 펼치지 않는다 — 자기 자신을 품는 타입이 있으면 무한히 돈다.
+      seen.add(f.polymorphic)
+      for (const spec of catalog[f.polymorphic] ?? []) {
+        collectFkTargets(spec.fields, out, catalog, seen)
+      }
+    }
   }
 }
 
@@ -75,7 +90,7 @@ export function useAdminData(): AdminData {
       }
 
       const targets = new Set<string>()
-      for (const t of types) collectFkTargets(t.fields, targets)
+      for (const t of types) collectFkTargets(t.fields, targets, typeCatalog)
       const fkSources: Record<string, FkOption[]> = {}
       await Promise.all(
         [...targets].map(async (name) => {

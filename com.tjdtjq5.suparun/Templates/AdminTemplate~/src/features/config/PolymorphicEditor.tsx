@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Modal } from '../../shared/Modal'
-import type { NodeSpec } from '../../shared/types'
-import { JsonCell } from './JsonEditor'
+import type { JsonSchemaField, NodeSpec } from '../../shared/types'
+import { JsonCell, JsonEditorModal } from './JsonEditor'
 
 /**
  * `[Polymorphic]` 컬럼 편집기 — 타입을 고르고 그 타입의 필드만 채운다.
@@ -28,6 +28,8 @@ export function PolymorphicEditor({
   const initial = parseValue(initialJson)
   const [typeName, setTypeName] = useState(initial.type)
   const [values, setValues] = useState<Record<string, unknown>>(initial.values)
+  /** 지금 파고든 중첩 JSON 필드. 있으면 이 모달 대신 JSON 편집기를 그린다. */
+  const [nested, setNested] = useState<JsonSchemaField | null>(null)
 
   const spec = specs.find((s) => s.type === typeName)
 
@@ -47,6 +49,21 @@ export function PolymorphicEditor({
     const vals = { ...values, [name]: v }
     setValues(vals)
     commit(typeName, vals)
+  }
+
+  // 다형 값 안의 JSON 배열 — 모달을 겹치지 않고 갈아 끼운다.
+  // JsonEditorModal 자체가 breadcrumb 로 더 깊이 들어가므로 depth 는 그쪽이 알아서 감당한다.
+  if (nested) {
+    return (
+      <JsonEditorModal
+        title={`${title} · ${nested.name}`}
+        rootLabel={nested.name}
+        schema={nested.jsonSchema ?? []}
+        initialJson={values[nested.name]}
+        onSave={(json) => changeField(nested.name, json)}
+        onClose={() => setNested(null)}
+      />
+    )
   }
 
   return (
@@ -86,8 +103,7 @@ export function PolymorphicEditor({
                   item={values}
                   field={f}
                   onChange={(v) => changeField(f.name, v)}
-                  // 다형 값 안의 중첩 JSON 은 아직 열지 않는다 — 쓰이면 그때 붙인다.
-                  onEnterNested={() => {}}
+                  onEnterNested={() => setNested(f)}
                 />
               </tr>
             ))}
