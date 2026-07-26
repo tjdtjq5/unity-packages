@@ -1061,6 +1061,213 @@ tbody tr { animation: rowStagger 0.2s linear both; }
 .btn-terminal:disabled,
 .oauth-btn:disabled { opacity: 0.5; pointer-events: none; }
 
+/* ── 환경 현황판 ─────────────────────────────────────
+   카드 하나 = 환경 하나. 왼쪽은 신원(무엇인가), 오른쪽은 지표(지금 어떤가). */
+.env-list { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+
+.env-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+}
+/* 좁은 화면에서는 위아래로 쌓는다 — 지표가 잘리면 볼 이유가 없다 */
+@media (max-width: 720px) {
+  .env-card { grid-template-columns: 1fr; }
+  .env-card-side { border-right: none !important; border-bottom: 1px solid var(--line); }
+}
+
+.env-card-side { padding: 16px; border-right: 1px solid var(--line); }
+.env-card-main { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.env-card-title { display: flex; align-items: center; gap: 8px; }
+.env-name { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--fg); }
+
+.env-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.env-dot.ok     { background: var(--green); box-shadow: 0 0 6px var(--green-glow); }
+.env-dot.paused { background: var(--dim); }
+.env-dot.down   { background: var(--red); box-shadow: 0 0 6px rgba(255,51,68,0.4); }
+
+.env-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 14px; }
+.env-badge {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
+  padding: 2px 8px; border: 1px solid currentColor; border-radius: 0;
+}
+.env-badge.ok     { color: var(--green); }
+.env-badge.paused { color: var(--dim); }
+.env-badge.down   { color: var(--red); }
+/* 어느 환경이 에디터·빌드 대상인지가 사고를 막는 정보다 — 눈에 띄게 둔다 */
+.env-badge.editor { color: var(--amber); }
+.env-badge.build  { color: var(--green-2); }
+/* 지금 보고 있는 어드민이 붙은 곳 — 다른 환경과 헷갈리지 않게 채워서 표시한다 */
+.env-badge.here   { color: var(--bg); background: var(--green); border-color: var(--green); }
+
+.env-meta {
+  display: grid; grid-template-columns: 56px 1fr;
+  gap: 4px 10px; margin: 0;
+  font-family: var(--mono); font-size: 11px;
+}
+.env-meta dt { color: var(--dim); font-weight: 400; }
+.env-meta dd { margin: 0; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.env-domain a { color: var(--green-2); text-decoration: none; }
+.env-domain a:hover { color: var(--green); text-decoration: underline; }
+
+.env-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 16px; }
+.env-metric-label { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+.env-metric-value { font-family: var(--mono); font-size: 22px; font-weight: 700; margin-top: 2px; }
+.env-metric-value.ok     { color: var(--fg); }
+.env-metric-value.warn   { color: var(--amber); }
+.env-metric-value.danger { color: var(--red); }
+.env-metric-value.none   { color: var(--very-dim); }
+.env-metric-sub { font-family: var(--mono); font-size: 10px; color: var(--very-dim); margin-top: 2px; }
+
+.env-services { display: flex; flex-wrap: wrap; gap: 12px; font-family: var(--mono); font-size: 11px; }
+.env-service.ok   { color: var(--green-2); }
+.env-service.down { color: var(--red); }
+
+.env-error {
+  font-family: var(--mono); font-size: 11px; color: var(--red);
+  border-left: 2px solid var(--red); padding-left: 8px;
+}
+
+.env-collected {
+  margin-top: auto; font-family: var(--mono); font-size: 10px; color: var(--very-dim);
+}
+
+/* 기동 중 — 정지에서 깨어나는 몇 분 동안 */
+.env-badge.starting { color: var(--amber); }
+
+.env-actions { display: flex; align-items: center; gap: 10px; }
+.env-actions-hint { font-family: var(--mono); font-size: 10px; color: var(--very-dim); }
+
+/* 환경 선택 화면 머리말 */
+.env-intro {
+  padding: 4px 2px 8px;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+}
+.env-heading { font-family: var(--mono); font-size: 18px; color: var(--fg); margin: 0; }
+.env-subheading { font-family: var(--mono); font-size: 11px; color: var(--dim); margin: 4px 0 0; }
+
+/* 카드 전체가 진입점이다 — 되돌릴 수 없는 조작은 설정에만 둔다 */
+.env-card.clickable { cursor: pointer; transition: border-color var(--d) var(--ease); }
+.env-card.clickable:hover { border-color: var(--green-2); }
+.env-card.clickable:focus-visible { outline: 1px solid var(--green); outline-offset: 2px; }
+.env-enter-hint {
+  font-family: var(--mono); font-size: 11px; color: var(--green-2);
+}
+
+/* 환경 안에 있을 때 사이드바 맨 위 — 어디에 들어와 있는지 항상 보인다 */
+.sidebar-envchip {
+  display: block; margin: 0 0 10px;
+  padding: 6px 10px; border: 1px solid var(--green-2);
+  font-family: var(--mono); font-size: 11px; color: var(--green);
+  text-decoration: none; letter-spacing: 0.04em;
+}
+.sidebar-envchip:hover { background: var(--green-soft); color: var(--green); }
+
+/* 로그인 없이 열려 있는 구간 — 지나치기 어려워야 한다. 닫기 버튼을 두지 않는 이유다. */
+.unlocked-banner {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: 0 0 12px; padding: 10px 14px;
+  border: 1px solid var(--amber, #d29922); background: rgba(210, 153, 34, 0.08);
+  font-family: var(--mono); font-size: 11px; color: var(--amber, #d29922); line-height: 1.7;
+}
+.unlocked-banner i { font-size: 14px; flex-shrink: 0; }
+
+/* ── 앱 설정 ── */
+.appset { display: flex; flex-direction: column; gap: 20px; padding: 16px; }
+.appset-block { border: 1px solid var(--line); background: var(--bg-1); padding: 16px; }
+.appset-block.danger { border-color: var(--red); }
+.appset-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.appset-title { font-family: var(--mono); font-size: 13px; color: var(--fg); margin: 0 0 4px; }
+.appset-title.danger { color: var(--red); }
+.appset-desc { font-family: var(--mono); font-size: 11px; color: var(--dim); margin: 0 0 10px; line-height: 1.7; }
+.appset-status { font-family: var(--mono); font-size: 11px; color: var(--dim); display: flex; align-items: center; gap: 8px; }
+.appset-status.on  { color: var(--green-2); }
+.appset-status.off { color: var(--dim); }
+.appset-empty { font-family: var(--mono); font-size: 11px; color: var(--very-dim); padding: 12px 0; }
+.appset-danger-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 0; border-top: 1px solid var(--line);
+}
+.appset-danger-name { font-family: var(--mono); font-size: 12px; color: var(--fg); }
+
+/* 설정 한 줄 — 왼쪽은 무엇인가, 오른쪽은 입력. FarmStack 배치를 따랐다. */
+.appset-row {
+  /* wrap — 펼친 입력 영역(.appset-edit)이 줄 아래로 내려가야 한다 */
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 12px 0; border-top: 1px solid var(--line);
+}
+.appset-row-main { min-width: 0; }
+.appset-row-name { font-family: var(--mono); font-size: 12px; color: var(--fg); }
+/* 키 이름을 작게 병기한다 — 화면의 값과 코드를 연결해 준다 */
+.appset-row-key { font-family: var(--mono); font-size: 10px; color: var(--very-dim); }
+.appset-row-fields { display: flex; align-items: center; gap: 12px; flex: none; }
+.appset-row-fields .form-control { width: 200px; }
+.appset-row-fields .form-select { width: 200px; }
+
+/* 프로바이더 한 줄을 펼쳤을 때의 입력 영역. 줄 전체 폭을 쓰도록 flex 흐름에서 빠진다 */
+.appset-edit { flex-basis: 100%; padding: 12px 0 4px; }
+.appset-label {
+  display: block; margin: 10px 0 4px;
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
+}
+.appset-edit .form-control { width: 100%; max-width: 460px; }
+
+/* ⚡ 문구 — 이 값이 실제로 무엇을 켜는지. 설정 화면에서 가장 값어치 있는 정보다 */
+.appset-note {
+  margin-top: 12px; padding: 10px 12px;
+  border-left: 2px solid var(--amber); background: var(--amber-soft);
+  font-family: var(--mono); font-size: 11px; color: var(--fg); line-height: 1.8;
+}
+.appset-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.appset-dirty { font-family: var(--mono); font-size: 11px; color: var(--amber); }
+
+/* ── 대시보드 ── */
+.dash { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
+
+/* 쓰기가 열린 테이블 — 들어오자마자 보여야 하는 유일한 경고다 */
+.dash-alert {
+  display: flex; gap: 6px; padding: 12px 14px;
+  border: 1px solid var(--red); background: var(--red-soft);
+  font-family: var(--mono); font-size: 12px; color: var(--red);
+}
+.dash-alert-sub { font-size: 11px; color: var(--fg); margin-top: 6px; line-height: 1.7; }
+
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.dash-tile { border: 1px solid var(--line); background: var(--bg-1); padding: 14px 16px; }
+.dash-tile.clickable { cursor: pointer; transition: border-color var(--d) var(--ease); }
+.dash-tile.clickable:hover { border-color: var(--green-2); }
+.dash-tile.danger { border-color: var(--red); }
+.dash-tile-label { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+.dash-tile-value { font-family: var(--mono); font-size: 24px; font-weight: 700; color: var(--fg); margin-top: 2px; }
+.dash-tile.danger .dash-tile-value { color: var(--red); }
+.dash-tile-sub { font-family: var(--mono); font-size: 10px; color: var(--very-dim); margin-top: 2px; }
+
+.dash-block { border: 1px solid var(--line); background: var(--bg-1); }
+.dash-block-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid var(--line);
+}
+.dash-block-title { font-family: var(--mono); font-size: 12px; color: var(--fg); margin: 0; }
+.dash-empty { padding: 20px 16px; font-family: var(--mono); font-size: 11px; color: var(--very-dim); }
+
+/* 접을 수 있는 그룹 머리 */
+.tree-section.toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: none; border: none; text-align: left; cursor: pointer;
+  font: inherit; color: inherit; padding: 0;
+}
+.tree-section.toggle:hover { color: var(--green); }
+.tree-section .caret { font-size: 9px; width: 10px; }
+.tree-count { margin-left: auto; color: var(--very-dim); font-size: 10px; }
+
+/* 환경에 안 붙은 프로젝트 — 지표 대신 다음 할 일을 적는다 */
+.env-unlinked {
+  font-family: var(--mono); font-size: 11px; color: var(--dim); line-height: 1.7;
+}
+.env-ref { font-family: var(--mono); font-size: 10px; color: var(--very-dim); }
+
 /* ── 로그인 페이지 (Terminal Window) ── */
 #login-page {
   min-height: 100vh;

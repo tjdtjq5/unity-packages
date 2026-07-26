@@ -170,28 +170,37 @@ namespace Tjdtjq5.SupaRun.Editor
             return r.Ok ? SupabaseResult<bool>.Success(true, r.HttpStatus, r.Raw) : r.CarryFailure<bool>();
         }
 
-        /// <summary>생성 시 고를 수 있는 리전 목록.</summary>
-        public static async Task<SupabaseResult<RegionInfo[]>> AvailableRegions(string token)
+        /// <summary>
+        /// 생성 시 고를 수 있는 리전 목록.
+        ///
+        /// ⚠ `organization_slug` 는 **필수**다. 없으면 400 을 준다.
+        /// 응답은 배열이 아니라 객체이고, 우리가 쓰는 것은 `all.specific` 이다:
+        /// <code>{ recommendations: {...}, all: { smartGroup: [...], specific: [{code,name,provider}] } }</code>
+        /// `smartGroup`(Americas·APAC …)은 대륙 묶음이라 구체 리전이 필요한 이 자리에는 쓰지 않는다.
+        /// </summary>
+        public static async Task<SupabaseResult<RegionInfo[]>> AvailableRegions(
+            string token, string organizationSlug)
         {
-            var r = await RequestJson("GET", $"{BASE}/available-regions", token);
+            var url = $"{BASE}/available-regions?organization_slug={Uri.EscapeDataString(organizationSlug ?? "")}";
+            var r = await RequestJson("GET", url, token);
             if (!r.Ok) return r.CarryFailure<RegionInfo[]>();
 
             return Parse(r, tok =>
             {
                 var list = new List<RegionInfo>();
-                // 응답 형태가 문자열 배열일 수도, 객체 배열일 수도 있어 둘 다 받는다.
-                foreach (var x in tok as JArray ?? new JArray())
+                var specific = tok?["all"]?["specific"] as JArray;
+                foreach (var x in specific ?? new JArray())
                 {
-                    if (x.Type == JTokenType.String)
-                        list.Add(new RegionInfo { code = (string)x });
-                    else
-                        list.Add(new RegionInfo
-                        {
-                            code = (string)(x["name"] ?? x["code"] ?? x["region"]),
-                            displayName = (string)(x["display_name"] ?? x["displayName"] ?? x["label"]),
-                        });
+                    var code = (string)x["code"];
+                    if (string.IsNullOrEmpty(code)) continue;
+                    var name = (string)x["name"];
+                    var provider = (string)x["provider"];
+                    list.Add(new RegionInfo
+                    {
+                        code = code,
+                        displayName = string.IsNullOrEmpty(provider) ? name : $"{name} · {provider}",
+                    });
                 }
-                list.RemoveAll(r2 => string.IsNullOrEmpty(r2.code));
                 return list.ToArray();
             });
         }
@@ -231,6 +240,22 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             var r = await RequestJson("PATCH", $"{BASE}/{projectRef}/config/auth", token, jsonBody);
             return r.Ok ? SupabaseResult<bool>.Success(true, r.HttpStatus, r.Raw) : r.CarryFailure<bool>();
+        }
+
+        /// <summary>
+        /// 프로젝트 하위 경로를 그대로 GET 한다. 응답은 파싱하지 않고 본문 그대로 준다.
+        ///
+        /// 전용 메서드를 만들지 않는 이유: 현황판이 쓰는 `health` / `config/disk/util` /
+        /// `analytics/endpoints/metrics` 는 응답 형태가 제각각이고(마지막은 **Prometheus 텍스트**라
+        /// JSON 도 아니다), 호출하는 쪽이 필요한 만큼만 뜯어 쓰는 편이 낫다.
+        ///
+        /// `path` 는 호출자가 지어낸 상수만 넘긴다 — 사용자 입력을 그대로 붙이지 말 것.
+        /// </summary>
+        public static async Task<SupabaseResult<string>> RawGet(
+            string projectRef, string token, string path)
+        {
+            var r = await RequestJson("GET", $"{BASE}/{projectRef}/{path}", token);
+            return r;   // 성공이면 Value 에 본문이 그대로 들어 있다
         }
 
         // ── Database ──

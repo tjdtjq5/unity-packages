@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { env } from '../../shared/env'
 import { selectAll } from '../../shared/db'
 import { loadMeta } from '../../shared/meta'
 import type {
@@ -23,6 +24,12 @@ export interface AdminData {
   typeCatalog: TypeCatalog
   /** 타입 목록 로드가 끝났는가. 라우트 복원은 이게 true 가 된 뒤라야 한다. */
   ready: boolean
+  /**
+   * 이 어드민이 붙어 있는 환경 이름(dev/prod…). 없으면 빈 문자열.
+   * 사이드바가 "어디에 들어와 있는지" 를 항상 띄우는 데 쓴다 — 환경을 착각한 채
+   * 데이터를 고치는 것이 이 프로젝트에서 가장 비싼 실수다.
+   */
+  envName: string
 }
 
 const EMPTY: AdminData = {
@@ -32,6 +39,7 @@ const EMPTY: AdminData = {
   rewardSources: {},
   typeCatalog: {},
   ready: false,
+  envName: '',
 }
 
 /**
@@ -70,13 +78,26 @@ export function useAdminData(): AdminData {
     void (async () => {
       // 타입 메타 — 서버 /_types 가 아니라 suparun_meta 에서 읽는다 (ADR-0004).
       // Unity 가 컴파일할 때 밀어 넣은 것이라 서버 재배포 없이 최신이다.
-      const meta = await loadMeta(['config_types', 'table_types', 'type_catalog'])
+      const meta = await loadMeta(['config_types', 'table_types', 'type_catalog', 'environments'])
       const types = (meta.config_types as ConfigType[] | undefined) ?? []
       const tableTypes = (meta.table_types as TableType[] | undefined) ?? []
       const typeCatalog = (meta.type_catalog as TypeCatalog | undefined) ?? {}
+
+      // 이 어드민이 붙은 Supabase 프로젝트와 같은 환경을 찾는다.
+      // 환경 정의는 Unity 가 넣어 두므로, 없으면(아직 수집 전) 빈 이름으로 둔다.
+      const here = (() => {
+        try {
+          return new URL(env().supabaseUrl).hostname.split('.')[0]
+        } catch {
+          return ''
+        }
+      })()
+      const envList = (meta.environments as { name?: string; project_ref?: string }[] | undefined) ?? []
+      const envName = here ? (envList.find((e) => e.project_ref === here)?.name ?? '') : ''
+
       if (!alive) return
       // 사이드바를 먼저 띄우고 참조 데이터는 뒤따라 채운다.
-      setData((d) => ({ ...d, types, tableTypes, typeCatalog, ready: true }))
+      setData((d) => ({ ...d, types, tableTypes, typeCatalog, envName, ready: true }))
 
       const rewardSources: Record<string, FkOption[]> = {}
       for (const t of types) {

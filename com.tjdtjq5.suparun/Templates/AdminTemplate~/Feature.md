@@ -31,6 +31,7 @@ AdminTemplate~/
 │       │               NodeGraphModal / GraphNode / graphIO / validate / nodegraph.css
 │       ├── snapshot/   [SpecData] 시점 저장·복원 — SnapshotPage / RestoreModal /
 │       │               QuickSnapshotButton(타이틀바) / useSnapshots
+│       ├── environment/ 환경(dev/prod) 현황 카드 — EnvironmentPage
 │       └── …           admins / audit / table / config
 │
 ├── node_modules/       (gitignore)
@@ -149,6 +150,36 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다(바
 - **분포 차트**: Chart.js 바 차트 (10버킷)
 - **크로스 테이블 검색**: 여러 테이블에 조건 걸어 교집합 user_id 검색
 - **플레이어 관리**: user_id로 해당 유저의 전 테이블 데이터 조회 + 인라인 편집
+
+### 환경 현황 (`[SYSTEM] > environments`)
+
+dev / prod 각각을 카드 하나로. 왼쪽은 신원(무엇인가), 오른쪽은 지표(지금 어떤가).
+
+> **읽기 전용이다.** 값은 전부 Management API + **PAT** 로만 얻을 수 있는데 PAT 는 로컬 에디터에만
+> 두기로 했다(어드민 계정이 털려도 Supabase 계정 전체는 안 넘어가게). 그래서 **아이콘 맵과 같은 방식**이다 —
+> Unity 가 어드민을 열 때 `EnvironmentSnapshot.CollectAndPublishAsync()` 로 구워 `suparun_meta.environments`
+> 에 넣고, 어드민은 읽기만 한다.
+>
+> 따라서 이 화면은 **마지막으로 Unity 가 본 상태**다. 카드마다 `Unity 가 수집: N분 전` 을 띄우는 이유가
+> 그것이다 — 실시간이 아닌 화면에서 그 사실을 숨기면 낡은 숫자를 믿게 된다.
+
+| 지표 | 출처 | 비고 |
+|---|---|---|
+| CPU | `analytics/endpoints/metrics` 의 `node_load1 / node_cpu_online` | **근사값**. 스냅샷 하나로는 정확한 CPU% 를 못 구한다(`cpu_seconds_total` 은 delta 필요) |
+| 메모리 | `node_memory_MemTotal/MemAvailable_bytes` | |
+| 스토리지 | `config/disk/util` | JSON 이라 파싱이 단순 |
+| 커넥션 | `connection_stats_connection_count` + `SHOW max_connections` | **라벨별로 여러 줄이라 합산**해야 실제 접속 수가 된다 |
+| 서비스 헬스 | `health?services=db,rest,auth` | |
+
+- 메트릭은 **Prometheus 텍스트**다(JSON 아님). 정규식 한 줄짜리 파서로 이름이 같은 줄의 값만 뽑는다 —
+  전용 라이브러리를 끌어올 만한 일이 아니다
+- `node_cpu_online` / `connection_stats_connection_count` 는 **`Sum`**, 나머지는 `First`
+- 레플리카는 뺐다 — Supabase read replica 는 **유료 애드온**이라 무료 플랜엔 없다.
+  그 자리에 커넥션 사용량을 넣었고, 이쪽이 실제로 겪을 수 있는 문제다
+- 추이 그래프도 뺐다. 메트릭 API 가 주는 것은 **현재값 스냅샷** 하나뿐이라 시계열을 그리려면
+  누군가 주기적으로 쌓아야 하는데, 브라우저는 탭이 닫히면 멈춘다
+- 카드에 `에디터` / `빌드` 배지를 띄운다 — 어느 환경이 컴파일 대상이고 어느 것이 빌드에 구워지는지가
+  이 프로젝트에서 실제로 사고를 막는 정보다
 
 ### 스냅샷 / 복원 (`[SYSTEM] > snapshots`)
 

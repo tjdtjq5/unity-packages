@@ -345,8 +345,9 @@ namespace Tjdtjq5.SupaRun.Editor
             var env = settings.AddEnvironment(envName);
             env.supabaseUrl = p.Url;
             env.supabaseAnonKey = key.Value;
-            env.supabaseAccessToken = token;   // PAT 는 계정 단위라 같은 값을 쓴다
-            if (!string.IsNullOrEmpty(dbPass)) env.supabaseDbPassword = dbPass;
+            // 비밀은 파일이 아니라 EditorPrefs 로 간다 — 필드에 직접 넣으면 git 에 올라간다.
+            SupaRunSettings.SetAccessTokenOf(env, token);   // PAT 는 계정 단위라 같은 값을 쓴다
+            if (!string.IsNullOrEmpty(dbPass)) SupaRunSettings.SetDbPasswordOf(env, dbPass);
             settings.Save();
 
             EditorUtility.DisplayDialog("환경 등록 완료",
@@ -428,7 +429,9 @@ namespace Tjdtjq5.SupaRun.Editor
             _loadingRegions = true; _repaint();
             try
             {
-                var r = await SupabaseManagementApi.AvailableRegions(token);
+                // 조직 slug 가 필수다 — 없이 부르면 400 이다.
+                var slug = await ResolveOrgSlug(token);
+                var r = await SupabaseManagementApi.AvailableRegions(token, slug);
                 if (r.Ok) _regions = r.Value;
                 else r.LogIfFailed("리전 목록 조회");
             }

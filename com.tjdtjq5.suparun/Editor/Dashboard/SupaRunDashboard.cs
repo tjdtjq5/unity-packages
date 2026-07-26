@@ -81,9 +81,18 @@ namespace Tjdtjq5.SupaRun.Editor
             // 어드민은 아이콘/컴포넌트 맵을 DB 에서 읽는다 (ADR-0004). 여기가 그것들을 굽기에
             // 정확한 시점이다 — 실제로 필요해지는 순간이고, 컴파일마다 굽는 낭비가 없다.
             // 페이지를 열기 전에 끝내야 첫 화면부터 아이콘이 보인다.
+            // 스프라이트가 그대로면 해시가 같아 왕복 없이 지나간다.
             await SchemaAutoSync.SyncAdminAssets();
 
             Application.OpenURL(settings.cloudRunUrl.TrimEnd('/') + "/admin");
+
+            // 환경 현황은 **페이지를 띄운 뒤** 굽는다. Management API 를 여섯 번 왕복해
+            // 7초 가까이 걸리는데(metrics 하나가 2.7초), 그동안 브라우저를 막아 둘 이유가 없다 —
+            // 어드민은 이 값이 없어도 열리고, 환경 화면은 사람이 사이드바를 눌러 들어가는 곳이라
+            // 그 전에 끝난다. 낡은 값이 보일 때도 화면이 수집 시각을 함께 띄우고 새로고침이 있다.
+            //
+            // PAT 로만 얻을 수 있는 정보라 Unity 가 넣어 두고 어드민은 읽기만 한다는 구조는 그대로다.
+            await EnvironmentSnapshot.CollectAndPublishAsync();
         }
 
         void OnEnable()
