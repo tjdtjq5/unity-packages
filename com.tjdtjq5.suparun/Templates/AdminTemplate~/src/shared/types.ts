@@ -60,6 +60,10 @@ export interface ConfigField {
 /**
  * `[Json(typeof(T))]` 의 T 필드 메타. 서버가 `jsonSchema` 로 내려준다.
  * `isJson` + `jsonSchema` 가 또 있으면 중첩 진입이 가능하다 (depth 무제한).
+ *
+ * 카탈로그 항목(노드·다형 파생)의 필드도 이 모양으로 그려진다 —
+ * `[Polymorphic]` 은 어느 깊이에나 올 수 있어 여기에도 있어야 한다
+ * (예: PerkData.activation → tiers → pattern).
  */
 export interface JsonSchemaField {
   name: string
@@ -73,6 +77,10 @@ export interface JsonSchemaField {
   componentType?: string
   visibleIf?: FieldCondition
   hiddenIf?: FieldCondition
+  /** `[Polymorphic(typeof(TBase))]` — 값은 type_catalog 의 그룹 키. */
+  polymorphic?: string
+  /** 코드에 적힌 필드 초기값. 새 값을 만들 때 이걸로 시작한다. */
+  default?: unknown
 }
 
 export interface ConfigType {

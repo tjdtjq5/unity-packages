@@ -1,7 +1,12 @@
 import { useState } from 'react'
 import { Modal } from '../../shared/Modal'
-import type { JsonSchemaField, NodeSpec } from '../../shared/types'
-import { JsonCell, JsonEditorModal } from './JsonEditor'
+import type { JsonSchemaField } from '../../shared/types'
+import {
+  JsonEditorModal,
+  PolymorphicForm,
+  describePolyValue,
+  splitPolyValue,
+} from './JsonEditor'
 
 /**
  * `[Polymorphic]` 컬럼 편집기 — 타입을 고르고 그 타입의 필드만 채운다.
@@ -11,56 +16,53 @@ import { JsonCell, JsonEditorModal } from './JsonEditor'
  *
  * 저장 형태는 노드 하나와 같다: `{"type":"GunPatternData","range":10}`.
  * 실제로 다형 필드는 연결 없는 노드 하나라 카탈로그를 노드 그래프와 공유한다.
+ *
+ * 폼 자체는 <see cref="PolymorphicForm"/> 이 그린다 — 중첩 layer 로 들어올 때와 같은 화면이다.
  */
 export function PolymorphicEditor({
   title,
-  specs,
+  base,
   initialJson,
   onSave,
   onClose,
 }: {
   title: string
-  specs: NodeSpec[]
+  base: string
   initialJson: string
   onSave(json: string): void
   onClose(): void
 }) {
-  const initial = parseValue(initialJson)
-  const [typeName, setTypeName] = useState(initial.type)
-  const [values, setValues] = useState<Record<string, unknown>>(initial.values)
-  /** 지금 파고든 중첩 JSON 필드. 있으면 이 모달 대신 JSON 편집기를 그린다. */
+  const initial = splitPolyValue(initialJson)
+  const [value, setValue] = useState<Record<string, unknown>>({
+    ...initial.values,
+    type: initial.type,
+  })
+  /** 이 값 안의 중첩 필드로 파고들었을 때. 있으면 이 모달 대신 중첩 편집기를 그린다. */
   const [nested, setNested] = useState<JsonSchemaField | null>(null)
 
-  const spec = specs.find((s) => s.type === typeName)
-
   // 표의 다른 셀(토글·드롭다운·FK)이 전부 즉시 저장이라 여기만 확인 버튼을 두면 어긋난다.
-  const commit = (type: string, vals: Record<string, unknown>) =>
-    onSave(type ? JSON.stringify({ type, ...vals }) : '')
-
-  const changeType = (next: string) => {
-    // 값은 이어받지 않는다 — 이름이 같아도 타입이 다르면 뜻이 다르다.
-    const vals = next ? defaultsOf(specs.find((s) => s.type === next)) : {}
-    setTypeName(next)
-    setValues(vals)
-    commit(next, vals)
+  const commit = (next: Record<string, unknown>) => {
+    setValue(next)
+    const type = String(next.type ?? '')
+    if (!type) {
+      onSave('')
+      return
+    }
+    const { type: _drop, ...rest } = next
+    onSave(JSON.stringify({ type, ...rest }))
   }
 
-  const changeField = (name: string, v: unknown) => {
-    const vals = { ...values, [name]: v }
-    setValues(vals)
-    commit(typeName, vals)
-  }
-
-  // 다형 값 안의 JSON 배열 — 모달을 겹치지 않고 갈아 끼운다.
-  // JsonEditorModal 자체가 breadcrumb 로 더 깊이 들어가므로 depth 는 그쪽이 알아서 감당한다.
+  // 다형 값 안의 JSON 리스트·다형 필드 — 모달을 겹치지 않고 갈아 끼운다.
+  // 그쪽은 layer 스택이라 더 깊이 들어가도 화면은 하나다.
   if (nested) {
     return (
       <JsonEditorModal
         title={`${title} · ${nested.name}`}
         rootLabel={nested.name}
         schema={nested.jsonSchema ?? []}
-        initialJson={values[nested.name]}
-        onSave={(json) => changeField(nested.name, json)}
+        polyBase={nested.polymorphic}
+        initialJson={value[nested.name]}
+        onSave={(json) => commit({ ...value, [nested.name]: json })}
         onClose={() => setNested(null)}
       />
     )
@@ -68,81 +70,17 @@ export function PolymorphicEditor({
 
   return (
     <Modal title={<span className="fw-bold px-2">{title}</span>} maxWidth={560} onClose={onClose}>
-      <div className="poly-type">
-        <label>종류</label>
-        <select
-          className="form-select form-select-sm"
-          value={typeName}
-          onChange={(e) => changeType(e.target.value)}
-        >
-          <option value="">(비어 있음)</option>
-          {specs.map((s) => (
-            <option key={s.type} value={s.type}>
-              {s.label || s.type}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {typeName && !spec && (
-        <div className="poly-unknown">
-          `{typeName}` 은 카탈로그에 없습니다. 클래스가 지워졌거나 이름이 바뀌었을 수 있습니다 —
-          저장하면 이 값이 그대로 유지됩니다.
-        </div>
-      )}
-
-      {spec && spec.fields.length === 0 && <div className="poly-empty">채울 값이 없습니다.</div>}
-
-      {spec && spec.fields.length > 0 && (
-        <table className="table table-sm poly-fields">
-          <tbody>
-            {spec.fields.map((f) => (
-              <tr key={f.name}>
-                <th title={`${f.name} · ${f.type}`}>{f.name}</th>
-                <JsonCell
-                  item={values}
-                  field={f}
-                  onChange={(v) => changeField(f.name, v)}
-                  onEnterNested={() => setNested(f)}
-                />
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <PolymorphicForm
+        base={base}
+        value={value}
+        onChange={commit}
+        onEnterNested={(f) => setNested(f)}
+      />
     </Modal>
   )
 }
 
 /** 셀에 보일 짧은 요약. 타입명이 없으면 비어 있는 것이다. */
 export function describePolymorphic(json: string): string {
-  const { type } = parseValue(json)
-  return type || '(비어 있음)'
-}
-
-function parseValue(json: string): { type: string; values: Record<string, unknown> } {
-  if (!json || !json.trim()) return { type: '', values: {} }
-  try {
-    const obj = JSON.parse(json) as Record<string, unknown>
-    const { type, ...rest } = obj
-    return { type: typeof type === 'string' ? type : '', values: rest }
-  } catch {
-    return { type: '', values: {} }
-  }
-}
-
-/**
- * 새 타입을 고르면 그 타입의 기본값으로 시작한다.
- * 코드에 적힌 초기값(`default`)이 있으면 그걸 쓴다 — 없으면 타입별 빈 값이다.
- */
-function defaultsOf(spec: NodeSpec | undefined): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const f of spec?.fields ?? []) {
-    if (f.default !== undefined) out[f.name] = f.default
-    else if (f.type === 'bool') out[f.name] = false
-    else if (f.type === 'int' || f.type === 'long' || f.type === 'number') out[f.name] = 0
-    else if (f.isEnum && f.enumValues?.length) out[f.name] = f.enumValues[0]
-    else out[f.name] = ''
-  }
-  return out
+  return describePolyValue(json)
 }

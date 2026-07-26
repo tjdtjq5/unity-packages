@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Modal } from '../../shared/Modal'
+import { enableColResize } from '../../shared/colResize'
 import { toast } from '../../shared/toast'
 import { useAdmin } from '../shell/AdminContext'
 import type { JsonSchemaField } from '../../shared/types'
@@ -17,6 +18,11 @@ interface Layer {
   /** 자식 layer 를 부모 item 의 어느 필드에 되돌려 쓸지 */
   parentIndex?: number
   parentField?: string
+  /**
+   * 다형 layer 면 base 이름. 이때 items 는 항상 1개이고 표 대신 타입 드롭다운 + 세로 폼으로 그린다.
+   * 접을 때도 배열이 아니라 객체 하나로 접힌다.
+   */
+  polyBase?: string
 }
 
 /** 스키마가 없을 때 첫 항목에서 컬럼을 추론한다 (바닐라 detectSchema). */
@@ -42,6 +48,29 @@ function parseArray(raw: unknown): Item[] {
 
 export function countJsonItems(raw: unknown): number {
   return parseArray(raw).length
+}
+
+/** 다형 값 `{"type":"X",…}` 에서 타입명만. 비어 있으면 그렇게 표시한다. */
+export function describePolyValue(json: string): string {
+  if (!json || !json.trim()) return '(비어 있음)'
+  try {
+    const obj = JSON.parse(json) as Record<string, unknown>
+    return typeof obj.type === 'string' && obj.type ? obj.type : '(비어 있음)'
+  } catch {
+    return '(비어 있음)'
+  }
+}
+
+/** 다형 값을 타입명과 나머지 필드로 가른다. */
+export function splitPolyValue(json: string): { type: string; values: Record<string, unknown> } {
+  if (!json || !json.trim()) return { type: '', values: {} }
+  try {
+    const obj = JSON.parse(json) as Record<string, unknown>
+    const { type, ...rest } = obj
+    return { type: typeof type === 'string' ? type : '', values: rest }
+  } catch {
+    return { type: '', values: {} }
+  }
 }
 
 /** 셀 배지 문구. 바닐라 formatJsonArray 와 동일. */
@@ -71,6 +100,7 @@ export function JsonEditorModal({
   rootLabel,
   schema,
   initialJson,
+  polyBase,
   onSave,
   onClose,
 }: {
@@ -78,10 +108,16 @@ export function JsonEditorModal({
   rootLabel: string
   schema: JsonSchemaField[]
   initialJson: unknown
+  /** 주면 첫 layer 가 배열 표가 아니라 다형 폼이 된다. */
+  polyBase?: string
   onSave: (json: string) => Promise<void> | void
   onClose: () => void
 }) {
   const [layers, setLayers] = useState<Layer[]>(() => {
+    if (polyBase) {
+      const { type, values } = splitPolyValue(String(initialJson ?? ''))
+      return [{ schema: [], items: [{ ...values, type }], label: rootLabel, polyBase }]
+    }
     const items = parseArray(initialJson)
     return [
       {
@@ -92,8 +128,22 @@ export function JsonEditorModal({
     ]
   })
   const [saving, setSaving] = useState(false)
+  const hostRef = useRef<HTMLDivElement>(null)
 
   const cur = layers[layers.length - 1]
+
+  // 컬럼 폭·wrap — 표 화면에만. 폭은 렌더 결과를 재야 정해져 DOM 유틸로 붙인다 (Config 표와 같은 방식).
+  // 저장 키를 스키마의 필드 이름으로 잡는 이유는 layer 깊이가 아니라 "무슨 표인지" 가 기준이어야
+  // 같은 표를 어디서 열든 폭이 유지되기 때문이다.
+  const schemaKey = cur.schema.map((f) => f.name).join(',')
+  useEffect(() => {
+    if (cur.polyBase || !hostRef.current || cur.schema.length === 0) return
+    // DOM 컬럼 순서는 [...schema, 삭제버튼] 이라 끝에 null 패딩을 둬야 버튼 칸이 폭을 유지한다.
+    enableColResize(hostRef.current, 'json_' + schemaKey, {
+      fields: [...cur.schema, null],
+      data: cur.items,
+    })
+  }, [cur.polyBase, schemaKey, cur.items, cur.schema])
 
   function patchItem(i: number, key: string, value: unknown) {
     setLayers((prev) => {
@@ -129,9 +179,28 @@ export function JsonEditorModal({
     })
   }
 
-  /** 중첩 자식 layer 진입 */
+  /** 중첩 자식 layer 진입 — 다형이면 폼 layer, 아니면 배열 표 layer. */
   function enterNested(rowIndex: number, field: JsonSchemaField) {
-    const childItems = parseArray(cur.items[rowIndex]?.[field.name])
+    const raw = cur.items[rowIndex]?.[field.name]
+    const label = `${cur.label} > ${cur.polyBase ? '' : `[${rowIndex + 1}].`}${field.name}`
+
+    if (field.polymorphic) {
+      const { type, values } = splitPolyValue(String(raw ?? ''))
+      setLayers((prev) => [
+        ...prev,
+        {
+          schema: [],                       // 타입을 고르면 그때 채운다
+          items: [{ ...values, type }],
+          label,
+          parentIndex: rowIndex,
+          parentField: field.name,
+          polyBase: field.polymorphic,
+        },
+      ])
+      return
+    }
+
+    const childItems = parseArray(raw)
     const childSchema =
       field.jsonSchema && field.jsonSchema.length > 0
         ? field.jsonSchema
@@ -143,24 +212,37 @@ export function JsonEditorModal({
       {
         schema: childSchema,
         items: childItems,
-        label: `${cur.label} > [${rowIndex + 1}].${field.name}`,
+        label,
         parentIndex: rowIndex,
         parentField: field.name,
       },
     ])
   }
 
-  /** 자식 layer 를 부모 item 에 문자열로 접어 넣는다 (서버 왕복 형식과 동일). */
+  /**
+   * 자식 layer 를 부모 item 에 문자열로 접어 넣는다 (서버 왕복 형식과 동일).
+   * 배열 layer 는 배열로, 다형 layer 는 객체 하나로 접는다.
+   */
   function foldTop(stack: Layer[]): Layer[] {
     if (stack.length <= 1) return stack
     const child = stack[stack.length - 1]
     const parent = { ...stack[stack.length - 2] }
     if (child.parentIndex != null && child.parentField) {
+      const folded = child.polyBase ? foldPoly(child) : JSON.stringify(child.items)
       parent.items = parent.items.map((it, idx) =>
-        idx === child.parentIndex ? { ...it, [child.parentField!]: JSON.stringify(child.items) } : it,
+        idx === child.parentIndex ? { ...it, [child.parentField!]: folded } : it,
       )
     }
     return [...stack.slice(0, -2), parent]
+  }
+
+  /** 다형 layer → `{"type":"X",…}`. 타입이 비었으면 값 자체를 비운다. */
+  function foldPoly(layer: Layer): string {
+    const v = layer.items[0] ?? {}
+    const type = String(v.type ?? '')
+    if (!type) return ''
+    const { type: _drop, ...rest } = v
+    return JSON.stringify({ type, ...rest })
   }
 
   function goBack() {
@@ -172,7 +254,7 @@ export function JsonEditorModal({
     try {
       let stack = layers
       while (stack.length > 1) stack = foldTop(stack)
-      await onSave(JSON.stringify(stack[0].items))
+      await onSave(stack[0].polyBase ? foldPoly(stack[0]) : JSON.stringify(stack[0].items))
       onClose()
     } catch (e) {
       toast('저장 실패: ' + (e instanceof Error ? e.message : String(e)), 'error')
@@ -197,7 +279,7 @@ export function JsonEditorModal({
         </div>
       }
     >
-      <div style={{ padding: 12, maxHeight: '70vh', overflow: 'auto' }}>
+      <div ref={hostRef} style={{ padding: 12, maxHeight: '70vh', overflow: 'auto' }}>
           {/* breadcrumb — 중첩 진입 시에만 뒤로가기가 의미 있다 */}
           <div className="d-flex align-items-center gap-2 mb-2">
             {layers.length > 1 && (
@@ -209,7 +291,20 @@ export function JsonEditorModal({
             <span className="text-muted small">{cur.label}</span>
           </div>
 
-          {cur.schema.length === 0 ? (
+          {cur.polyBase ? (
+            <PolymorphicForm
+              base={cur.polyBase}
+              value={cur.items[0] ?? {}}
+              onChange={(next) =>
+                setLayers((prev) => {
+                  const stack = [...prev]
+                  stack[stack.length - 1] = { ...stack[stack.length - 1], items: [next] }
+                  return stack
+                })
+              }
+              onEnterNested={(field) => enterNested(0, field)}
+            />
+          ) : cur.schema.length === 0 ? (
             <div className="empty-state">
               <i className="ti ti-code-off" />
               <h3>스키마가 없습니다</h3>
@@ -252,12 +347,112 @@ export function JsonEditorModal({
             </table>
           )}
 
-          <button className="btn btn-sm btn-outline-primary mt-2" onClick={addRow}>
-            <i className="ti ti-plus me-1" />행 추가
-          </button>
+          {!cur.polyBase && (
+            <button className="btn btn-sm btn-outline-primary mt-2" onClick={addRow}>
+              <i className="ti ti-plus me-1" />행 추가
+            </button>
+          )}
       </div>
     </Modal>
   )
+}
+
+/**
+ * 다형 값 하나를 그린다 — 타입 드롭다운 + 그 타입의 필드 폼.
+ *
+ * 모달을 갖지 않는다. 진입점이 둘이기 때문이다 —
+ * 표의 셀에서 바로 열리기도 하고(PolymorphicEditor), 중첩 layer 로 들어오기도 한다(JsonEditorModal).
+ *
+ * `value` 는 `{ type, ...필드 }` 한 덩어리다. type 이 곧 어떤 파생인지다.
+ */
+export function PolymorphicForm({
+  base,
+  value,
+  onChange,
+  onEnterNested,
+}: {
+  base: string
+  value: Record<string, unknown>
+  onChange: (next: Record<string, unknown>) => void
+  onEnterNested: (field: JsonSchemaField) => void
+}) {
+  const specs = useAdmin().typeCatalog[base] ?? []
+  const typeName = String(value.type ?? '')
+  const spec = specs.find((s) => s.type === typeName)
+
+  const changeType = (next: string) => {
+    // 값은 이어받지 않는다 — 이름이 같아도 타입이 다르면 뜻이 다르다.
+    onChange(next ? { type: next, ...defaultsOf(specs.find((s) => s.type === next)) } : {})
+  }
+
+  return (
+    <>
+      <div className="poly-type">
+        <label>종류</label>
+        <select
+          className="form-select form-select-sm"
+          value={typeName}
+          onChange={(e) => changeType(e.target.value)}
+        >
+          <option value="">(비어 있음)</option>
+          {specs.map((s) => (
+            <option key={s.type} value={s.type}>
+              {s.label || s.type}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {specs.length === 0 && (
+        <div className="poly-unknown">
+          `{base}` 가 카탈로그에 없습니다. 클래스가 지워졌거나 이름이 바뀌었을 수 있습니다.
+        </div>
+      )}
+
+      {typeName && !spec && specs.length > 0 && (
+        <div className="poly-unknown">
+          `{typeName}` 은 카탈로그에 없습니다. 클래스가 지워졌거나 이름이 바뀌었을 수 있습니다 —
+          저장하면 이 값이 그대로 유지됩니다.
+        </div>
+      )}
+
+      {spec && spec.fields.length === 0 && <div className="poly-empty">채울 값이 없습니다.</div>}
+
+      {spec && spec.fields.length > 0 && (
+        <table className="table table-sm poly-fields">
+          <tbody>
+            {spec.fields.map((f) => (
+              <tr key={f.name}>
+                <th title={`${f.name} · ${f.type}`}>{f.name}</th>
+                <JsonCell
+                  item={value}
+                  field={f}
+                  onChange={(v) => onChange({ ...value, [f.name]: v })}
+                  onEnterNested={() => onEnterNested(f)}
+                />
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
+  )
+}
+
+/**
+ * 새 타입을 고르면 그 타입의 기본값으로 시작한다.
+ * 코드에 적힌 초기값(`default`)이 있으면 그걸 쓴다 — 없으면 타입별 빈 값이다.
+ */
+function defaultsOf(spec: { fields: JsonSchemaField[] } | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const f of spec?.fields ?? []) {
+    if (f.default !== undefined) out[f.name] = f.default
+    else if (f.type === 'bool') out[f.name] = false
+    else if (f.type === 'int' || f.type === 'long' || f.type === 'number') out[f.name] = 0
+    else if (f.isEnum && f.enumValues?.length) out[f.name] = f.enumValues[0]
+    else out[f.name] = ''
+  }
+  return out
 }
 
 /**
@@ -294,6 +489,18 @@ export function JsonCell({
     return (
       <td>
         <SearchSelect options={fkSources[field.foreignKey]} value={shown} onChange={onChange} />
+      </td>
+    )
+  }
+
+  // 다형 필드 — 중첩 JSON 과 같은 신호를 보낸다. 어느 쪽으로 들어갈지는 부모가 안다.
+  if (field.polymorphic) {
+    return (
+      <td>
+        <span className="badge bg-orange-lt json-badge" onClick={onEnterNested}>
+          <i className="ti ti-category me-1" />
+          {describePolyValue(shown)}
+        </span>
       </td>
     )
   }

@@ -51,7 +51,7 @@ function collectFkTargets(
     if (f.foreignKey) out.add(f.foreignKey)
     if ('foreignKeyList' in f && f.foreignKeyList) out.add(f.foreignKeyList)
     if (f.isJson && f.jsonSchema) collectFkTargets(f.jsonSchema, out, catalog, seen)
-    if ('polymorphic' in f && f.polymorphic && !seen.has(f.polymorphic)) {
+    if (f.polymorphic && !seen.has(f.polymorphic)) {
       // 같은 base 를 두 번 펼치지 않는다 — 자기 자신을 품는 타입이 있으면 무한히 돈다.
       seen.add(f.polymorphic)
       for (const spec of catalog[f.polymorphic] ?? []) {

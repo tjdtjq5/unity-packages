@@ -184,7 +184,7 @@ export function ConfigCell({ row, field, saved, onChange }: CellProps) {
         {polyOpen && (
           <PolymorphicEditor
             title={`${field.name} — ${field.polymorphic}`}
-            specs={specs}
+            base={field.polymorphic}
             initialJson={shown}
             onSave={(json) => onChange(field.name, json, true)}
             onClose={() => setPolyOpen(false)}
