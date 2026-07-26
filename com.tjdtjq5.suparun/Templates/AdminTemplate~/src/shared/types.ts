@@ -48,6 +48,11 @@ export interface ConfigField {
   nodeGraph?: string
   /** `[Polymorphic(typeof(TBase))]` — 타입 드롭다운 + 그 타입의 필드 폼으로 연다. 값은 type_catalog 의 그룹 키. */
   polymorphic?: string
+  /**
+   * 코드에 적힌 필드 초기값(`public float search_range = 10f;`).
+   * 카탈로그 항목(노드·다형 타입)에만 실린다 — 새 값을 만들 때 이걸로 시작한다.
+   */
+  default?: unknown
   /** `NodeValue<T>` — 상수 대신 Pure 노드 출력을 꽂을 수 있는 칸(노드 안에서만 나온다). */
   isNodeValue?: boolean
 }

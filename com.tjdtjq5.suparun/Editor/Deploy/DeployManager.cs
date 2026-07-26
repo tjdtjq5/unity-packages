@@ -440,10 +440,13 @@ namespace Tjdtjq5.SupaRun.Editor
                 content, @"[ \t]*\[Icon\(.+?\)\]", "");
             content = System.Text.RegularExpressions.Regex.Replace(
                 content, @"[ \t]*\[Component\(.+?\)\]", "");
-            // [NodeGraph(typeof(TCtx))] — 어드민 캔버스 마커. 컨텍스트 타입이 게임 어셈블리에만
-            // 있어서 서버가 컴파일할 수 없다. 서버에게 이 컬럼은 그냥 string 이다.
+            // [NodeGraph(typeof(TCtx))] / [Polymorphic(typeof(TBase))] — 어드민 편집기 마커.
+            // 지목하는 타입이 게임 어셈블리에만 있어서 서버가 컴파일할 수 없다.
+            // 서버에게 이 컬럼들은 그냥 string 이다.
             content = System.Text.RegularExpressions.Regex.Replace(
                 content, @"[ \t]*\[NodeGraph\(.+?\)\]", "");
+            content = System.Text.RegularExpressions.Regex.Replace(
+                content, @"[ \t]*\[Polymorphic\(.+?\)\]", "");
 
             // 3) #if UNITY 전처리기 블록 제거
             content = StripUnityPreprocessorBlocks(content);

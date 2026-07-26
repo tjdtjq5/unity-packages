@@ -6,6 +6,7 @@ import { FkListCell } from './FkListEditor'
 import { IconCell } from './IconPicker'
 import { JsonEditorModal, formatJsonArray } from './JsonEditor'
 import { NodeGraphModal } from '../nodegraph/NodeGraphModal'
+import { PolymorphicEditor, describePolymorphic } from './PolymorphicEditor'
 import { RewardsCell } from './RewardsEditor'
 import { SearchSelect } from './SearchSelect'
 import { isFieldDisabled } from './fieldVisibility'
@@ -60,6 +61,7 @@ export function ConfigCell({ row, field, saved, onChange }: CellProps) {
   const [draft, setDraft] = useState('')
   const [jsonOpen, setJsonOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
+  const [polyOpen, setPolyOpen] = useState(false)
   const { fkSources, typeCatalog } = useAdmin()
 
   if (isFieldDisabled(row, field)) {
@@ -160,6 +162,32 @@ export function ConfigCell({ row, field, saved, onChange }: CellProps) {
             initialJson={shown}
             onSave={(json) => onChange(field.name, json, true)}
             onClose={() => setGraphOpen(false)}
+          />
+        )}
+      </td>
+    )
+  }
+
+  // ── 다형 필드 (타입 드롭다운 + 그 타입 폼) ──
+  if (field.polymorphic) {
+    const specs = typeCatalog[field.polymorphic] ?? []
+    return (
+      <td data-field={field.name}>
+        <span
+          className="badge bg-orange-lt json-badge"
+          title={specs.length === 0 ? `${field.polymorphic} 타입이 카탈로그에 없습니다` : shown || '(비어 있음)'}
+          onClick={() => setPolyOpen(true)}
+        >
+          <i className="ti ti-category me-1" />
+          {describePolymorphic(shown)}
+        </span>
+        {polyOpen && (
+          <PolymorphicEditor
+            title={`${field.name} — ${field.polymorphic}`}
+            specs={specs}
+            initialJson={shown}
+            onSave={(json) => onChange(field.name, json, true)}
+            onClose={() => setPolyOpen(false)}
           />
         )}
       </td>

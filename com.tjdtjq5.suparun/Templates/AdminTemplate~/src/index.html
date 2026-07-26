@@ -343,9 +343,10 @@ code, kbd, pre, samp, .text-mono, .font-mono { font-family: var(--mono); font-si
   width: min(640px, calc(100vw - 40px)); max-height: 70vh;
   display: flex; flex-direction: column; font-family: var(--mono);
 }
-.icon-grid-head { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); }
+.icon-grid-head { display: flex; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); }
 .icon-grid-search { flex: 1; }
-.icon-grid-close { background: transparent; border: 1px solid var(--line); color: var(--fg); width: 32px; cursor: pointer; font-size: 16px; }
+/* 닫기는 언제나 우측 상단. 검색창(flex:1)이 없는 모달에서는 제목에 붙어버리므로 auto 로 민다. */
+.icon-grid-close { margin-left: auto; background: transparent; border: 1px solid var(--line); color: var(--fg); width: 32px; height: 32px; flex-shrink: 0; cursor: pointer; font-size: 16px; }
 .icon-grid-close:hover { border-color: var(--green); color: var(--green); }
 .icon-grid-body { padding: 12px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
 .icon-grid-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; cursor: pointer; border: 1px solid transparent; }
@@ -875,6 +876,44 @@ tbody tr { animation: rowStagger 0.2s linear both; }
   text-transform: uppercase;
   transition: all var(--d-fast) var(--ease);
 }
+/* [Polymorphic] 편집기 — 타입 하나 고르고 그 타입 필드만 채우는 세로 표 */
+.poly-type {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.poly-type label {
+  flex: 0 0 40px;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+.poly-fields {
+  margin: 0;
+}
+.poly-fields th,
+.poly-fields td {
+  padding: 3px 12px;          /* 행이 높으면 필드 대여섯 개에도 스크롤이 생긴다 */
+  vertical-align: middle;
+  border-top: none;
+}
+.poly-fields th {
+  width: 42%;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--muted);
+}
+.poly-empty, .poly-unknown {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 10px 12px;
+}
+.poly-unknown {
+  color: #f5b041;
+}
+
 .badge.bg-cyan-lt, .badge.bg-blue-lt, .json-badge {
   background: var(--green-soft) !important;
   color: var(--green) !important;

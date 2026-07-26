@@ -260,7 +260,13 @@ export function JsonEditorModal({
   )
 }
 
-function JsonCell({
+/**
+ * 스키마 필드 하나를 `<td>` 로 그린다. FK·아이콘·컴포넌트·enum·bool·숫자를 전부 다룬다.
+ *
+ * `[Polymorphic]` 편집기도 이걸 쓴다 — 거기서는 행 하나짜리 세로 표라
+ * `<tr><th>이름</th><JsonCell/></tr>` 형태가 된다.
+ */
+export function JsonCell({
   item,
   field,
   onChange,
@@ -359,16 +365,19 @@ function JsonCell({
     )
   }
 
-  if (field.type === 'int' || field.type === 'float') {
+  // 'number' 는 C# float/double 이 실려 오는 이름이다 — 이게 빠져 있어서
+  // float 필드가 숫자 입력이 아니라 텍스트로 떨어졌다.
+  if (field.type === 'int' || field.type === 'long' || field.type === 'float' || field.type === 'number') {
+    const isInt = field.type === 'int' || field.type === 'long'
     return (
       <td>
         <input
           type="number"
           className="form-control form-control-sm"
-          step={field.type === 'float' ? 0.01 : 1}
+          step={isInt ? 1 : 0.01}
           value={shown}
           onChange={(e) =>
-            onChange(field.type === 'int' ? parseInt(e.target.value) || 0 : parseFloat(e.target.value) || 0)
+            onChange(isInt ? parseInt(e.target.value) || 0 : parseFloat(e.target.value) || 0)
           }
         />
       </td>

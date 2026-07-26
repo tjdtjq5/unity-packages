@@ -1573,8 +1573,14 @@ END $$;
 
         // ── 공통 필드 메타데이터 생성 ──
 
-        /// <summary>MemberInfo(Field/Property) 하나의 어드민 메타데이터 JSON을 생성한다.</summary>
-        static string BuildMemberJson(MemberInfo member, Type memberType)
+        /// <summary>
+        /// MemberInfo(Field/Property) 하나의 어드민 메타데이터 JSON을 생성한다.
+        ///
+        /// <paramref name="defaultValue"/> 는 카탈로그 항목(노드·다형 타입)에서만 넘어온다 —
+        /// 코드에 적은 필드 초기값을 어드민이 새 값 만들 때 쓰라고 실어 보낸다.
+        /// 표 컬럼은 DB 의 DEFAULT 가 그 역할을 하므로 넘기지 않는다.
+        /// </summary>
+        static string BuildMemberJson(MemberInfo member, Type memberType, object defaultValue = null)
         {
             var parts = new List<string>();
 
@@ -1671,7 +1677,32 @@ END $$;
             if (member.GetCustomAttribute<AdminHiddenAttribute>() != null)
                 parts.Add("\"isHidden\":true");
 
+            // 필드 초기값 — 0/false/"" 는 어차피 어드민 기본값이라 싣지 않는다(전송량).
+            var defJson = DefaultValueJson(defaultValue);
+            if (defJson != null) parts.Add($"\"default\":{defJson}");
+
             return "{" + string.Join(",", parts) + "}";
+        }
+
+        /// <summary>
+        /// 필드 초기값을 JSON 리터럴로. 의미 없는 값(null, 0, false, 빈 문자열)은 null 을 돌려준다.
+        ///
+        /// FP 같은 커스텀 struct 는 어드민이 해석할 수 없으므로 제외한다 —
+        /// 다형/노드 데이터는 DB 쪽(float)이 카탈로그에 실리므로 실전에서는 원시 타입만 온다.
+        /// </summary>
+        static string DefaultValueJson(object value)
+        {
+            switch (value)
+            {
+                case null: return null;
+                case bool b: return b ? "true" : null;
+                case string s: return string.IsNullOrEmpty(s) ? null : $"\"{EscapeJson(s)}\"";
+                case int i: return i != 0 ? i.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+                case long l: return l != 0 ? l.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+                case float f: return f != 0f ? f.ToString("R", System.Globalization.CultureInfo.InvariantCulture) : null;
+                case double d: return d != 0d ? d.ToString("R", System.Globalization.CultureInfo.InvariantCulture) : null;
+                default: return null;
+            }
         }
 
         /// <summary>타입의 public instance 필드들의 메타데이터 JSON 배열 내용을 반환한다.</summary>
@@ -1775,12 +1806,18 @@ END $$;
             var fields = new List<string>();
             var outs = new List<string>();
 
+            // 필드 초기값(`public float search_range = 10f;`)을 읽으려면 인스턴스가 필요하다.
+            // 이게 없으면 어드민이 새 값을 만들 때 전부 0 으로 채워, 코드에 적은 기본값이 무의미해진다.
+            object defaults = null;
+            try { defaults = Activator.CreateInstance(nodeType); }
+            catch (Exception) { /* 매개변수 없는 생성자가 없으면 기본값 없이 간다 */ }
+
             foreach (var f in nodeType.GetFields(BindingFlags.Public | BindingFlags.Instance))
             {
                 var port = f.GetCustomAttribute<NodeOutAttribute>();
                 if (port == null)
                 {
-                    fields.Add(BuildMemberJson(f, f.FieldType));
+                    fields.Add(BuildMemberJson(f, f.FieldType, defaults != null ? f.GetValue(defaults) : null));
                     continue;
                 }
                 // 포트는 캔버스 연결이지 사람이 채우는 칸이 아니다.
