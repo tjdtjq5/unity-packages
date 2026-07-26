@@ -12,20 +12,21 @@ export type Route =
   | { kind: 'home' }
   | { kind: 'config'; tableName: string }
   | { kind: 'table'; tableName: string }
-  | { kind: 'admins' }
   | { kind: 'audit' }
   | { kind: 'snapshots' }
   // ── 환경을 고르기 전(앱 레벨) 화면들 ──
-  // 이 둘만 "어느 환경인가" 와 무관하다. 나머지는 전부 특정 Supabase 프로젝트의 데이터다.
+  // 이들만 "어느 환경인가" 와 무관하다. 나머지는 전부 특정 Supabase 프로젝트의 데이터다.
   | { kind: 'environments' }
   | { kind: 'appSettings' }
+  // 관리자는 **계정 단위**다. 로그인 하나로 환경을 넘나들므로 환경 안에 둘 이유가 없다.
+  | { kind: 'admins' }
 
 /**
  * 환경을 고르기 전 상태인가. 사이드바가 이걸로 갈린다 —
  * 고르기 전에는 특정 Supabase 프로젝트의 데이터를 보여줄 수 없다.
  */
 export function isAppLevel(r: Route): boolean {
-  return r.kind === 'environments' || r.kind === 'appSettings'
+  return r.kind === 'environments' || r.kind === 'appSettings' || r.kind === 'admins'
 }
 
 export function routeToHash(r: Route): string | null {

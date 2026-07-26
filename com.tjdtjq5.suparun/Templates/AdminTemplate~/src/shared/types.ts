@@ -5,6 +5,12 @@ export interface AdminUser {
   email: string
   /** 'admin' = 승인됨, 'pending' = 가입했으나 승인 대기 */
   role: 'admin' | 'pending'
+  /**
+   * 어느 프로바이더로 들어온 계정인가.
+   * 같은 이메일이라도 프로바이더가 다르면 Supabase 에서 **다른 사용자**라 승인도 따로 받는다.
+   * 옛 행은 비어 있을 수 있다(그 계정이 다시 로그인하면 채워진다).
+   */
+  provider?: string | null
   created_at: string
 }
 

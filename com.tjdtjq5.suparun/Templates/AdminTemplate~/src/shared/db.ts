@@ -83,16 +83,29 @@ export async function updateRow<T>(
     .eq(pkColumn, pkValue)
     .select()
   if (error) throw new Error(describe(error))
-  return (data ?? [])[0] ?? null
+  const rows = data ?? []
+  if (rows.length === 0) throw new Error(BLOCKED)
+  return rows[0]
 }
+
+/**
+ * **RLS 차단은 에러가 아니다.** 권한이 없으면 PostgREST 는 실패가 아니라 "0행 처리" 로
+ * 응답한다. 그래서 `error` 만 보면 막힌 조작이 성공으로 보이고, 화면은 "삭제됨" 을 띄운 뒤
+ * 새로고침하면 그대로 살아 있다. 실제로 그 사고가 났다.
+ *
+ * 그래서 **바뀐 행이 실제로 돌아왔는지**를 본다. 조건에 맞는 행이 아예 없어도 같은 신호가
+ * 되는데, 그건 이미 지워졌다는 뜻이라 사용자에게 알려야 하는 것은 똑같다.
+ */
+const BLOCKED = '권한이 없거나 대상이 없어 반영되지 않았습니다.'
 
 export async function deleteRow(table: string, pkColumn: string, pkValue: string): Promise<void> {
   if (isPreview()) {
     await window.__previewApi!(`/${table}/${encodeURIComponent(pkValue)}`, 'DELETE')
     return
   }
-  const { error } = await client().from(table).delete().eq(pkColumn, pkValue)
+  const { data, error } = await client().from(table).delete().eq(pkColumn, pkValue).select()
   if (error) throw new Error(describe(error))
+  if ((data ?? []).length === 0) throw new Error(BLOCKED)
 }
 
 /**

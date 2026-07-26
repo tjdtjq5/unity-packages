@@ -117,13 +117,10 @@ export function LoginPage({
             })}
           </div>
 
-          {/* 프로바이더가 하나도 없으면 로그인할 방법이 없다. 그 상태로 이 화면이 떴다면
-              설정이 반쯤 된 것이므로, 빈 화면 대신 어디를 고쳐야 하는지 적어 준다. */}
+          {/* App 이 이 경우를 설정 화면으로 보내므로 평소에는 안 보인다. 마지막 방어선이다. */}
           {providers.length === 0 && (
             <div className="alert alert-warning" style={{ marginTop: 18 }}>
               로그인 수단이 설정되지 않았습니다.
-              <br />
-              Unity → SupaRun Dashboard → 설정 → Auth 에서 Google 을 추가하세요.
             </div>
           )}
 

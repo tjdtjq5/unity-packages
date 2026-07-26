@@ -147,6 +147,17 @@ export function Shell({
                     <span className="label">environments</span>
                   </a>
                   <a
+                    className={`tree-item${route.kind === 'admins' ? ' active' : ''}`}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate({ kind: 'admins' })
+                    }}
+                  >
+                    <span className="branch">├─</span>
+                    <span className="label">admins</span>
+                  </a>
+                  <a
                     className={`tree-item${route.kind === 'appSettings' ? ' active' : ''}`}
                     href="#"
                     onClick={(e) => {
@@ -190,17 +201,6 @@ export function Shell({
 
                 <div className="tree-section">[SYSTEM]</div>
                 <div className="tree-list">
-                  <a
-                    className={`tree-item${route.kind === 'admins' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'admins' })
-                    }}
-                  >
-                    <span className="branch">├─</span>
-                    <span className="label">admins</span>
-                  </a>
                   <a
                     className={`tree-item${route.kind === 'audit' ? ' active' : ''}`}
                     href="#"
@@ -255,16 +255,6 @@ export function Shell({
       </aside>
 
       <div className="page-wrapper page-transition" style={{ marginTop: 32 }}>
-        {unlocked && (
-          <div className="unlocked-banner">
-            <i className="ti ti-lock-open" />
-            <span>
-              <b>로그인 없이 열려 있습니다.</b> 주소를 아는 누구나 이 화면을 볼 수 있습니다 (쓰기는
-              차단됨). Unity → SupaRun Dashboard → 설정 → Auth 에서 Google 을 추가하면 잠깁니다.
-            </span>
-          </div>
-        )}
-
         <div className="terminal-prompt">
           <span className="user">admin@suparun</span>
           <span className="sep">:</span>

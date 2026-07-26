@@ -1871,7 +1871,15 @@ END $$;
 
 ALTER TABLE admin_user ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'pending';
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_email ON admin_user (email) WHERE email IS NOT NULL;
+-- 어느 프로바이더로 들어온 계정인가. 같은 이메일이라도 프로바이더가 다르면 Supabase 에서
+-- **다른 사용자**이고 승인도 따로 받아야 한다. 이 값이 없으면 목록에 같은 이메일이 두 줄
+-- 떠 있는데 왜 그런지 알 수 없다.
+ALTER TABLE admin_user ADD COLUMN IF NOT EXISTS provider TEXT;
+
+-- 이메일에는 유니크를 걸지 않는다. 같은 이메일을 쓰는 Google 계정과 GitHub 계정은
+-- Supabase 에서 **서로 다른 사용자**다. 유니크를 걸면 두 번째 프로바이더로 로그인할 때
+-- 등록이 조용히 실패해 승인 대기 목록에 뜨지도 않는다. 신원은 user_id 다.
+DROP INDEX IF EXISTS idx_admin_user_email;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHERE user_id IS NOT NULL;
 
 -- admin_user 자체: 관리자만 접근. 단 미등록 유저의 자동 등록(첫 가입자=admin)은
