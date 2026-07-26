@@ -3,7 +3,8 @@
     "Supabase": ""
   },
   "Supabase": {
-    "AuthUrl": "https://{{SUPABASE_PROJECT_ID}}.supabase.co/auth/v1"
+    "AuthUrl": "https://{{SUPABASE_PROJECT_ID}}.supabase.co/auth/v1",
+    "ProjectRef": "{{SUPABASE_PROJECT_ID}}"
   },
   "Logging": {
     "LogLevel": {
