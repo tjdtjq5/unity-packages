@@ -36,6 +36,11 @@ namespace Tjdtjq5.SupaRun.Editor
             // Supabase — 환경마다 별도 프로젝트
             public string supabaseUrl = "";
             public string supabaseAnonKey = "";
+
+            // ⚠ 아래 비밀 필드들을 **직접 읽지 말 것.** 값은 이 파일이 아니라 EditorPrefs 에 있다
+            //   (git 에 올라가면 안 되므로). 필드는 옛 파일에서 값을 건져 올리는 폴백으로만 남아 있고,
+            //   마이그레이션이 끝나면 빈 문자열이다.
+            //   반드시 AccessTokenOf / DbPasswordOf / CronSecretOf 를 쓴다.
             public string supabaseDbPassword = "";
             public string supabaseAccessToken = "";
 
@@ -142,6 +147,7 @@ namespace Tjdtjq5.SupaRun.Editor
                     MigrateIfNeeded();
                     _project ??= LoadProject();
                     MigrateEnvironments(_project);
+                    MigrateSecretsOutOfFile(_project);
                 }
                 return _project;
             }
@@ -191,6 +197,51 @@ namespace Tjdtjq5.SupaRun.Editor
 
             SaveProject();
             Debug.Log("[SupaRun] 기존 설정을 환경 'dev' 로 옮겼습니다. 대시보드 > Settings 에서 환경을 추가할 수 있습니다.");
+        }
+
+        /// <summary>
+        /// 비밀을 프로젝트 파일에서 빼내 EditorPrefs 로 옮긴다. 멱등 — 옮길 게 없으면 아무것도 안 한다.
+        ///
+        /// 이 파일은 git 에 커밋된다. PAT 는 Supabase **계정 전체**의 마스터키라 저장소에 남으면
+        /// 클론한 누구나 계정의 모든 프로젝트를 지울 수 있다. 그렇다고 gitignore 로 빼면 팀원이
+        /// 설정을 못 받았는데, 이제 <see cref="SupaRunSecretStore"/> 가 공유를 맡으므로 뺄 수 있다.
+        ///
+        /// 옮기고 나면 이 함수는 두 번 다시 할 일이 없다. 남겨 두는 이유는 git 에서 옛 파일을
+        /// 되돌리거나 다른 브랜치를 체크아웃하면 값이 다시 나타나기 때문이다.
+        /// </summary>
+        static void MigrateSecretsOutOfFile(ProjectData p)
+        {
+            var moved = 0;
+
+            foreach (var env in p.environments)
+            {
+                moved += Move("access_token", env.name, env.supabaseAccessToken, v => env.supabaseAccessToken = v);
+                moved += Move("db_password", env.name, env.supabaseDbPassword, v => env.supabaseDbPassword = v);
+                moved += Move("cron_secret", env.name, env.cronSecret, v => env.cronSecret = v);
+            }
+
+            moved += Move("github_token", null, p.githubToken, v => p.githubToken = v);
+
+            // 환경 이관 전 형식의 평면 필드에도 남아 있을 수 있다.
+            moved += Move("access_token", p.editorEnvironment, p.supabaseAccessToken, v => p.supabaseAccessToken = v);
+            moved += Move("db_password", p.editorEnvironment, p.supabaseDbPassword, v => p.supabaseDbPassword = v);
+            moved += Move("cron_secret", p.editorEnvironment, p.cronSecret, v => p.cronSecret = v);
+
+            if (moved == 0) return;
+
+            SaveProject();
+            Debug.Log($"[SupaRun] 비밀 {moved}개를 프로젝트 파일에서 이 컴퓨터(EditorPrefs)로 옮겼습니다 — " +
+                      "git 에 더 이상 올라가지 않습니다. 팀 공유는 Settings > 에디터 로그인 > 공유 비밀에서 합니다.");
+            return;
+
+            static int Move(string name, string env, string value, Action<string> clearInFile)
+            {
+                if (string.IsNullOrEmpty(value)) return 0;
+                // 로컬에 이미 값이 있으면 덮지 않는다 — 파일 쪽이 옛 브랜치의 값일 수 있다.
+                if (!SupaRunSecretPrefs.Has(name, env)) SupaRunSecretPrefs.Set(name, env, value);
+                clearInFile("");
+                return 1;
+            }
         }
 
         /// <summary>환경 목록(읽기 전용 뷰). 편집은 AddEnvironment/RemoveEnvironment 로.</summary>
@@ -343,16 +394,42 @@ namespace Tjdtjq5.SupaRun.Editor
             set { Current.supabaseAnonKey = value; SaveProject(); }
         }
 
+        // 아래 값들은 **git 에 올라가면 안 되므로** 저장 위치가 다르다 — 파일이 아니라
+        // EditorPrefs 에 있고, 팀 공유는 suparun_secret 테이블이 맡는다(SupaRunSecretPrefs 참조).
+        // 시그니처는 그대로라 호출부는 영향이 없다.
+        //
+        // 환경을 명시해야 하는 곳(승격·스냅샷처럼 두 환경을 동시에 다루는 코드)은
+        // 아래 *Of(env) 정적 메서드를 쓴다. EnvironmentData 의 필드를 직접 읽으면 빈 값이 나온다.
+
+        public static string AccessTokenOf(EnvironmentData env) =>
+            env == null ? "" : SupaRunSecretPrefs.Get("access_token", env.name, env.supabaseAccessToken);
+
+        public static void SetAccessTokenOf(EnvironmentData env, string value)
+        {
+            if (env != null) SupaRunSecretPrefs.Set("access_token", env.name, value);
+        }
+
+        public static string DbPasswordOf(EnvironmentData env) =>
+            env == null ? "" : SupaRunSecretPrefs.Get("db_password", env.name, env.supabaseDbPassword);
+
+        public static void SetDbPasswordOf(EnvironmentData env, string value)
+        {
+            if (env != null) SupaRunSecretPrefs.Set("db_password", env.name, value);
+        }
+
+        public static string CronSecretOf(EnvironmentData env) =>
+            env == null ? "" : SupaRunSecretPrefs.Get("cron_secret", env.name, env.cronSecret);
+
         public string SupabaseDbPassword
         {
-            get => Current.supabaseDbPassword;
-            set { Current.supabaseDbPassword = value; SaveProject(); }
+            get => DbPasswordOf(Current);
+            set => SetDbPasswordOf(Current, value);
         }
 
         public string SupabaseAccessToken
         {
-            get => Current.supabaseAccessToken;
-            set { Current.supabaseAccessToken = value; SaveProject(); }
+            get => AccessTokenOf(Current);
+            set => SetAccessTokenOf(Current, value);
         }
 
         // ── Google Cloud ──
@@ -402,10 +479,11 @@ namespace Tjdtjq5.SupaRun.Editor
             set { P.githubRepoName = value; }
         }
 
+        /// <summary>환경과 무관하다 — 레포 하나를 모든 환경이 공유한다.</summary>
         public string GithubToken
         {
-            get => P.githubToken;
-            set { P.githubToken = value; SaveProject(); }
+            get => SupaRunSecretPrefs.Get("github_token", null, P.githubToken);
+            set => SupaRunSecretPrefs.Set("github_token", null, value);
         }
 
         // ── Auth ──
@@ -502,8 +580,8 @@ namespace Tjdtjq5.SupaRun.Editor
 
         public string CronSecret
         {
-            get => Current.cronSecret;
-            set { Current.cronSecret = value; SaveProject(); }
+            get => CronSecretOf(Current);
+            set => SupaRunSecretPrefs.Set("cron_secret", Current.name, value);
         }
 
         // ── 설정 완료 판단 ──

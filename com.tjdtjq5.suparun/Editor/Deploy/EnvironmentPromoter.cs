@@ -37,9 +37,11 @@ namespace Tjdtjq5.SupaRun.Editor
 
             var fromId = SupaRunSettings.ProjectIdOf(from.supabaseUrl);
             var toId = SupaRunSettings.ProjectIdOf(to.supabaseUrl);
-            if (string.IsNullOrEmpty(fromId) || string.IsNullOrEmpty(from.supabaseAccessToken))
+            var fromToken = SupaRunSettings.AccessTokenOf(from);
+            var toToken = SupaRunSettings.AccessTokenOf(to);
+            if (string.IsNullOrEmpty(fromId) || string.IsNullOrEmpty(fromToken))
             { Debug.LogError($"[SupaRun:Promote] 환경 '{from.name}' 의 URL/Access Token 이 없습니다."); return false; }
-            if (string.IsNullOrEmpty(toId) || string.IsNullOrEmpty(to.supabaseAccessToken))
+            if (string.IsNullOrEmpty(toId) || string.IsNullOrEmpty(toToken))
             { Debug.LogError($"[SupaRun:Promote] 환경 '{to.name}' 의 URL/Access Token 이 없습니다."); return false; }
 
             try
@@ -48,7 +50,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 // **대상 기준**으로 뽑는다. 원본에만 있는 새 테이블은 대상에 스키마가 아직 없다는 뜻이고,
                 // 그 상태로 주입하면 jsonb_populate_recordset 이 없는 타입을 참조해 죽는다.
                 EditorUtility.DisplayProgressBar("SupaRun 승격", "대상 테이블 확인 중…", 0.1f);
-                var tables = await FetchTables(toId, to.supabaseAccessToken);
+                var tables = await FetchTables(toId, toToken);
                 if (tables == null) return false;
                 if (tables.Count == 0)
                 {
@@ -60,17 +62,17 @@ namespace Tjdtjq5.SupaRun.Editor
 
                 // ── 2. 대상 스냅샷 ──
                 EditorUtility.DisplayProgressBar("SupaRun 승격", $"'{to.name}' 스냅샷 저장 중…", 0.3f);
-                if (!await SnapshotTarget(toId, to.supabaseAccessToken, from.name)) return false;
+                if (!await SnapshotTarget(toId, toToken, from.name)) return false;
 
                 // ── 3. 원본 추출 ──
                 EditorUtility.DisplayProgressBar("SupaRun 승격", $"'{from.name}' 데이터 읽는 중…", 0.5f);
-                var payload = await FetchData(fromId, from.supabaseAccessToken, tables);
+                var payload = await FetchData(fromId, fromToken, tables);
                 if (payload == null) return false;
 
                 // ── 4. 대상 주입 ──
                 EditorUtility.DisplayProgressBar("SupaRun 승격", $"'{to.name}' 에 적용 중…", 0.8f);
                 var sql = BuildApplySql(tables, payload);
-                var applied = await SupabaseManagementApi.RunQuery(toId, to.supabaseAccessToken, sql);
+                var applied = await SupabaseManagementApi.RunQuery(toId, toToken, sql);
                 if (!applied.Ok)
                 {
                     EditorUtility.ClearProgressBar();   // 팝업 전에 진행바를 걷는다

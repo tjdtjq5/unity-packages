@@ -38,6 +38,14 @@ namespace Tjdtjq5.SupaRun.Editor
         static string HashFileFor(string envName) =>
             $"ProjectSettings/SupaRunSchemaHash.{Sanitize(envName)}.txt";
 
+        /// <summary>
+        /// 아이콘 반영 기록은 스키마 것과 **다른 파일**에 둔다. 스키마 쪽 <see cref="Prune"/> 가
+        /// "이번에 생성된 마이그레이션 파일" 에 없는 키를 버리므로, 같은 파일에 넣으면
+        /// 다음 컴파일에 조용히 지워지고 아이콘을 매번 다시 올리게 된다.
+        /// </summary>
+        static string AdminAssetsHashFileFor(string envName) =>
+            $"ProjectSettings/SupaRunAdminAssetsHash.{Sanitize(envName)}.txt";
+
         static string Sanitize(string name)
         {
             if (string.IsNullOrEmpty(name)) return "default";
@@ -174,16 +182,26 @@ namespace Tjdtjq5.SupaRun.Editor
             var projectId = settings.SupabaseProjectId;
             if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(projectId)) return;
 
+            // 대상은 편집 환경이다 — 위 두 값이 Current 에서 나온다. 기록도 같은 기준이어야
+            // dev 에 올린 해시가 prod 반영을 스킵시키지 않는다.
+            var hashFile = AdminAssetsHashFileFor(settings.Current.name);
             try
             {
                 EditorUtility.DisplayProgressBar("SupaRun", "아이콘 맵 생성 중…", 0.3f);
                 var sql = DeployManager.GenerateAdminAssetsSql();
                 if (string.IsNullOrEmpty(sql)) return;
 
+                // 스프라이트를 건드리지 않은 날에 300KB 넘는 base64 를 다시 올릴 이유가 없다.
+                // 스키마 쪽과 같은 판단이지만 여기서는 그 왕복이 **어드민이 열리는 시간에 직접 얹힌다.**
+                var hash = HashOf(sql);
+                if (ReadStoredHash(hashFile) == hash) return;
+
                 EditorUtility.DisplayProgressBar("SupaRun", "어드민 자산 반영 중…", 0.7f);
                 // 어드민을 여는 흐름 중이라 모달을 띄우지 않는다 — 아이콘이 없어도 어드민은 열린다.
                 var r = await SupabaseManagementApi.RunQuery(projectId, token, sql);
-                if (!r.LogIfFailed("어드민 자산 반영"))
+                if (r.LogIfFailed("어드민 자산 반영"))
+                    WriteStoredHash(hashFile, hash);   // 실패하면 남기지 않는다 — 다음에 재시도한다
+                else
                     Debug.LogWarning("[SupaRun:Schema] 아이콘이 텍스트로 표시됩니다.");
             }
             catch (Exception ex)
@@ -204,7 +222,7 @@ namespace Tjdtjq5.SupaRun.Editor
 
             // 대상 미지정이면 편집 환경. 컴파일 훅이 이 경로로 들어온다.
             var env = target ?? settings.Current;
-            var token = env.supabaseAccessToken;
+            var token = SupaRunSettings.AccessTokenOf(env);
             var projectId = SupaRunSettings.ProjectIdOf(env.supabaseUrl);
             var hashFile = HashFileFor(env.name);
             MigrateLegacyHashFile(settings.Environments.Count > 0 ? settings.Environments[0].name : env.name);
@@ -332,6 +350,22 @@ namespace Tjdtjq5.SupaRun.Editor
             }
             catch { /* 못 읽으면 전부 재적용 */ }
             return map;
+        }
+
+        /// <summary>값 하나짜리 기록. 아이콘 SQL 은 파일로 쪼개지지 않아 맵이 필요 없다.</summary>
+        static string ReadStoredHash(string hashFile)
+        {
+            try { return File.Exists(hashFile) ? File.ReadAllText(hashFile).Trim() : null; }
+            catch { return null; }   // 못 읽으면 다시 올린다 (UPSERT 라 무해)
+        }
+
+        static void WriteStoredHash(string hashFile, string hash)
+        {
+            try { File.WriteAllText(hashFile, hash); }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[SupaRun:Schema] 아이콘 반영 기록 저장 실패 — {ex.Message}");
+            }
         }
 
         static void WriteStoredHashes(string hashFile, Dictionary<string, string> map)

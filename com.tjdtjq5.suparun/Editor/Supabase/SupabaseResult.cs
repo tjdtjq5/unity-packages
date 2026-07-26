@@ -80,6 +80,14 @@ namespace Tjdtjq5.SupaRun.Editor
                 false, default, status, kind, ExtractMessage(body, status), HintFor(kind), body);
         }
 
+        /// <summary>
+        /// 보내기 전에 우리가 막은 경우(설정 누락 등). 상태코드를 지어내지 않으려고 따로 둔다 —
+        /// 400 을 붙이면 Supabase 가 거절한 것처럼 보여서 원인을 엉뚱한 데서 찾게 된다.
+        /// </summary>
+        public static SupabaseResult<T> Local(string message, string hint = null) =>
+            new(false, default, 0, SupabaseErrorKind.Validation, message,
+                hint ?? "SupaRun Dashboard 의 설정을 확인하세요.", null);
+
         /// <summary>요청을 보내지도 못한 경우(예외·타임아웃).</summary>
         public static SupabaseResult<T> Failure(Exception ex) =>
             new(false, default, -1, SupabaseErrorKind.Network,
@@ -89,10 +97,14 @@ namespace Tjdtjq5.SupaRun.Editor
         /// 다른 T 로 실패를 옮긴다 — 안에서 부른 호출이 실패했을 때 그대로 위로 올릴 때 쓴다.
         /// 원문에서 다시 만들므로 메시지·종류가 보존된다.
         /// </summary>
-        public SupabaseResult<TOther> CarryFailure<TOther>() =>
-            HttpStatus == -1
-                ? SupabaseResult<TOther>.Failure(new Exception(Message))
-                : SupabaseResult<TOther>.Failure(HttpStatus, Raw);
+        public SupabaseResult<TOther> CarryFailure<TOther>() => HttpStatus switch
+        {
+            // 0 = 보내기 전에 우리가 막은 것. 원문이 없으므로 코드로 다시 만들면 "HTTP 0" 이 되어
+            // 정작 사람이 읽어야 하는 메시지가 사라진다.
+            0 => SupabaseResult<TOther>.Local(Message, Hint),
+            -1 => SupabaseResult<TOther>.Failure(new Exception(Message)),
+            _ => SupabaseResult<TOther>.Failure(HttpStatus, Raw),
+        };
 
         static SupabaseErrorKind KindOf(long status) => status switch
         {

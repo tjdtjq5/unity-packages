@@ -85,6 +85,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 MessageType.Warning);
             GUILayout.Space(4);
 
+            DrawEditorAuthCard();
             DrawEnvironmentCard(settings);
             ProjectManager.Draw(settings);
             DrawSupabaseCard(settings);
@@ -205,6 +206,212 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         // ── Supabase 카드 ──
+
+        // ── 에디터 로그인 ──
+
+        // 이름 앞에 editor 를 붙인다 — 아래 Auth 카드(_authExpanded)는 게임 로그인 프로바이더 설정이라
+        // 서로 다른 것이다. 이쪽은 **에디터가 Supabase 에 로그인하는 것**이다.
+        bool _editorAuthExpanded = true;
+        bool _editorAuthBusy;
+        bool? _editorAuthIsAdmin;
+
+        /// <summary>
+        /// 에디터를 Supabase 에 로그인시킨다.
+        ///
+        /// 왜 필요한가: 지금까지는 PAT(계정 마스터키)만 들고 다녀서, 설정을 공유하려면 파일을
+        /// git 에 올리는 수밖에 없었고 그 파일에 비밀이 들어갔다. 로그인할 수 있으면
+        /// `is_admin()` 으로 보호된 자리에서 설정을 받아올 수 있다 —
+        /// **git 에는 공개값만 남기고 나머지를 DB 로 옮기는 토대**다.
+        ///
+        /// 콜백은 이미 돌고 있는 로컬 브리지가 받는다(gcloud auth login 과 같은 방식).
+        /// </summary>
+        void DrawEditorAuthCard()
+        {
+            var signedIn = SupaRunEditorAuth.IsSignedIn;
+            var status = signedIn ? "로그인됨" : "로그인 안 됨";
+            var summary = signedIn
+                ? SupaRunEditorAuth.Email
+                : "Google 계정으로 로그인하면 환경마다 계정을 따로 만들 필요가 없습니다";
+
+            var expanded = BeginServiceCard("에디터 로그인", status, signedIn ? 1 : 0, summary, ref _editorAuthExpanded);
+
+            if (expanded)
+            {
+                GUILayout.Space(4);
+                EditorGUILayout.LabelField(
+                    "관리자 계정을 Google 하나로 통일합니다. 각 환경의 admin_user 에 같은 이메일을 등록하면\n" +
+                    "환경마다 이메일·비밀번호를 따로 만들지 않아도 되고, 사람이 나가면 계정 하나만 막으면 됩니다.",
+                    EditorStyles.wordWrappedMiniLabel);
+
+                if (!SupaRunBridge.Running)
+                {
+                    EditorGUILayout.HelpBox(
+                        "로컬 브리지가 실행 중이 아닙니다. 로그인 콜백을 받을 수 없습니다.", MessageType.Warning);
+                }
+                else
+                {
+                    EditorGUILayout.LabelField($"콜백 주소  {SupaRunBridge.CallbackUrl}", EditorStyles.miniLabel);
+                }
+
+                GUILayout.Space(4);
+                if (signedIn)
+                {
+                    EditorGUILayout.LabelField($"계정  {SupaRunEditorAuth.Email}");
+                    if (_editorAuthIsAdmin.HasValue)
+                        EditorGUILayout.LabelField(_editorAuthIsAdmin.Value
+                            ? "이 환경의 관리자입니다."
+                            : "⚠ 이 환경의 admin_user 에 등록되어 있지 않습니다.", EditorStyles.miniLabel);
+
+                    EditorGUILayout.BeginHorizontal();
+                    using (new EditorGUI.DisabledScope(_editorAuthBusy))
+                    {
+                        if (GUILayout.Button("권한 확인", GUILayout.Height(22))) CheckAdmin().Forget();
+                        if (GUILayout.Button("로그아웃", GUILayout.Height(22)))
+                        {
+                            SupaRunEditorAuth.SignOut();
+                            _editorAuthIsAdmin = null;
+                        }
+                    }
+                    EditorGUILayout.EndHorizontal();
+
+                    // 첫 관리자는 여기서만 만들 수 있다 — 웹은 관리자만 admin_user 에 쓸 수 있어서
+                    // 표가 비어 있으면 누구도 자신을 등록할 수 없다. 이 버튼이 그 매듭을 끊는다.
+                    if (_editorAuthIsAdmin == false)
+                    {
+                        GUILayout.Space(2);
+                        using (new EditorGUI.DisabledScope(_editorAuthBusy))
+                        {
+                            if (GUILayout.Button("이 계정을 편집 환경의 관리자로 등록", GUILayout.Height(22)))
+                                RegisterAdmin().Forget();
+                        }
+                        EditorGUILayout.LabelField(
+                            "환경마다 DB 가 다릅니다 — prod 는 편집 환경을 prod 로 바꾼 뒤 다시 눌러야 합니다.",
+                            EditorStyles.wordWrappedMiniLabel);
+                    }
+
+                    DrawSecretShare();
+                }
+                else
+                {
+                    using (new EditorGUI.DisabledScope(_editorAuthBusy || !SupaRunBridge.Running))
+                    {
+                        if (GUILayout.Button(_editorAuthBusy ? "브라우저에서 로그인 중…" : "Google 로 로그인", GUILayout.Height(24)))
+                            SignIn().Forget();
+                    }
+                    EditorGUILayout.HelpBox(
+                        "Supabase 에 Google 프로바이더가 켜져 있어야 합니다. 아래 Auth 카드에서 설정하세요.",
+                        MessageType.Info);
+
+                    // 방금 클론한 팀원이 정확히 이 상태다. 아무 설명이 없으면 "설정이 왜 비었지" 로 헤맨다.
+                    if (string.IsNullOrEmpty(SupaRunSettings.Instance.SupabaseAccessToken))
+                        EditorGUILayout.HelpBox(
+                            "이 컴퓨터에 비밀(Access Token·DB 비밀번호 등)이 없습니다.\n" +
+                            "비밀은 git 에 담기지 않습니다 — 로그인한 뒤 [내려받기] 로 받아오세요.",
+                            MessageType.Warning);
+                }
+            }
+
+            EndServiceCard();
+        }
+
+        /// <summary>
+        /// 공유 비밀 주고받기.
+        ///
+        /// 비밀은 이제 프로젝트 파일이 아니라 이 컴퓨터(EditorPrefs)에 있다 — git 에 안 올라간다.
+        /// 그래서 팀원에게 전달할 길이 필요하고, 그게 편집 환경 DB 의 `suparun_secret` 이다.
+        /// </summary>
+        void DrawSecretShare()
+        {
+            GUILayout.Space(6);
+            EditorGUILayout.LabelField("공유 비밀", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(
+                "git 에 올릴 수 없는 값들을 편집 환경 DB 에 두고 팀이 주고받습니다.\n" +
+                string.Join(" · ", SupaRunSecretStore.Labels),
+                EditorStyles.wordWrappedMiniLabel);
+
+            // 관리자가 아니면 RLS 가 막는다. 눌러서 실패하는 것보다 이유를 먼저 보여준다.
+            using (new EditorGUI.DisabledScope(_editorAuthBusy || _editorAuthIsAdmin != true))
+            {
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("올리기", GUILayout.Height(22))) SecretPush().Forget();
+                if (GUILayout.Button("내려받기", GUILayout.Height(22))) SecretPull().Forget();
+                EditorGUILayout.EndHorizontal();
+            }
+
+            if (_editorAuthIsAdmin != true)
+                EditorGUILayout.LabelField(
+                    "관리자 권한이 확인되어야 주고받을 수 있습니다. 위에서 [권한 확인] 을 누르세요.",
+                    EditorStyles.wordWrappedMiniLabel);
+        }
+
+        async UniTaskVoid SecretPush()
+        {
+            _editorAuthBusy = true;
+            _dashboard.Repaint();
+            try
+            {
+                var r = await SupaRunSecretStore.PushAsync();
+                if (!r.ShowErrorDialog("비밀 올리기")) return;
+                _dashboard.ShowNotification($"{r.Value}개 항목을 올렸습니다", SupaRunUI.NotificationType.Success);
+            }
+            finally { _editorAuthBusy = false; _dashboard.Repaint(); }
+        }
+
+        async UniTaskVoid SecretPull()
+        {
+            _editorAuthBusy = true;
+            _dashboard.Repaint();
+            try
+            {
+                var r = await SupaRunSecretStore.PullAsync();
+                if (!r.ShowErrorDialog("비밀 내려받기")) return;
+                _dashboard.ShowNotification(
+                    r.Value > 0 ? $"{r.Value}개 항목을 받았습니다" : "DB 에 저장된 비밀이 없습니다",
+                    r.Value > 0 ? SupaRunUI.NotificationType.Success : SupaRunUI.NotificationType.Info);
+            }
+            finally { _editorAuthBusy = false; _dashboard.Repaint(); }
+        }
+
+        async UniTaskVoid SignIn()
+        {
+            _editorAuthBusy = true;
+            _dashboard.Repaint();
+            try
+            {
+                var ok = await SupaRunEditorAuth.SignInWithGoogleAsync();
+                if (ok) await CheckAdminCore();
+                else _dashboard.ShowNotification("로그인이 완료되지 않았습니다", SupaRunUI.NotificationType.Error);
+            }
+            finally { _editorAuthBusy = false; _dashboard.Repaint(); }
+        }
+
+        async UniTaskVoid CheckAdmin()
+        {
+            _editorAuthBusy = true;
+            try { await CheckAdminCore(); }
+            finally { _editorAuthBusy = false; _dashboard.Repaint(); }
+        }
+
+        async UniTask CheckAdminCore()
+        {
+            _editorAuthIsAdmin = await SupaRunEditorAuth.IsAdminAsync();
+            _dashboard.Repaint();
+        }
+
+        async UniTaskVoid RegisterAdmin()
+        {
+            _editorAuthBusy = true;
+            _dashboard.Repaint();
+            try
+            {
+                var r = await SupaRunEditorAuth.RegisterSelfAsAdminAsync();
+                if (!r.ShowErrorDialog("관리자 등록")) return;
+                await CheckAdminCore();
+                _dashboard.ShowNotification(
+                    $"{SupaRunEditorAuth.Email} 을 관리자로 등록했습니다", SupaRunUI.NotificationType.Success);
+            }
+            finally { _editorAuthBusy = false; _dashboard.Repaint(); }
+        }
 
         // ── 프로젝트 관리 ──
 

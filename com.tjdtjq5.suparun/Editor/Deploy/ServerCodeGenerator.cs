@@ -29,6 +29,7 @@ namespace Tjdtjq5.SupaRun.Editor
             return new List<GeneratedFile>
             {
                 GenerateSupaRunCoreMigration(),
+                GenerateSecretMigration(),
                 GenerateSnapshotMigration(),
                 GenerateConfigMetaMigration(specTypes),
                 GenerateTypeCatalogMigration(specTypes),
@@ -60,6 +61,7 @@ namespace Tjdtjq5.SupaRun.Editor
             // SupaRun 코어 — 메타 테이블 + is_admin() + 감사 트리거 함수.
             // 파일명이 `_` 로 시작해 다른 마이그레이션보다 먼저 실행된다 (ADR-0004).
             files.Add(GenerateSupaRunCoreMigration());
+            files.Add(GenerateSecretMigration());
             files.Add(GenerateSnapshotMigration());
             files.Add(GenerateConfigMetaMigration(specTypes));
             files.Add(GenerateTypeCatalogMigration(specTypes));
@@ -1421,6 +1423,47 @@ END $$;
         /// 파일명은 `_suparun_core.sql`(테이블·is_admin 이 거기서 생김) 다음이어야 한다.
         /// `core` &lt; `snapshot` 이라 이름순으로 자연히 뒤가 된다.
         /// </summary>
+        /// <summary>
+        /// 팀이 공유해야 하는 비밀 보관소.
+        ///
+        /// 왜 필요한가: PAT·DB 비밀번호·GitHub 토큰이 `ProjectSettings/SupaRunProjectSettings.json` 에
+        /// 그대로 담겨 git 에 올라가 있었다. gitignore 로 빼면 이번엔 팀원이 설정을 못 받는다 —
+        /// **공유와 보안이 정면으로 부딪히는 자리**였다. 로그인 뒤에서 읽게 하면 둘 다 된다.
+        ///
+        /// 정책은 `admin_all` 하나뿐이다. `public_read` 를 절대 붙이지 않는다 —
+        /// anon 이 읽으면 계정 마스터키가 인터넷에 공개된 것과 같다.
+        /// `suparun_set_policy` 로도 못 건드린다: 그쪽은 `suparun_is_managed()` 화이트리스트
+        /// (config_types/table_types 에 등록된 표)로 막혀 있고 이 표는 거기 없다.
+        ///
+        /// 파일명은 `_suparun_core.sql`(is_admin 이 거기서 생김) 다음이어야 한다.
+        /// `core` &lt; `secret` 이라 이름순으로 자연히 뒤가 된다.
+        /// </summary>
+        static GeneratedFile GenerateSecretMigration()
+        {
+            return new GeneratedFile("Generated/Migrations/_suparun_secret.sql",
+@"-- ══ 공유 비밀 (자동 생성) ══════════════════════════════════════════════
+-- git 에 올릴 수 없지만 팀이 공유해야 하는 값들. 관리자 로그인 뒤에서만 보인다.
+
+CREATE TABLE IF NOT EXISTS suparun_secret (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    updated_by TEXT
+);
+
+ALTER TABLE suparun_secret ENABLE ROW LEVEL SECURITY;
+
+-- 읽기 정책도 관리자 전용이다. 공개 읽기를 붙이는 순간 이 표의 존재 이유가 사라진다.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_secret' AND policyname = 'admin_all') THEN
+    CREATE POLICY admin_all ON suparun_secret FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+  END IF;
+END $$;
+
+-- 값 자체는 감사 로그에 남기지 않는다. 로그를 읽을 수 있으면 비밀도 읽히기 때문이다.
+-- 누가 언제 바꿨는지는 updated_at/updated_by 로 충분하다.
+");}
+
         static GeneratedFile GenerateSnapshotMigration()
         {
             return new GeneratedFile("Generated/Migrations/_suparun_snapshot.sql",
