@@ -133,8 +133,12 @@ namespace Tjdtjq5.SupaRun.Editor
             sb.Append($"{values.bundleId}://auth");
             if (!string.IsNullOrEmpty(values.cloudRunUrl))
             {
+                // 도메인 전체를 연다. 예전에는 `/auth/callback` 하나만 있었는데, 어드민은
+                // `/admin/index.html` 에 있어서 목록에 없었다. 목록에 없으면 Supabase 가
+                // **site_url 로 폴백**하고, 그게 게임용 커스텀 스킴이라 브라우저가 열지 못한다
+                // ("scheme does not have a registered handler"). 우리 도메인이므로 열어도 된다.
                 sb.Append(',');
-                sb.Append($"{values.cloudRunUrl.TrimEnd('/')}/auth/callback");
+                sb.Append($"{values.cloudRunUrl.TrimEnd('/')}/**");
             }
             // localhost 와 127.0.0.1 은 Supabase 허용 목록에서 **다른 문자열**이다.
             // 에디터 로그인 콜백을 받는 로컬 브리지가 127.0.0.1 에 바인딩하므로 둘 다 넣는다.

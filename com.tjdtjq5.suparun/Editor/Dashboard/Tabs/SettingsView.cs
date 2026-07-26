@@ -624,6 +624,8 @@ namespace Tjdtjq5.SupaRun.Editor
                     SupaRunSettings.Instance.SupabaseDbPassword);
                 if (dbPw != SupaRunSettings.Instance.SupabaseDbPassword)
                     SupaRunSettings.Instance.SupabaseDbPassword = dbPw;
+
+                DrawEdgeFunctionSection(settings);
             }
 
             GUILayout.Space(4);
@@ -639,6 +641,71 @@ namespace Tjdtjq5.SupaRun.Editor
             EditorGUILayout.EndHorizontal();
 
             EndServiceCard();
+        }
+
+        // ── 어드민 대행 함수 ──
+
+        bool _edgeFnBusy;
+        string _edgeFnPing;
+
+        /// <summary>
+        /// 어드민이 PAT 를 거쳐야 하는 호출을 대신할 Edge Function.
+        ///
+        /// Cloud Run 이 아니라 여기 두는 이유: Cloud Run 은 **첫 배포 전에는 없다.** 배포에 필요한
+        /// 값(DB 비밀번호·GitHub 토큰)을 어드민에서 받으려는데 어드민을 띄울 서버가 없는 순환이
+        /// 생긴다. Edge Function 은 Supabase 프로젝트가 생기는 순간 존재해서 그 순환을 끊는다.
+        /// </summary>
+        void DrawEdgeFunctionSection(SupaRunSettings settings)
+        {
+            GUILayout.Space(6);
+            EditorGUILayout.LabelField("어드민 대행 함수", EditorStyles.boldLabel);
+
+            var upToDate = EdgeFunctionDeployer.IsUpToDate(settings.Current);
+            EditorGUILayout.LabelField(
+                upToDate
+                    ? $"{EdgeFunctionDeployer.Slug} — 최신 소스가 올라가 있습니다."
+                    : $"{EdgeFunctionDeployer.Slug} — 올릴 변경이 있습니다.",
+                EditorStyles.wordWrappedMiniLabel);
+
+            using (new EditorGUI.DisabledScope(_edgeFnBusy))
+            {
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button(upToDate ? "다시 배포" : "배포", GUILayout.Height(22)))
+                    DeployEdgeFn(force: upToDate).Forget();
+                if (GUILayout.Button("응답 확인", GUILayout.Height(22)))
+                    PingEdgeFn().Forget();
+                EditorGUILayout.EndHorizontal();
+            }
+
+            if (!string.IsNullOrEmpty(_edgeFnPing))
+                EditorGUILayout.LabelField(_edgeFnPing, EditorStyles.wordWrappedMiniLabel);
+        }
+
+        async UniTaskVoid DeployEdgeFn(bool force)
+        {
+            _edgeFnBusy = true;
+            _dashboard.Repaint();
+            try
+            {
+                var r = await EdgeFunctionDeployer.DeployAsync(force: force);
+                if (!r.ShowErrorDialog("어드민 대행 함수 배포")) return;
+                _dashboard.ShowNotification(
+                    r.Value ? "배포했습니다" : "이미 최신이라 올리지 않았습니다",
+                    SupaRunUI.NotificationType.Success);
+            }
+            finally { _edgeFnBusy = false; _dashboard.Repaint(); }
+        }
+
+        async UniTaskVoid PingEdgeFn()
+        {
+            _edgeFnBusy = true;
+            _dashboard.Repaint();
+            try
+            {
+                var r = await EdgeFunctionDeployer.PingAsync();
+                _edgeFnPing = r.Ok ? $"응답: {r.Value}" : $"실패: {r.ToShortString()}";
+            }
+            finally { _edgeFnBusy = false; _dashboard.Repaint(); }
         }
 
         // ── GitHub 카드 (공용 UI) ──

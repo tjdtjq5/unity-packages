@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { loadAuthGate, type AuthGate } from '../../shared/authGate'
-import { deleteProject, listProjects, pingBridge, type BridgeProject } from '../../shared/bridge'
+import { deleteProject, listProjects, type SupabaseProject } from '../../shared/projects'
 import { AuthProvidersBlock } from './AuthProvidersBlock'
 import {
   loadEnvRoles,
@@ -17,31 +16,24 @@ import { toast } from '../../shared/toast'
  * **되돌릴 수 없는 조작을 여기 모은다.** 카드 목록은 진입점이어야 하고, 거기에 삭제가 섞여 있으면
  * 들어가려다 지우는 사고가 난다.
  *
- * 역할 정의는 `suparun_meta.env_roles` 에 저장되고 **Unity 가 읽는다** — 비밀은 여전히 로컬에만 있다.
+ * 역할 정의는 `suparun_meta.env_roles` 에 저장되고 **Unity 가 읽는다**.
  */
 export function AppSettingsPage() {
-  const [projects, setProjects] = useState<BridgeProject[] | null>(null)
+  const [projects, setProjects] = useState<SupabaseProject[] | null>(null)
   const [online, setOnline] = useState<boolean | null>(null)
   const [roles, setRoles] = useState<EnvRoleMap | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
-  const [gate, setGate] = useState<AuthGate | null>(null)
 
   const reload = useCallback(async () => {
     setRoles(await loadEnvRoles())
-    setGate(await loadAuthGate())
-
-    const ping = await pingBridge()
-    setOnline(!!ping)
-    if (!ping) {
-      setProjects(null)
-      return
-    }
     try {
       setProjects(await listProjects())
+      setOnline(true)
     } catch {
       setProjects(null)
+      setOnline(false)
     }
   }, [])
 
@@ -79,7 +71,7 @@ export function AppSettingsPage() {
     }
   }
 
-  async function remove(p: BridgeProject) {
+  async function remove(p: SupabaseProject) {
     if (!window.confirm(`'${p.name}' 을 삭제합니다.\n데이터·백업이 함께 사라지며 되돌릴 수 없습니다.`))
       return
     const typed = window.prompt(`확인을 위해 '${p.name}' 을 입력하세요`, '')
@@ -102,7 +94,7 @@ export function AppSettingsPage() {
 
   if (roles === null || online === null) return <LoadingBlock label="설정 불러오는 중" />
 
-  // 역할을 붙일 대상은 계정의 프로젝트다. Unity 가 꺼져 있으면 이미 정해둔 것만 보여준다.
+  // 역할을 붙일 대상은 계정의 프로젝트다. 목록을 못 받았으면 이미 정해둔 것만 보여준다.
   const rows: { ref: string; name: string; region?: string; status?: string }[] = projects
     ? projects.map((p) => ({ ref: p.ref, name: p.name, region: p.region, status: p.status }))
     : Object.keys(roles).map((ref) => ({ ref, name: roles[ref]?.name || ref }))
@@ -114,13 +106,11 @@ export function AppSettingsPage() {
         <h3 className="appset-title">환경</h3>
         <p className="appset-desc">
           프로젝트마다 이름과 역할을 정합니다. <strong>Unity 가 이 설정을 읽습니다.</strong>
-          <br />
-          접속 정보(Access Token·키·DB 비밀번호)는 여기 저장되지 않고 로컬 에디터에만 있습니다.
         </p>
 
         {rows.length === 0 ? (
           <div className="appset-empty">
-            {online ? '프로젝트가 없습니다.' : 'Unity 에디터가 꺼져 있어 목록을 볼 수 없습니다.'}
+            {online ? '프로젝트가 없습니다.' : '프로젝트 목록을 받지 못했습니다. 로그인 상태를 확인하세요.'}
           </div>
         ) : (
           <>
@@ -221,38 +211,6 @@ export function AppSettingsPage() {
       {/* ── 로그인 ── */}
       <section className="appset-block">
         <h3 className="appset-title">로그인</h3>
-        <p className="appset-desc">
-          어드민에 들어올 수 있는 사람을 정합니다. 프로바이더를 켜려면 Supabase 계정 키(PAT)가
-          필요한데, 그 키는 브라우저에 내려보내지 않고 <strong>서버가 대신 씁니다</strong>.
-        </p>
-
-        <div className={`appset-status ${gate?.locked ? 'on' : 'off'}`}>
-          {gate?.locked ? (
-            <>
-              <i className="ti ti-lock" />
-              잠김 — 허용된 계정만 들어올 수 있습니다 ({gate.providers.join(', ')})
-            </>
-          ) : (
-            <>
-              <i className="ti ti-lock-open" />
-              열림 — 주소를 아는 누구나 볼 수 있습니다 (쓰기는 RLS 가 차단)
-            </>
-          )}
-        </div>
-
-        <div className="appset-note" style={{ marginTop: 12, marginBottom: 4 }}>
-          {gate?.locked ? (
-            <>
-              들어올 수 있는 사람은 환경 안 <strong>admins</strong> 목록이 정합니다.
-              로그인은 되지만 목록에 없으면 권한 없음으로 막힙니다.
-            </>
-          ) : (
-            <>
-              프로바이더를 하나라도 켜면 그때부터 잠깁니다. 켜기 전까지는 로그인할 수단 자체가
-              없으므로 열어 둡니다.
-            </>
-          )}
-        </div>
 
         <AuthProvidersBlock />
       </section>
@@ -265,7 +223,7 @@ export function AppSettingsPage() {
         </p>
 
         {!online ? (
-          <div className="appset-empty">Unity 에디터가 꺼져 있어 조작할 수 없습니다.</div>
+          <div className="appset-empty">프로젝트 목록을 받지 못해 조작할 수 없습니다.</div>
         ) : !projects || projects.length === 0 ? (
           <div className="appset-empty">삭제할 프로젝트가 없습니다.</div>
         ) : (

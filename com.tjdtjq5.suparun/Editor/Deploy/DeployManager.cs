@@ -27,6 +27,10 @@ namespace Tjdtjq5.SupaRun.Editor
 
             Debug.Log($"[SupaRun:Deploy] 스캔 완료 — Table: {tableTypes.Length}, Config: {specTypes.Length}, Service: {logicTypes.Length}");
 
+            // 생성 전에 세운다 — 코드를 다 만들고 밀어 넣은 뒤에 알리면 이미 2분을 쓴 뒤다.
+            var stale = CheckAdminDistFreshness();
+            if (stale != null) return (null, null, stale);
+
             onProgress?.Invoke("서버 코드 생성 중...");
             var files = ServerCodeGenerator.Generate(tableTypes, specTypes, logicTypes, settings);
             files.AddRange(GetTemplateFiles(settings));
@@ -359,6 +363,56 @@ namespace Tjdtjq5.SupaRun.Editor
             content = content.Replace("{{AUTH_PROVIDERS_JSON}}", "[" + string.Join(",", oauthProviders) + "]");
 
             return new GeneratedFile(outputPath, content);
+        }
+
+        /// <summary>
+        /// src 를 고쳐 놓고 `npm run build` 를 안 돌린 채 배포하는 것을 막는다.
+        /// 중단하기로 했으면 그 사유를, 계속해도 되면 null 을 돌려준다.
+        ///
+        /// 예전에는 `dist` 가 **아예 없을 때만** 경고했다. 그런데 실제로 자주 일어나는 것은
+        /// "없음" 이 아니라 "낡음" 이고, 그때는 배포가 성공하고 로그도 깨끗한데 화면만 안 바뀐다.
+        /// 2분을 다 쓰고 나서야 알게 되는 실패라 여기서 세운다.
+        ///
+        /// 판단은 수정 시각으로 한다. git 체크아웃은 **바뀐 파일에만** 현재 시각을 찍으므로,
+        /// src 와 dist 가 함께 갱신되면 차이가 거의 0 이고 사람이 src 만 고쳤을 때 벌어진다.
+        /// 여유(60초)를 두는 이유는 새로 클론한 직후 파일들의 시각이 몇 초씩 흩어지기 때문이다.
+        /// </summary>
+        static string CheckAdminDistFreshness()
+        {
+            var templateRoot = GetTemplateRoot();
+            var bundle = Path.Combine(templateRoot, "AdminTemplate~/dist/assets/index.js");
+            var src = Path.Combine(templateRoot, "AdminTemplate~/src");
+            // src 가 없으면 패키지 사본을 그대로 쓰는 소비 프로젝트다 — 낡을 수가 없다.
+            if (!File.Exists(bundle) || !Directory.Exists(src)) return null;
+
+            var builtAt = File.GetLastWriteTimeUtc(bundle);
+            string newest = null;
+            var newestAt = builtAt;
+            foreach (var f in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+            {
+                var t = File.GetLastWriteTimeUtc(f);
+                if (t <= newestAt) continue;
+                newestAt = t;
+                newest = f;
+            }
+
+            if (newest == null || (newestAt - builtAt).TotalSeconds < 60) return null;
+
+            var msg =
+                "어드민 소스가 빌드 산출물보다 최신입니다.\n\n" +
+                $"가장 최근 수정  {Path.GetFileName(newest)}  ({newestAt.ToLocalTime():HH:mm})\n" +
+                $"번들 빌드 시각  {builtAt.ToLocalTime():HH:mm}\n\n" +
+                "이대로 배포하면 어드민 화면은 바뀌지 않습니다.\n" +
+                "AdminTemplate~ 에서 `npm run build` 를 먼저 실행하세요.";
+
+            Debug.LogWarning("[SupaRun] " + msg.Replace("\n", " "));
+
+            // 배치 모드에서는 물어볼 수 없다. 로그만 남기고 진행한다.
+            if (Application.isBatchMode) return null;
+
+            return EditorUtility.DisplayDialog("어드민 빌드가 낡았습니다", msg, "그래도 배포", "취소")
+                ? null
+                : "어드민 빌드가 낡아 배포를 취소했습니다. AdminTemplate~ 에서 `npm run build` 를 실행하세요.";
         }
 
         static string GetTemplateRoot()

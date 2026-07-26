@@ -1,21 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
 import { loadProviders, saveProvider, type ProviderState } from '../../shared/authProviders'
+import { whoAmI, type WhoAmI } from '../../shared/edgeFn'
+import { fieldLabels, formatWarning, ProviderSetupGuide } from './ProviderSetupGuide'
 import { LoadingBlock, Spinner } from '../../shared/Spinner'
+import { sb } from '../../shared/supabase'
 import { toast } from '../../shared/toast'
-import { useSession } from '../auth/useSession'
 
 /**
  * OAuth 프로바이더 설정.
  *
- * **최초 한 번은 Unity 에서 켜야 한다.** 이 화면은 로그인해야 쓸 수 있는데(서버가 관리자만
- * 통과시킨다), 로그인 수단이 아직 없으면 로그인할 수가 없다. 그 매듭은 PAT 를 로컬에 쥔
- * Unity 만 끊을 수 있다. 켜진 뒤부터는 여기서 관리한다.
+ * **로그인 수단이 하나도 없는 동안에는 로그인 없이 쓸 수 있다.** 그 상태에서는 아무도
+ * 로그인할 수 없으므로, 관리자만 허용하면 로그인 수단을 켜는 일 자체를 아무도 못 하게 된다.
+ * 하나라도 켜지면 그 순간 이 화면은 관리자 전용으로 잠긴다.
  *
- * Client Secret 은 **읽어 오지 않는다.** 서버가 응답에서 지운다. 그래서 빈칸이 정상이고,
+ * Client Secret 은 **읽어 오지 않는다.** 함수가 응답에서 지운다. 그래서 빈칸이 정상이고,
  * 빈칸으로 저장하면 기존 값을 그대로 둔다 — Client ID 만 고치려다 secret 을 날리지 않게.
  */
 export function AuthProvidersBlock() {
-  const { session, ready } = useSession()
+  const [me, setMe] = useState<WhoAmI | null | undefined>(undefined)
   const [rows, setRows] = useState<ProviderState[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState<string | null>(null)
@@ -25,6 +27,13 @@ export function AuthProvidersBlock() {
 
   const reload = useCallback(async () => {
     setError(null)
+    const who = await whoAmI()
+    setMe(who)
+    // 관리자이거나, 로그인할 방법 자체가 없는 구간이면 목록을 읽을 수 있다.
+    if (!who?.isAdmin && !who?.setupOpen) {
+      setRows(null)
+      return
+    }
     try {
       setRows(await loadProviders())
     } catch (e) {
@@ -34,8 +43,8 @@ export function AuthProvidersBlock() {
   }, [])
 
   useEffect(() => {
-    if (session) void reload()
-  }, [session, reload])
+    void reload()
+  }, [reload])
 
   function edit(p: ProviderState) {
     setOpen(p.key)
@@ -57,16 +66,47 @@ export function AuthProvidersBlock() {
     }
   }
 
-  if (!ready) return <LoadingBlock label="확인 중" />
+  /**
+   * 실제로 로그인해 본다. 성공하면 이 페이지로 돌아오고, 설정이 틀렸으면
+   * Google 이 `redirect_uri_mismatch` 를 띄운다 — 그 화면이 곧 진단이다.
+   */
+  async function tryLogin(p: ProviderState) {
+    if (!sb) return toast('Supabase 연결이 설정되지 않았습니다.', 'error')
+    setBusy(true)
+    try {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: p.key,
+        options: { redirectTo: window.location.href },
+      })
+      if (error) {
+        toast(error.message, 'error')
+        setBusy(false)
+      }
+      // 성공하면 곧 Google 로 넘어간다 — busy 를 풀지 않아야 그 사이 두 번 눌리지 않는다.
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error')
+      setBusy(false)
+    }
+  }
 
-  // 로그인 없이 열려 있는 구간. 여기서는 서버가 통과시켜 주지 않으므로 안내만 한다.
-  if (!session) {
+  if (me === undefined) return <LoadingBlock label="확인 중" />
+
+  // 함수가 아직 배포되지 않았거나 응답하지 않는다.
+  if (me === null) {
     return (
       <div className="appset-note">
-        최초 설정은 <strong>Unity → SupaRun Dashboard → 설정 → Auth</strong> 에서 합니다.
+        설정 대행 함수가 응답하지 않습니다.
         <br />
-        이 화면은 로그인해야 쓸 수 있는데, 로그인 수단이 아직 없으니 로그인할 수가 없습니다 —
-        그 매듭은 Access Token 을 쥔 Unity 만 끊을 수 있습니다.
+        Unity → SupaRun Dashboard → 설정 → Supabase → 어드민 대행 함수에서 배포하세요.
+      </div>
+    )
+  }
+
+  // 로그인은 가능한데 관리자가 아니다. 이 구간은 로그인으로만 풀린다.
+  if (!me.isAdmin && !me.setupOpen) {
+    return (
+      <div className="appset-note">
+        {me.userId ? '관리자 권한이 없습니다.' : '로그인이 필요합니다.'}
       </div>
     )
   }
@@ -95,33 +135,57 @@ export function AuthProvidersBlock() {
               설정
             </button>
             {p.enabled && (
-              <button
-                className="btn btn-sm btn-outline-danger"
-                disabled={busy}
-                onClick={() => void save(p, false)}
-              >
-                끄기
-              </button>
+              <>
+                {/* 리디렉션 URI 가 실제로 등록됐는지는 **로그인해봐야만** 안다.
+                    형식 검증으로도 안 잡히는 부분이라 이게 유일한 진짜 검증이다. */}
+                <button className="btn btn-sm" disabled={busy} onClick={() => void tryLogin(p)}>
+                  로그인 테스트
+                </button>
+                <button
+                  className="btn btn-sm btn-outline-danger"
+                  disabled={busy}
+                  onClick={() => void save(p, false)}
+                >
+                  끄기
+                </button>
+              </>
             )}
           </div>
 
           {open === p.key && (
             <div className="appset-edit">
-              <label className="appset-label">Client ID</label>
+              <ProviderSetupGuide provider={p.key} />
+
+              {/* autoComplete 를 지정하지 않으면 브라우저가 Client ID 를 이메일 칸으로,
+                  Secret 을 비밀번호 칸으로 보고 저장된 값을 채운다. 실제로 이메일이
+                  Client ID 로 저장되는 사고가 났다. `new-password` 는 저장된 비밀번호
+                  채우기를 막는 표준 신호이고, name 을 비표준으로 두면 휴리스틱도 빗나간다. */}
+              <label className="appset-label">{fieldLabels(p.key).id}</label>
               <input
                 className="form-control form-control-sm"
+                name="suparun-oauth-client"
+                autoComplete="off"
+                spellCheck={false}
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
-                placeholder="Google Cloud Console 에서 발급"
+                placeholder={`콘솔에서 발급한 ${fieldLabels(p.key).id}`}
               />
-              <label className="appset-label">Client Secret</label>
+              <label className="appset-label">{fieldLabels(p.key).secret}</label>
               <input
                 className="form-control form-control-sm"
                 type="password"
+                name="suparun-oauth-secret"
+                autoComplete="new-password"
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
                 placeholder="비워 두면 기존 값을 유지합니다"
               />
+
+              {/* 막지 않고 알리기만 한다 — 자세한 이유는 formatWarning 참조 */}
+              {formatWarning(p.key, clientId, secret) && (
+                <div className="gsetup-warn">{formatWarning(p.key, clientId, secret)}</div>
+              )}
+
               <div className="appset-actions">
                 <button
                   className="btn btn-primary btn-sm"
@@ -134,20 +198,10 @@ export function AuthProvidersBlock() {
                   취소
                 </button>
               </div>
-              <div className="appset-note">
-                Supabase 콜백 주소를 Google Cloud Console 의 승인된 리디렉션 URI 에 넣어야 합니다 —
-                <code> {redirectUri()} </code>
-              </div>
             </div>
           )}
         </div>
       ))}
     </>
   )
-}
-
-/** Supabase 가 OAuth 응답을 받는 고정 주소. Google 쪽에 그대로 등록해야 한다. */
-function redirectUri(): string {
-  const url = window.__SUPARUN_ENV?.supabaseUrl ?? ''
-  return url ? `${url.replace(/\/$/, '')}/auth/v1/callback` : '(Supabase URL 미설정)'
 }
