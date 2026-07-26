@@ -31,11 +31,7 @@ export type AuthEvent =
   | 'PASSWORD_RECOVERY'
 
 interface SupabaseAuth {
-  signInWithPassword(c: { email: string; password: string }): Promise<{ error: AuthError | null }>
-  signUp(c: {
-    email: string
-    password: string
-  }): Promise<{ data: { session: SupabaseSession | null }; error: AuthError | null }>
+  // 이메일/비밀번호 로그인은 쓰지 않는다 — 어드민 진입은 OAuth 전용이다.
   signInWithOAuth(o: {
     provider: string
     options?: { redirectTo?: string }

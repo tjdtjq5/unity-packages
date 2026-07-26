@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { onUnauthorized, type UnauthorizedInfo } from './shared/api'
+import { loadAuthGate, type AuthGate } from './shared/authGate'
 import { isPreview } from './shared/env'
 import { FullScreenLoader } from './shared/Spinner'
 import { sb } from './shared/supabase'
@@ -28,20 +29,45 @@ export function App() {
 
   const preview = isPreview()
 
+  // 로그인을 요구할지는 DB 가 정한다. 로그인 수단을 아직 안 켠 초기 세팅 구간에는
+  // 요구할 수단 자체가 없으므로 열어 둔다. 자세한 근거는 shared/authGate.ts 참조.
+  const [gate, setGate] = useState<AuthGate | null>(null)
+  useEffect(() => {
+    let alive = true
+    void loadAuthGate().then((g) => {
+      if (alive) setGate(g)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   // 첫 세션 확인 전에는 로그인 폼도 어드민도 그리지 않는다 — 폼이 깜빡였다 사라지는 것을 막는다.
   // 대신 로더를 세운다. 예전엔 null 이라 이 구간이 통째로 빈 검은 화면이었다.
-  if (!ready && !preview) return <FullScreenLoader label="세션 확인 중" />
+  if ((!ready || !gate) && !preview) return <FullScreenLoader label="세션 확인 중" />
 
-  if (preview || (session && !kickedOut)) {
+  const signedIn = !!session && !kickedOut
+  // 잠기지 않았으면 로그인 없이 들어간다. 그래도 쓰기는 RLS 가 막는다(anon 이므로).
+  const open = gate ? !gate.locked : false
+
+  if (preview || signedIn || open) {
     return (
       <div id="admin-page" className="page active">
         <Shell
           email={preview ? 'preview@mock.local' : (session?.user?.email ?? '')}
           onLogout={() => void sb?.auth.signOut()}
+          /** 로그인 없이 열려 있는 상태. 껍데기가 그 사실을 계속 알린다. */
+          unlocked={!preview && !signedIn && open}
         />
       </div>
     )
   }
 
-  return <LoginPage notice={kickedOut} onDismissNotice={() => setKickedOut(null)} />
+  return (
+    <LoginPage
+      notice={kickedOut}
+      onDismissNotice={() => setKickedOut(null)}
+      providers={gate?.providers ?? []}
+    />
+  )
 }

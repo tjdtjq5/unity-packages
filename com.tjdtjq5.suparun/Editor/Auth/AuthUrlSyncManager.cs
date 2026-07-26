@@ -13,6 +13,8 @@ namespace Tjdtjq5.SupaRun.Editor
         static string KEY_BUNDLE_ID => PREF + "Synced_BundleId";
         static string KEY_CLOUD_RUN_URL => PREF + "Synced_CloudRunUrl";
         static string KEY_SUPABASE_URL => PREF + "Synced_SupabaseUrl";
+        /// <summary>반영한 허용 목록 원문. 규칙이 바뀌었는지 판단하려면 값이 아니라 결과를 비교해야 한다.</summary>
+        static string KEY_REDIRECT_LIST => PREF + "Synced_RedirectList";
 
         /// <summary>마지막 동기화 결과.</summary>
         public enum SyncState { Unknown, Synced, NoToken, Error }
@@ -33,9 +35,15 @@ namespace Tjdtjq5.SupaRun.Editor
             var current = GetCurrentValues(settings);
             var cached = GetCachedValues();
 
+            // 허용 목록 자체도 비교한다. 값 셋이 그대로여도 **목록 규칙이 바뀌면**(항목 추가 등)
+            // 반영해야 하는데, 셋만 보면 그 변경이 조용히 묻힌다.
+            var currentList = BuildRedirectUrlList(current);
+            var cachedList = EditorPrefs.GetString(KEY_REDIRECT_LIST, "");
+
             if (current.bundleId == cached.bundleId &&
                 current.cloudRunUrl == cached.cloudRunUrl &&
-                current.supabaseUrl == cached.supabaseUrl)
+                current.supabaseUrl == cached.supabaseUrl &&
+                currentList == cachedList)
             {
                 if (!string.IsNullOrEmpty(cached.bundleId))
                 {
@@ -128,7 +136,10 @@ namespace Tjdtjq5.SupaRun.Editor
                 sb.Append(',');
                 sb.Append($"{values.cloudRunUrl.TrimEnd('/')}/auth/callback");
             }
+            // localhost 와 127.0.0.1 은 Supabase 허용 목록에서 **다른 문자열**이다.
+            // 에디터 로그인 콜백을 받는 로컬 브리지가 127.0.0.1 에 바인딩하므로 둘 다 넣는다.
             sb.Append(",http://localhost:*/**");
+            sb.Append(",http://127.0.0.1:*/**");
             return sb.ToString();
         }
 
@@ -145,6 +156,7 @@ namespace Tjdtjq5.SupaRun.Editor
             EditorPrefs.SetString(KEY_BUNDLE_ID, values.bundleId);
             EditorPrefs.SetString(KEY_CLOUD_RUN_URL, values.cloudRunUrl);
             EditorPrefs.SetString(KEY_SUPABASE_URL, values.supabaseUrl);
+            EditorPrefs.SetString(KEY_REDIRECT_LIST, BuildRedirectUrlList(values));
         }
 
         public static void InvalidateCache()

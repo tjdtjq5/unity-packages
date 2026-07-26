@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AdminsPage } from '../admins/AdminsPage'
 import { AuditPage } from '../audit/AuditPage'
 import { ConfigPage } from '../config/ConfigPage'
+import { DashboardPage } from '../dashboard/DashboardPage'
+import { AppSettingsPage } from '../environment/AppSettingsPage'
+import { EnvironmentPage } from '../environment/EnvironmentPage'
 import { LoadingBlock } from '../../shared/Spinner'
 import { SnapshotPage } from '../snapshot/SnapshotPage'
 import { QuickSnapshotButton } from '../snapshot/QuickSnapshotButton'
@@ -10,7 +13,7 @@ import { AdminProvider, type AdminContextValue, type ToolbarActions } from './Ad
 import { KeymapHelp } from './KeymapHelp'
 import { PageHeader } from './PageHeader'
 import { Sidebar, groupConfigTypes } from './Sidebar'
-import { hashToRoute, writeHash, type Route } from './route'
+import { hashToRoute, isAppLevel, writeHash, type Route } from './route'
 import { useAdminData } from './useAdminData'
 import { useKeymap } from './useKeymap'
 
@@ -24,7 +27,16 @@ const CONTENT_ID = 'table-container'
  *
  * 로그인은 아직 바닐라가 소유한다(5d) — 그래서 email/onLogout 을 인자로 받는다.
  */
-export function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
+export function Shell({
+  email,
+  onLogout,
+  unlocked = false,
+}: {
+  email: string
+  onLogout: () => void
+  /** 로그인 없이 열려 있는 상태(로그인 수단 미설정). 배너로 계속 알린다. */
+  unlocked?: boolean
+}) {
   const data = useAdminData()
   const [route, setRoute] = useState<Route>({ kind: 'home' })
   const [restored, setRestored] = useState(false)
@@ -88,6 +100,9 @@ export function Shell({ email, onLogout }: { email: string; onLogout: () => void
   )
 
   const view = describeRoute(route, data.types, data.tableTypes)
+  const appLevel = isAppLevel(route)
+  // 이 어드민이 붙은 환경 이름. 환경 안에 있을 때 사이드바 맨 위에 띄운다.
+  const envLabel = data.envName || '환경'
 
   return (
     <AdminProvider value={ctx}>
@@ -112,55 +127,105 @@ export function Shell({ email, onLogout }: { email: string; onLogout: () => void
             <span className="nav-link-title">SupaRun.ADMIN</span>
           </h1>
           <div className="collapse navbar-collapse" id="sidebar-menu">
-            <div className="sidebar-prompt">
-              ~/admin <span className="dim">$ ls -la</span>
-            </div>
-            <div className="tree-list">
-              <Sidebar
-                types={data.types}
-                tableTypes={data.tableTypes}
-                route={route}
-                onNavigate={navigate}
-                ready={data.ready}
-              />
-            </div>
+            {/* 환경을 고르기 전에는 앱 레벨 항목만 보인다 —
+                나머지는 전부 특정 Supabase 프로젝트의 데이터라 어느 것을 보여줄지 정해지지 않는다. */}
+            {appLevel ? (
+              <>
+                <div className="sidebar-prompt">
+                  ~/ <span className="dim">$ select env</span>
+                </div>
+                <div className="tree-list">
+                  <a
+                    className={`tree-item${route.kind === 'environments' ? ' active' : ''}`}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate({ kind: 'environments' })
+                    }}
+                  >
+                    <span className="branch">├─</span>
+                    <span className="label">environments</span>
+                  </a>
+                  <a
+                    className={`tree-item${route.kind === 'appSettings' ? ' active' : ''}`}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate({ kind: 'appSettings' })
+                    }}
+                  >
+                    <span className="branch">└─</span>
+                    <span className="label">settings</span>
+                  </a>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* 환경 안. 어디에 들어와 있는지 항상 보이고, 눌러서 나갈 수 있다. */}
+                <a
+                  className="sidebar-envchip"
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    navigate({ kind: 'environments' })
+                  }}
+                  title="환경 선택으로 돌아가기"
+                >
+                  <i className="ti ti-chevron-left me-1" />
+                  {envLabel}
+                </a>
 
-            <div className="tree-section">[SYSTEM]</div>
-            <div className="tree-list">
-              <a
-                className={`tree-item${route.kind === 'admins' ? ' active' : ''}`}
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate({ kind: 'admins' })
-                }}
-              >
-                <span className="branch">├─</span>
-                <span className="label">admins</span>
-              </a>
-              <a
-                className={`tree-item${route.kind === 'audit' ? ' active' : ''}`}
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate({ kind: 'audit' })
-                }}
-              >
-                <span className="branch">├─</span>
-                <span className="label">audit_log</span>
-              </a>
-              <a
-                className={`tree-item${route.kind === 'snapshots' ? ' active' : ''}`}
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate({ kind: 'snapshots' })
-                }}
-              >
-                <span className="branch">└─</span>
-                <span className="label">snapshots</span>
-              </a>
-            </div>
+                <div className="sidebar-prompt">
+                  ~/admin <span className="dim">$ ls -la</span>
+                </div>
+                <div className="tree-list">
+                  <Sidebar
+                    types={data.types}
+                    tableTypes={data.tableTypes}
+                    route={route}
+                    onNavigate={navigate}
+                    ready={data.ready}
+                  />
+                </div>
+
+                <div className="tree-section">[SYSTEM]</div>
+                <div className="tree-list">
+                  <a
+                    className={`tree-item${route.kind === 'admins' ? ' active' : ''}`}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate({ kind: 'admins' })
+                    }}
+                  >
+                    <span className="branch">├─</span>
+                    <span className="label">admins</span>
+                  </a>
+                  <a
+                    className={`tree-item${route.kind === 'audit' ? ' active' : ''}`}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate({ kind: 'audit' })
+                    }}
+                  >
+                    <span className="branch">├─</span>
+                    <span className="label">audit_log</span>
+                  </a>
+                  <a
+                    className={`tree-item${route.kind === 'snapshots' ? ' active' : ''}`}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate({ kind: 'snapshots' })
+                    }}
+                  >
+                    <span className="branch">└─</span>
+                    <span className="label">snapshots</span>
+                  </a>
+                </div>
+              </>
+            )}
 
             <div className="sidebar-status">
               <div className="row">
@@ -175,17 +240,31 @@ export function Shell({ email, onLogout }: { email: string; onLogout: () => void
               <div className="row">
                 <span className="lbl">ver </span> <span>0.7.0</span>
               </div>
-              <div style={{ marginTop: 10 }}>
-                <button className="btn btn-sm" style={{ width: '100%' }} onClick={onLogout}>
-                  [LOGOUT]
-                </button>
-              </div>
+              {/* 로그인 없이 들어온 상태에서는 나갈 세션이 없다 — 눌러도 아무 일도 안 일어나는
+                  버튼을 두면 로그인한 것처럼 오해하게 된다. */}
+              {!unlocked && (
+                <div style={{ marginTop: 10 }}>
+                  <button className="btn btn-sm" style={{ width: '100%' }} onClick={onLogout}>
+                    [LOGOUT]
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </aside>
 
       <div className="page-wrapper page-transition" style={{ marginTop: 32 }}>
+        {unlocked && (
+          <div className="unlocked-banner">
+            <i className="ti ti-lock-open" />
+            <span>
+              <b>로그인 없이 열려 있습니다.</b> 주소를 아는 누구나 이 화면을 볼 수 있습니다 (쓰기는
+              차단됨). Unity → SupaRun Dashboard → 설정 → Auth 에서 Google 을 추가하면 잠깁니다.
+            </span>
+          </div>
+        )}
+
         <div className="terminal-prompt">
           <span className="user">admin@suparun</span>
           <span className="sep">:</span>
@@ -260,8 +339,12 @@ function describeRoute(
       return shell('변경 이력', 'AUDIT_LOG.SH', '~/audit_log')
     case 'snapshots':
       return shell('스냅샷', 'SNAPSHOTS.SH', '~/snapshots')
+    case 'environments':
+      return shell('환경', 'SELECT.SH', '~/environments')
+    case 'appSettings':
+      return shell('설정', 'SETTINGS.SH', '~/settings')
     case 'home':
-      return shell('Config를 선택하세요', 'READY', '~/admin')
+      return shell('대시보드', 'DASHBOARD.SH', '~/admin')
   }
 }
 
@@ -291,26 +374,25 @@ function ScreenContent({
       return <AuditPage />
     case 'snapshots':
       return <SnapshotPage />
+    case 'environments':
+      return <EnvironmentPage />
+    case 'appSettings':
+      return <AppSettingsPage />
     case 'home': {
       // 타입 메타가 오기 전에 "선택하세요"를 띄우면 사이드바가 비어 있는 이유를 오해하게 된다.
       if (!data.ready) return <LoadingBlock label="Config 목록 불러오는 중" />
-      const empty = data.types.length === 0 && data.tableTypes.length === 0
-      return (
-        <div className="empty-state">
-          <i className={empty ? 'ti ti-package' : 'ti ti-database'} />
-          {empty ? (
-            <>
-              <h3>등록된 Config가 없습니다</h3>
-              <p>Unity에서 Feature를 설치하고 Deploy하면 여기에 나타납니다.</p>
-            </>
-          ) : (
-            <>
-              <h3>Config를 선택하세요</h3>
-              <p>왼쪽 사이드바에서 편집할 Config를 선택합니다.</p>
-            </>
-          )}
-        </div>
-      )
+
+      if (data.types.length === 0 && data.tableTypes.length === 0) {
+        return (
+          <div className="empty-state">
+            <i className="ti ti-package" />
+            <h3>등록된 Config가 없습니다</h3>
+            <p>Unity에서 Feature를 설치하고 Deploy하면 여기에 나타납니다.</p>
+          </div>
+        )
+      }
+      // 예전에는 여기가 "Config 를 선택하세요" 빈 화면이었다. 들어오자마자 상태가 보이는 편이 낫다.
+      return <DashboardPage />
     }
   }
 }
