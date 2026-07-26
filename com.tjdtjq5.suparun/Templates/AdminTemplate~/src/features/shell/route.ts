@@ -14,6 +14,7 @@ export type Route =
   | { kind: 'table'; tableName: string }
   | { kind: 'admins' }
   | { kind: 'audit' }
+  | { kind: 'snapshots' }
 
 export function routeToHash(r: Route): string | null {
   switch (r.kind) {
@@ -25,6 +26,8 @@ export function routeToHash(r: Route): string | null {
       return 'admins'
     case 'audit':
       return 'audit_log'
+    case 'snapshots':
+      return 'snapshots'
     case 'home':
       return null
   }
@@ -50,6 +53,7 @@ export function hashToRoute(
   }
   if (h === 'admins') return { kind: 'admins' }
   if (h === 'audit_log') return { kind: 'audit' }
+  if (h === 'snapshots') return { kind: 'snapshots' }
   return { kind: 'home' }
 }
 

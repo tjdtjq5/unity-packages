@@ -22,12 +22,15 @@ AdminTemplate~/
 │   ├── index.html      1,616줄(최초 3,950). CSS 1,409줄 + 인라인 JS 171줄(플레이스홀더·프리뷰 mock)
 │   ├── main.tsx        React 진입점 — #root 에 <App/> 마운트
 │   ├── App.tsx         로그인 화면 ↔ 어드민 껍데기 분기
-│   ├── shared/         api / supabase / toast / types / Modal / Spinner / colResize / castValue / env / chart
+│   ├── shared/         api / supabase / toast / types / Modal / Spinner / snapshot / policy
+│   │                   colResize / castValue / env / chart / db / meta
 │   └── features/       화면 단위 폴더
 │       ├── auth/       로그인 · 세션 구독
 │       ├── shell/      껍데기 — 레이아웃·사이드바·툴바·라우팅·키맵·AdminContext
 │       ├── nodegraph/  [NodeGraph] 컬럼이 여는 노드 캔버스 (ADR-0002)
 │       │               NodeGraphModal / GraphNode / graphIO / validate / nodegraph.css
+│       ├── snapshot/   [SpecData] 시점 저장·복원 — SnapshotPage / RestoreModal /
+│       │               QuickSnapshotButton(타이틀바) / useSnapshots
 │       └── …           admins / audit / table / config
 │
 ├── node_modules/       (gitignore)
@@ -146,6 +149,33 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다(바
 - **분포 차트**: Chart.js 바 차트 (10버킷)
 - **크로스 테이블 검색**: 여러 테이블에 조건 걸어 교집합 user_id 검색
 - **플레이어 관리**: user_id로 해당 유저의 전 테이블 데이터 조회 + 인라인 편집
+
+### 스냅샷 / 복원 (`[SYSTEM] > snapshots`)
+
+`[SpecData]` 전 테이블을 한 시점으로 찍고 되돌린다. 데이터는 **Postgres 스키마 안에서만** 움직인다
+(`CREATE TABLE snap_x.t AS SELECT * FROM public.t`) — 크기와 무관하게 빠르고 트랜잭션으로 원자적이다.
+
+- **범위는 `[SpecData]` 뿐** — 서버 `suparun_snapshot_tables()` 가 `config_types` 만 보므로
+  이 화면에서 무엇을 눌러도 `[UserData]` 에 닿지 못한다. 플레이어 데이터 롤백은 성격이 다른 일이라
+  PITR·감사로그·지급 도구가 맡는다
+- **복원 직전 자동 저장** — `suparun_snapshot_restore` 가 먼저 현재 상태를 `auto` 로 한 장 찍고 되돌린다.
+  반환값이 그 이름이라 화면이 "돌아올 자리"를 바로 알려 준다
+- **공통 컬럼만 복원** — `SELECT *` 로 하면 컬럼이 하나만 늘어도 복원이 실패한다. 스키마 생성기가
+  `ADD COLUMN` 만 하고 `DROP` 을 안 하므로 시간이 갈수록 반드시 어긋난다. 새 컬럼은 기본값으로 남고,
+  확인 모달이 `+2 기본값` / `-1 버려짐` 배지로 미리 알린다
+- **핀 = 보관 여부, `[auto]` 배지 = 출처.** 둘을 나눈 이유는 '자동으로 찍혔지만 남겨둘 것' 이
+  표현돼야 하기 때문이다. 핀 없는 자동본은 최근 5개만 남는다(`suparun_snapshot_keep_count()`)
+- **복원 가드**: 라벨을 손으로 쳐야 버튼이 열린다. 복원 후에는 보고 있던 표가 낡으므로 페이지를 새로고침한다
+- 진입점 둘: 사이드바 `[SYSTEM] > snapshots`, 그리고 **타이틀바 `SNAP`** — 위험한 편집은 Config 표
+  위에서 벌어지는데 찍으려고 화면을 옮겨야 하면 결국 안 찍게 된다
+
+> **RPC 를 쓰는 이유와 범위**: 브라우저는 DDL 을 실행할 수 없다. `suparun_set_policy` 와 같은 사정이고
+> 같은 방어 구조를 쓴다 — SECURITY DEFINER + `search_path` 고정 + `is_admin()` + 화이트리스트 +
+> 식별자는 `quote_ident`/`format('%I')` 로만 조립. **찍기·복원·삭제·차이 4개만 RPC**이고,
+> 목록 조회·코멘트 수정·핀 토글은 `suparun_snapshot` 표를 PostgREST 로 그냥 다룬다.
+>
+> ⚠ 반환 컬럼 이름을 `table_name` 으로 지으면 함수 본문의 `information_schema.columns` 조회와 충돌해
+> `column reference is ambiguous` 로 죽는다. 그래서 `tbl_name` / `cur_rows` / `added_cols` 꼴이다.
 
 ### 내보내기/가져오기
 - **내보내기**: Config 데이터를 JSON 파일로 다운로드 (`/_export`)

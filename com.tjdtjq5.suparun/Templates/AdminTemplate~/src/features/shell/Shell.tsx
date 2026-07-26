@@ -3,6 +3,8 @@ import { AdminsPage } from '../admins/AdminsPage'
 import { AuditPage } from '../audit/AuditPage'
 import { ConfigPage } from '../config/ConfigPage'
 import { LoadingBlock } from '../../shared/Spinner'
+import { SnapshotPage } from '../snapshot/SnapshotPage'
+import { QuickSnapshotButton } from '../snapshot/QuickSnapshotButton'
 import { TablePage } from '../table/TablePage'
 import { AdminProvider, type AdminContextValue, type ToolbarActions } from './AdminContext'
 import { KeymapHelp } from './KeymapHelp'
@@ -94,7 +96,10 @@ export function Shell({ email, onLogout }: { email: string; onLogout: () => void
           <span className="dot" />
           <span className="title">SUPARUN.ADMIN :: {view.context}</span>
         </span>
-        <span className="meta">v0.7.0 / {email || '—'}</span>
+        <span className="meta">
+          <QuickSnapshotButton />
+          v0.7.0 / {email || '—'}
+        </span>
       </div>
 
       <aside
@@ -141,8 +146,19 @@ export function Shell({ email, onLogout }: { email: string; onLogout: () => void
                   navigate({ kind: 'audit' })
                 }}
               >
-                <span className="branch">└─</span>
+                <span className="branch">├─</span>
                 <span className="label">audit_log</span>
+              </a>
+              <a
+                className={`tree-item${route.kind === 'snapshots' ? ' active' : ''}`}
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate({ kind: 'snapshots' })
+                }}
+              >
+                <span className="branch">└─</span>
+                <span className="label">snapshots</span>
               </a>
             </div>
 
@@ -242,6 +258,8 @@ function describeRoute(
       return shell('관리자 목록', 'ADMINS.SH', '~/admins')
     case 'audit':
       return shell('변경 이력', 'AUDIT_LOG.SH', '~/audit_log')
+    case 'snapshots':
+      return shell('스냅샷', 'SNAPSHOTS.SH', '~/snapshots')
     case 'home':
       return shell('Config를 선택하세요', 'READY', '~/admin')
   }
@@ -271,6 +289,8 @@ function ScreenContent({
       return <AdminsPage />
     case 'audit':
       return <AuditPage />
+    case 'snapshots':
+      return <SnapshotPage />
     case 'home': {
       // 타입 메타가 오기 전에 "선택하세요"를 띄우면 사이드바가 비어 있는 이유를 오해하게 된다.
       if (!data.ready) return <LoadingBlock label="Config 목록 불러오는 중" />

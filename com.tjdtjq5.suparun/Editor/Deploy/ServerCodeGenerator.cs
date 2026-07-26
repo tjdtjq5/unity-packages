@@ -29,6 +29,7 @@ namespace Tjdtjq5.SupaRun.Editor
             return new List<GeneratedFile>
             {
                 GenerateSupaRunCoreMigration(),
+                GenerateSnapshotMigration(),
                 GenerateConfigMetaMigration(specTypes),
                 GenerateTypeCatalogMigration(specTypes),
                 GenerateAdminUserMigration(),
@@ -59,6 +60,7 @@ namespace Tjdtjq5.SupaRun.Editor
             // SupaRun 코어 — 메타 테이블 + is_admin() + 감사 트리거 함수.
             // 파일명이 `_` 로 시작해 다른 마이그레이션보다 먼저 실행된다 (ADR-0004).
             files.Add(GenerateSupaRunCoreMigration());
+            files.Add(GenerateSnapshotMigration());
             files.Add(GenerateConfigMetaMigration(specTypes));
             files.Add(GenerateTypeCatalogMigration(specTypes));
             files.Add(GenerateTableMetaMigration(tableTypes));
@@ -1399,6 +1401,281 @@ BEGIN
         (gen_random_uuid()::text, coalesce(auth.uid()::text, 'server'),
          p_table, NULL, 'policy', NULL, p_preset,
          (extract(epoch from now()) * 1000)::bigint);
+END $$;
+");
+        }
+
+        /// <summary>
+        /// 스냅샷 / 복원 — 어드민에서 [SpecData] 를 특정 시점으로 되돌린다.
+        ///
+        /// 데이터를 밖으로 꺼내지 않고 **Postgres 스키마 안에서만** 옮긴다. 크기와 무관하게 빠르고
+        /// plpgsql 함수가 단일 트랜잭션이라 원자적이다 — 도중에 실패하면 반쪽 스키마가 남지 않는다.
+        ///
+        /// 브라우저는 DDL 을 실행할 수 없으므로 RPC 로 낸다. `suparun_set_policy` 와 같은 이유이자
+        /// 같은 방어 구조다: SECURITY DEFINER + search_path 고정 + is_admin() + 화이트리스트 +
+        /// 식별자는 quote_ident 로만 조립(조건식 문자열은 받지 않는다).
+        ///
+        /// **범위는 [SpecData] 뿐이다.** [UserData] 를 되돌리는 건 플레이어 진행을 지우는 일이라
+        /// 성격이 완전히 다르다. 화이트리스트를 config_types 로 못박아 이 함수로는 아예 닿지 못하게 한다.
+        ///
+        /// 파일명은 `_suparun_core.sql`(테이블·is_admin 이 거기서 생김) 다음이어야 한다.
+        /// `core` &lt; `snapshot` 이라 이름순으로 자연히 뒤가 된다.
+        /// </summary>
+        static GeneratedFile GenerateSnapshotMigration()
+        {
+            return new GeneratedFile("Generated/Migrations/_suparun_snapshot.sql",
+@"-- ══ 스냅샷 / 복원 (자동 생성) ══════════════════════════════════════════
+-- [SpecData] 전체를 한 시점으로 찍고 되돌린다. 본체는 snap_* 스키마, 메타는 아래 표.
+
+-- 목록·코멘트·핀은 평범한 표다. 조회와 수정이 PostgREST 로 그냥 되므로 RPC 를 늘리지 않는다.
+CREATE TABLE IF NOT EXISTS suparun_snapshot (
+    schema_name     TEXT PRIMARY KEY,
+    label           TEXT NOT NULL,
+    comment         TEXT,
+    created_by      TEXT NOT NULL,
+    created_at      BIGINT NOT NULL,
+    -- 출처. 불변이다 — 리스트에서 [auto] 배지로만 쓴다.
+    created_by_auto BOOLEAN NOT NULL DEFAULT false,
+    -- 보관 여부. 가변이다 — 핀 토글이 이것만 바꾸고, 자동 정리는 이게 false 인 것만 지운다.
+    -- 출처와 나누는 이유: '자동으로 찍혔지만 남겨둘 것' 이 표현돼야 한다.
+    pinned          BOOLEAN NOT NULL DEFAULT true
+);
+
+-- 개발 중 잠깐 있었던 컬럼. CREATE TABLE IF NOT EXISTS 는 이미 있는 표를 손대지 않으므로
+-- 여기서 걷어내지 않으면 영원히 남는다. 다른 프로젝트에는 애초에 없어 no-op 이다.
+ALTER TABLE suparun_snapshot DROP COLUMN IF EXISTS schema_json;
+
+ALTER TABLE suparun_snapshot ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_snapshot' AND policyname = 'admin_all') THEN
+    CREATE POLICY admin_all ON suparun_snapshot FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+  END IF;
+END $$;
+
+-- 자동본을 몇 개까지 남길지. 넘치면 오래된 것부터 지운다(핀이 꽂힌 것은 제외).
+CREATE OR REPLACE FUNCTION suparun_snapshot_keep_count() RETURNS int
+LANGUAGE sql IMMUTABLE AS $$ SELECT 5 $$;
+
+-- ── 대상 테이블 ──
+-- [SpecData] 만이다. config_types 만 보므로 [UserData] 는 이 경로로 닿을 수 없다.
+CREATE OR REPLACE FUNCTION suparun_snapshot_tables() RETURNS SETOF text
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+  SELECT DISTINCT e->>'tableName'
+  FROM suparun_meta m, jsonb_array_elements(m.value) e
+  WHERE m.key = 'config_types'
+    AND to_regclass('public.' || quote_ident(e->>'tableName')) IS NOT NULL
+  ORDER BY 1;
+$$;
+
+-- ── 찍기 ──
+-- 반환값은 만들어진 스키마명이다. 자동본일 때만 정리까지 함께 돈다.
+CREATE OR REPLACE FUNCTION suparun_snapshot_create(
+    p_label text, p_comment text DEFAULT NULL, p_auto boolean DEFAULT false)
+RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_slug   text;
+    v_schema text;
+    v_tbl    text;
+    v_n      int := 0;
+BEGIN
+    IF NOT is_admin() THEN
+        RAISE EXCEPTION '관리자만 스냅샷을 만들 수 있습니다';
+    END IF;
+
+    -- 라벨은 표시용이자 복원 확인 타이핑 대상이다. 식별자로도 쓰므로 안전한 꼴로 접는다.
+    v_slug := regexp_replace(lower(coalesce(nullif(trim(p_label), ''), 'snap')), '[^a-z0-9]+', '_', 'g');
+    v_slug := trim(both '_' from left(v_slug, 24));
+    IF v_slug = '' THEN v_slug := 'snap'; END IF;
+
+    -- 초까지 넣어 같은 분에 두 번 찍어도 부딪히지 않게 한다.
+    v_schema := 'snap_' || v_slug || '_' || to_char(now(), 'YYYYMMDD_HH24MISS');
+    IF to_regnamespace(quote_ident(v_schema)) IS NOT NULL THEN
+        RAISE EXCEPTION '같은 이름의 스냅샷이 이미 있습니다: %', v_schema;
+    END IF;
+
+    EXECUTE format('CREATE SCHEMA %I', v_schema);
+
+    FOR v_tbl IN SELECT * FROM suparun_snapshot_tables() LOOP
+        EXECUTE format('CREATE TABLE %I.%I AS SELECT * FROM public.%I', v_schema, v_tbl, v_tbl);
+        v_n := v_n + 1;
+    END LOOP;
+
+    IF v_n = 0 THEN
+        EXECUTE format('DROP SCHEMA %I CASCADE', v_schema);
+        RAISE EXCEPTION '찍을 [SpecData] 테이블이 없습니다';
+    END IF;
+
+    INSERT INTO suparun_snapshot
+        (schema_name, label, comment, created_by, created_at, created_by_auto, pinned)
+    VALUES
+        (v_schema, coalesce(nullif(trim(p_label), ''), v_slug), nullif(trim(p_comment), ''),
+         coalesce(auth.uid()::text, 'server'), (extract(epoch from now()) * 1000)::bigint,
+         p_auto, NOT p_auto);
+
+    INSERT INTO admin_audit_log
+        (id, admin_id, config_type, row_id, action, before_json, after_json, created_at)
+    VALUES
+        (gen_random_uuid()::text, coalesce(auth.uid()::text, 'server'),
+         'suparun_snapshot', v_schema, 'snapshot', NULL, v_schema,
+         (extract(epoch from now()) * 1000)::bigint);
+
+    -- 사람이 찍은 것은 건드리지 않는다. 자동본이 쌓일 때만 정리한다.
+    IF p_auto THEN PERFORM suparun_snapshot_prune(); END IF;
+
+    RETURN v_schema;
+END $$;
+
+-- ── 자동본 정리 ──
+-- 핀이 꽂힌 것은 자동본이라도 남는다.
+CREATE OR REPLACE FUNCTION suparun_snapshot_prune() RETURNS int
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_row record;
+    v_n   int := 0;
+BEGIN
+    FOR v_row IN
+        SELECT schema_name FROM suparun_snapshot
+        WHERE NOT pinned
+        ORDER BY created_at DESC
+        OFFSET suparun_snapshot_keep_count()
+    LOOP
+        EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', v_row.schema_name);
+        DELETE FROM suparun_snapshot WHERE schema_name = v_row.schema_name;
+        v_n := v_n + 1;
+    END LOOP;
+    RETURN v_n;
+END $$;
+
+-- ── 지우기 ──
+CREATE OR REPLACE FUNCTION suparun_snapshot_delete(p_schema text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+    IF NOT is_admin() THEN
+        RAISE EXCEPTION '관리자만 스냅샷을 지울 수 있습니다';
+    END IF;
+    -- 우리 표에 있는 것만 지운다. 없으면 남의 스키마일 수 있다.
+    IF NOT EXISTS (SELECT 1 FROM suparun_snapshot WHERE schema_name = p_schema) THEN
+        RAISE EXCEPTION '없는 스냅샷입니다: %', p_schema;
+    END IF;
+
+    EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', p_schema);
+    DELETE FROM suparun_snapshot WHERE schema_name = p_schema;
+
+    INSERT INTO admin_audit_log
+        (id, admin_id, config_type, row_id, action, before_json, after_json, created_at)
+    VALUES
+        (gen_random_uuid()::text, coalesce(auth.uid()::text, 'server'),
+         'suparun_snapshot', p_schema, 'snapshot_delete', p_schema, NULL,
+         (extract(epoch from now()) * 1000)::bigint);
+END $$;
+
+-- ── 차이 ──
+-- 리스트 배지와 복원 확인 화면이 같은 함수를 쓴다.
+-- is_missing = 스냅샷에 없는 테이블(찍은 뒤 새로 생겼다) → 복원해도 그대로 남는다.
+--
+-- ⚠ 반환 컬럼 이름이 information_schema.columns 의 컬럼(table_name/table_schema/column_name)과
+-- 겹치면 본문의 조회가 'column reference is ambiguous' 로 죽는다. 그래서 tbl_/_cols 로 접두·접미를 뒀다.
+--
+-- DROP 을 먼저 하는 이유: CREATE OR REPLACE 는 **반환 타입 구성이 바뀌면 거부**한다
+-- ('cannot change return type of existing function'). 반환 컬럼 이름을 한 번 고친 적이 있어
+-- 그때 실제로 막혔다. 이 함수는 반환 구조가 앞으로도 바뀔 수 있으므로 DROP 을 붙여 둔다.
+DROP FUNCTION IF EXISTS suparun_snapshot_diff(text);
+CREATE OR REPLACE FUNCTION suparun_snapshot_diff(p_schema text)
+RETURNS TABLE(tbl_name text, cur_rows bigint, snap_rows bigint,
+              added_cols text[], removed_cols text[], is_missing boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_tbl  text;
+    v_snap text[];
+    v_cur  text[];
+BEGIN
+    IF NOT is_admin() THEN
+        RAISE EXCEPTION '관리자만 볼 수 있습니다';
+    END IF;
+
+    FOR v_tbl IN SELECT * FROM suparun_snapshot_tables() LOOP
+        tbl_name := v_tbl;
+        is_missing := to_regclass(quote_ident(p_schema) || '.' || quote_ident(v_tbl)) IS NULL;
+
+        EXECUTE format('SELECT count(*) FROM public.%I', v_tbl) INTO cur_rows;
+        IF is_missing THEN
+            snap_rows := NULL;
+            added_cols := NULL; removed_cols := NULL;
+        ELSE
+            EXECUTE format('SELECT count(*) FROM %I.%I', p_schema, v_tbl) INTO snap_rows;
+
+            SELECT array_agg(c.column_name ORDER BY c.column_name) INTO v_cur
+              FROM information_schema.columns c
+             WHERE c.table_schema = 'public' AND c.table_name = v_tbl;
+            SELECT array_agg(c.column_name ORDER BY c.column_name) INTO v_snap
+              FROM information_schema.columns c
+             WHERE c.table_schema = p_schema AND c.table_name = v_tbl;
+
+            -- added = 찍은 뒤 생긴 컬럼(복원 시 기본값으로 남는다)
+            -- removed = 그 사이 사라진 컬럼(스냅샷 값은 버려진다)
+            SELECT array(SELECT unnest(coalesce(v_cur, '{}')) EXCEPT SELECT unnest(coalesce(v_snap, '{}'))) INTO added_cols;
+            SELECT array(SELECT unnest(coalesce(v_snap, '{}')) EXCEPT SELECT unnest(coalesce(v_cur, '{}'))) INTO removed_cols;
+        END IF;
+
+        RETURN NEXT;
+    END LOOP;
+END $$;
+
+-- ── 되돌리기 ──
+-- 지금 상태를 자동본으로 한 장 찍고 나서 되돌린다. 잘못 눌러도 돌아올 자리가 있어야 한다.
+-- 컬럼은 **양쪽에 다 있는 것만** 옮긴다 — SELECT * 로 하면 컬럼이 하나만 늘어도 복원이 실패한다.
+-- SupaRun 의 FK 는 DB 제약이 아니라 어드민 메타라, 테이블 순서를 신경 쓸 필요가 없다.
+CREATE OR REPLACE FUNCTION suparun_snapshot_restore(p_schema text) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_tbl    text;
+    v_cols   text;
+    v_backup text;
+BEGIN
+    IF NOT is_admin() THEN
+        RAISE EXCEPTION '관리자만 복원할 수 있습니다';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM suparun_snapshot WHERE schema_name = p_schema) THEN
+        RAISE EXCEPTION '없는 스냅샷입니다: %', p_schema;
+    END IF;
+
+    v_backup := suparun_snapshot_create('auto', '복원 직전 자동 저장: ' || p_schema, true);
+
+    FOR v_tbl IN SELECT * FROM suparun_snapshot_tables() LOOP
+        -- 스냅샷에 없던 테이블은 건너뛴다. 지우면 그 시점 이후 만든 것이 통째로 날아간다.
+        CONTINUE WHEN to_regclass(quote_ident(p_schema) || '.' || quote_ident(v_tbl)) IS NULL;
+
+        SELECT string_agg(quote_ident(c.column_name), ', ' ORDER BY c.column_name)
+          INTO v_cols
+          FROM information_schema.columns c
+         WHERE c.table_schema = 'public' AND c.table_name = v_tbl
+           AND EXISTS (SELECT 1 FROM information_schema.columns s
+                        WHERE s.table_schema = p_schema AND s.table_name = v_tbl
+                          AND s.column_name = c.column_name);
+
+        CONTINUE WHEN v_cols IS NULL;   -- 겹치는 컬럼이 하나도 없다
+
+        EXECUTE format('TRUNCATE public.%I', v_tbl);
+        EXECUTE format('INSERT INTO public.%I (%s) SELECT %s FROM %I.%I',
+                       v_tbl, v_cols, v_cols, p_schema, v_tbl);
+    END LOOP;
+
+    INSERT INTO admin_audit_log
+        (id, admin_id, config_type, row_id, action, before_json, after_json, created_at)
+    VALUES
+        (gen_random_uuid()::text, coalesce(auth.uid()::text, 'server'),
+         'suparun_snapshot', p_schema, 'snapshot_restore', v_backup, p_schema,
+         (extract(epoch from now()) * 1000)::bigint);
+
+    -- 되돌아올 자리를 화면에 알려 준다.
+    RETURN v_backup;
 END $$;
 ");
         }
