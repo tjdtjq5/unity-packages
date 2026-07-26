@@ -3,6 +3,7 @@
     "rootNamespace": "Tjdtjq5.SupaRun.Editor",
     "references": [
         "Tjdtjq5.SupaRun.Runtime",
+        "Tjdtjq5.SupaRun.NodeGraph",
         "UniTask",
         "Unity.Addressables.Editor"
     ],

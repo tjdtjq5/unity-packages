@@ -7,15 +7,43 @@
 
 ## 의존성
 
-| 대상 | 경로 | 용도 |
-|------|------|------|
-| Newtonsoft.Json | `com.unity.nuget.newtonsoft-json` | 다형 역직렬화 + `NodeValue<T>` 커스텀 변환 |
-| Attributes | `Runtime/Attributes/` | `[NodeGraph]`, `[NodeOut]` |
+**`Tjdtjq5.SupaRun.NodeGraph` 는 의존성이 0 이다** — `noEngineReferences: true` 라 `UnityEngine`
+조차 참조하지 않는다. Quantum 시뮬레이션이 이 어셈블리를 참조해야 하기 때문이다
+(`Quantum.Simulation.asmdef` 는 `references: []` 가 기본이라 무거운 어셈블리를 끌어들이면 안 된다).
+
+JSON 을 다루는 둘(`NodeGraphSerializer` · `NodeValueConverter`)만 Newtonsoft 가 필요해
+`Runtime/Serialization/` 으로 빼 **`Tjdtjq5.SupaRun.Runtime` 소속**으로 뒀다.
+시뮬레이션에서 문자열 파싱을 할 일이 없기도 하다.
+
+```
+Quantum.Simulation ──▶ Tjdtjq5.SupaRun.NodeGraph  (순수 C#, 의존성 0)
+                              ▲
+Tjdtjq5.SupaRun.Runtime ──────┘   Serialization/ (Newtonsoft)
+Tjdtjq5.SupaRun.Editor  ──────┘   카탈로그 생성
+```
+
+> ⚠ `Quantum.Simulation.asmdef` 는 Quantum SDK 를 재임포트하면 덮어써진다.
+> 그러면 이 참조가 사라져 컴파일이 깨진다 — 한 줄 다시 넣으면 된다.
+
+### 소비 프로젝트가 할 일
+
+노드를 정의하는 코드가 **asmdef 안에 있으면 `Tjdtjq5.SupaRun.NodeGraph` 를 명시로 참조해야 한다.**
+`autoReferenced: true` 는 predefined assembly(Assembly-CSharp)에만 적용되고, asmdef 어셈블리끼리는
+자동으로 이어지지 않는다. 또 **asmdef 참조는 전이되지 않아** `Tjdtjq5.SupaRun.Runtime` 을
+참조하고 있어도 NodeGraph 는 따로 넣어야 한다.
+
+```jsonc
+// 게임 asmdef
+"references": [
+  "Tjdtjq5.SupaRun.Runtime",
+  "Tjdtjq5.SupaRun.NodeGraph",   // ← 이게 없으면 NodeValue<> 부터 CS0246
+]
+```
 
 ## 구조
 
 ```
-NodeGraph/
+Runtime/NodeGraph/               ← Tjdtjq5.SupaRun.NodeGraph (순수)
 ├── Node.cs                  # 뿌리. TCtx 가 그래프 종류를 가른다
 ├── ExecNode.cs              # 실행 흐름 위의 노드. 반환값 = 다음 인덱스, -1 = 종료
 ├── EntryNode.cs             # 진입점 (그래프당 1개)
@@ -28,9 +56,16 @@ NodeGraph/
 ├── NodeValue.cs             # 입력칸 — 상수 또는 PureNode 연결
 ├── NodeGraphRunner.cs       # 순회기. 재귀 없이 고정 스택
 ├── NodeGraphData.cs         # Parse 결과 (노드 배열 + 진입점 + 미복원 타입)
-├── NodeValueConverter.cs    # NodeValue<T> ↔ `25` / `{"$node":3}`
-└── NodeGraphSerializer.cs   # 컬럼 JSON ↔ C# 객체
+├── NodeGraphAttribute.cs    # [NodeGraph(typeof(TCtx))] — 컬럼을 캔버스로
+└── NodeOutAttribute.cs      # [NodeOut] — int 필드가 실행 포트
+
+Runtime/Serialization/           ← Tjdtjq5.SupaRun.Runtime (Newtonsoft)
+├── NodeGraphSerializer.cs   # 컬럼 JSON ↔ C# 객체
+└── NodeValueConverter.cs    # NodeValue<T> ↔ `25` / `{"$node":3}`
 ```
+
+어트리뷰트가 계층과 같은 어셈블리에 있는 이유는 `[NodeOut]` 이 **노드 클래스에 붙기** 때문이다.
+시뮬레이션에 정의된 노드가 그 어트리뷰트를 보려면 같은 어셈블리이거나 참조 가능해야 한다.
 
 ## 두 축이 직교한다
 
