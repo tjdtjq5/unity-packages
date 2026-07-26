@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Modal } from '../../shared/Modal'
+import { LoadingBlock } from '../../shared/Spinner'
 import { enableColResize } from '../../shared/colResize'
 import type { ConfigType } from '../../shared/types'
 import { useAdmin } from '../shell/AdminContext'
@@ -114,9 +115,7 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
     return (
       <>
         {badge}
-        <div className="loading-spinner">
-          <div className="spinner-border text-primary" role="status" />
-        </div>
+        <LoadingBlock label={`${configType.tableName} 불러오는 중`} />
       </>
     )
   }

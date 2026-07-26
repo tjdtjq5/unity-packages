@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { onUnauthorized, type UnauthorizedInfo } from './shared/api'
 import { isPreview } from './shared/env'
+import { FullScreenLoader } from './shared/Spinner'
 import { sb } from './shared/supabase'
 import { LoginPage } from './features/auth/LoginPage'
 import { useSession } from './features/auth/useSession'
@@ -27,8 +28,9 @@ export function App() {
 
   const preview = isPreview()
 
-  // 첫 세션 확인 전에는 아무것도 그리지 않는다 — 로그인 폼이 깜빡였다 사라지는 것을 막는다.
-  if (!ready && !preview) return null
+  // 첫 세션 확인 전에는 로그인 폼도 어드민도 그리지 않는다 — 폼이 깜빡였다 사라지는 것을 막는다.
+  // 대신 로더를 세운다. 예전엔 null 이라 이 구간이 통째로 빈 검은 화면이었다.
+  if (!ready && !preview) return <FullScreenLoader label="세션 확인 중" />
 
   if (preview || (session && !kickedOut)) {
     return (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { selectDistribution, selectPage, selectStats } from '../../shared/db'
 import { toast } from '../../shared/toast'
+import { LoadingBlock } from '../../shared/Spinner'
 import { enableColResize } from '../../shared/colResize'
 import type {
   DistBucket,
@@ -156,9 +157,7 @@ export function TablePage({ tableType }: { tableType: TableType }) {
 
       {/* ── 테이블 ── */}
       {!data ? (
-        <div className="loading-spinner">
-          <div className="spinner-border text-primary" role="status" />
-        </div>
+        <LoadingBlock label={`${tableType.tableName} 불러오는 중`} />
       ) : rows.length === 0 ? (
         <div className="empty-state">
           <i className="ti ti-filter-off" />

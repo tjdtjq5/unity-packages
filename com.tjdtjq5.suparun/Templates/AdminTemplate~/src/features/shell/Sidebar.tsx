@@ -1,3 +1,4 @@
+import { Spinner } from '../../shared/Spinner'
 import type { ConfigType, TableType } from '../../shared/types'
 import type { Route } from './route'
 
@@ -33,13 +34,25 @@ export function Sidebar({
   tableTypes,
   route,
   onNavigate,
+  ready,
 }: {
   types: ConfigType[]
   tableTypes: TableType[]
   route: Route
   onNavigate: (r: Route) => void
+  /** 타입 메타가 도착했는가. 도착 전 빈 트리는 "Config 가 없다"로 읽혀서 로딩을 대신 세운다. */
+  ready: boolean
 }) {
   const activeConfig = route.kind === 'config' ? route.tableName : null
+
+  if (!ready) {
+    return (
+      <div className="tree-loading">
+        <Spinner size={14} />
+        <span>목록 불러오는 중…</span>
+      </div>
+    )
+  }
 
   return (
     <>

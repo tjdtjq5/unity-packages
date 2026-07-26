@@ -990,8 +990,76 @@ tbody tr { animation: rowStagger 0.2s linear both; }
   text-transform: uppercase; margin: 0 0 8px;
 }
 .empty-state p { font-size: 11px; color: var(--dim); }
-.loading-spinner { display: flex; justify-content: center; padding: 3rem; }
+.loading-spinner { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 3rem; }
 .spinner-border { border-color: var(--line); border-top-color: var(--green); border-radius: 50%; }
+
+/* 원호 스피너.
+   border 는 네 변이 따로 칠해져 그라데이션이 안 된다 — conic-gradient 를 깔고
+   mask 로 가운데를 뚫어 링을 만든다. 끝으로 갈수록 밝아져서 회전 방향이 읽힌다. */
+.sr-spinner {
+  --sr-size: 32px;
+  --sr-thick: 3px;
+  display: inline-block;
+  flex: none;
+  width: var(--sr-size);
+  height: var(--sr-size);
+  border-radius: 50%;
+  background: conic-gradient(from 0deg,
+    rgba(0,255,102,0)    0deg,
+    rgba(0,255,102,0.10) 100deg,
+    var(--green-2)       280deg,
+    var(--green)         335deg,
+    #ddffe6              357deg,
+    rgba(0,255,102,0)    360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--sr-thick)), #000 calc(100% - var(--sr-thick)));
+          mask: radial-gradient(farthest-side, transparent calc(100% - var(--sr-thick)), #000 calc(100% - var(--sr-thick)));
+  filter: drop-shadow(0 0 4px var(--green-glow));
+  animation: srSpin 0.85s linear infinite;
+}
+@keyframes srSpin { to { transform: rotate(360deg); } }
+
+/* 로딩 문구 — 스피너만 있으면 무엇을 기다리는지 알 수 없다. */
+.sr-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  animation: spinnerPulse 1.4s ease-in-out infinite;
+}
+
+/* 아직 그릴 화면 자체가 없을 때(첫 진입) 덮는 로더. */
+.sr-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(0,255,102,0.05), transparent 65%),
+    var(--bg);
+}
+
+/* 사이드바 트리 자리 로딩 — 폭이 좁아 가로로 눕힌다. */
+.tree-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* 버튼 안에 들어가는 스피너 — 라벨과 같은 줄에 세로 중앙으로 놓는다. */
+.btn-terminal .sr-spinner,
+.oauth-btn .sr-spinner { vertical-align: -2px; margin-right: 6px; }
+
+/* 처리 중 버튼. pointer-events 를 끊어 hover 색 반전까지 함께 멈춘다. */
+.btn-terminal:disabled,
+.oauth-btn:disabled { opacity: 0.5; pointer-events: none; }
 
 /* ── 로그인 페이지 (Terminal Window) ── */
 #login-page {

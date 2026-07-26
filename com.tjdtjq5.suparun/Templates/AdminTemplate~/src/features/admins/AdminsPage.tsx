@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { enableColResize } from '../../shared/colResize'
+import { LoadingBlock } from '../../shared/Spinner'
 import { useAdmins } from './useAdmins'
 
 /**
@@ -39,9 +40,7 @@ export function AdminsPage() {
 
   if (!admins) {
     return (
-      <div className="loading-spinner">
-        <div className="spinner-border text-primary" role="status" />
-      </div>
+      <LoadingBlock label="관리자 목록 불러오는 중" />
     )
   }
 

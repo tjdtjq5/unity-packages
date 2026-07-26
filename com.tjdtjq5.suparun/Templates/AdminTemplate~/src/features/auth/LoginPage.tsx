@@ -2,6 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import type { UnauthorizedInfo } from '../../shared/api'
 import { env } from '../../shared/env'
 import { Modal } from '../../shared/Modal'
+import { Spinner } from '../../shared/Spinner'
 import { sb, supabaseError } from '../../shared/supabase'
 
 const GOOGLE_ICON = (
@@ -59,6 +60,8 @@ export function LoginPage({
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [msg, setMsg] = useState<Message>(null)
+  /** 진행 중인 작업. `'login'` | `'signup'` | OAuth 프로바이더명. 버튼 하나가 도는 동안 나머지도 잠근다. */
+  const [busy, setBusy] = useState<string | null>(null)
 
   // 설정 오류는 무엇을 해도 안 되므로 다른 메시지보다 우선한다.
   const shown: Message = supabaseError ? { kind: 'error', text: supabaseError } : msg
@@ -72,11 +75,14 @@ export function LoginPage({
     if (!email.trim()) return fail('이메일을 입력하세요.')
     if (!password) return fail('비밀번호를 입력하세요.')
     if (!sb) return fail('Supabase 연결 실패. SupaRun Dashboard에서 Supabase 설정을 확인하세요.')
+    setBusy('login')
     try {
       const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password })
       if (error) fail(error.message)
     } catch (e) {
       fail('로그인 실패: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -86,6 +92,7 @@ export function LoginPage({
     if (!password) return fail('비밀번호를 입력하세요.')
     if (password.length < 6) return fail('비밀번호는 6자 이상이어야 합니다.')
     if (!sb) return fail('Supabase 설정이 필요합니다.')
+    setBusy('signup')
     try {
       const { data, error } = await sb.auth.signUp({ email: email.trim(), password })
       if (error) return fail(error.message)
@@ -97,19 +104,27 @@ export function LoginPage({
       })
     } catch (e) {
       fail('회원가입 실패: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setBusy(null)
     }
   }
 
   async function oauth(provider: string) {
     if (!sb) return fail('Supabase 설정이 필요합니다.')
+    setBusy(provider)
+    // 성공하면 곧 프로바이더로 리다이렉트된다 — busy 를 풀지 않아야 그 사이 두 번 눌리지 않는다.
     try {
       const { error } = await sb.auth.signInWithOAuth({
         provider,
         options: { redirectTo: window.location.origin + '/admin/index.html' },
       })
-      if (error) fail(error.message)
+      if (error) {
+        fail(error.message)
+        setBusy(null)
+      }
     } catch (e) {
       fail('OAuth 로그인 실패: ' + (e instanceof Error ? e.message : String(e)))
+      setBusy(null)
     }
   }
 
@@ -165,11 +180,30 @@ export function LoginPage({
             )}
 
             <div className="action-line">
-              <button type="submit" className="btn-terminal">
-                [ENTER]
+              <button type="submit" className="btn-terminal" disabled={busy !== null}>
+                {busy === 'login' ? (
+                  <>
+                    <Spinner size={12} />
+                    [AUTH...]
+                  </>
+                ) : (
+                  '[ENTER]'
+                )}
               </button>
-              <button type="button" className="btn-terminal" onClick={() => void signUp()}>
-                [REGISTER]
+              <button
+                type="button"
+                className="btn-terminal"
+                disabled={busy !== null}
+                onClick={() => void signUp()}
+              >
+                {busy === 'signup' ? (
+                  <>
+                    <Spinner size={12} />
+                    [SENDING...]
+                  </>
+                ) : (
+                  '[REGISTER]'
+                )}
               </button>
             </div>
           </form>
@@ -185,9 +219,10 @@ export function LoginPage({
                       key={p}
                       className="btn btn-outline-secondary oauth-btn"
                       style={s.style}
+                      disabled={busy !== null}
                       onClick={() => void oauth(p)}
                     >
-                      {s.icon} {s.label}
+                      {busy === p ? <Spinner size={14} /> : s.icon} {s.label}
                     </button>
                   )
                 })}

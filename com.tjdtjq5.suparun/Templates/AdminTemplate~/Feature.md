@@ -19,10 +19,10 @@ AdminTemplate~/
 ├── .env.local          (gitignore) 로컬 dotnet 서버 주소 VITE_SERVER_URL
 │
 ├── src/                ← 소스
-│   ├── index.html      1,494줄(최초 3,950). CSS 1,287줄 + 인라인 JS 171줄(플레이스홀더·프리뷰 mock)
+│   ├── index.html      1,616줄(최초 3,950). CSS 1,409줄 + 인라인 JS 171줄(플레이스홀더·프리뷰 mock)
 │   ├── main.tsx        React 진입점 — #root 에 <App/> 마운트
 │   ├── App.tsx         로그인 화면 ↔ 어드민 껍데기 분기
-│   ├── shared/         api / supabase / toast / types / Modal / colResize / castValue / env / chart
+│   ├── shared/         api / supabase / toast / types / Modal / Spinner / colResize / castValue / env / chart
 │   └── features/       화면 단위 폴더
 │       ├── auth/       로그인 · 세션 구독
 │       ├── shell/      껍데기 — 레이아웃·사이드바·툴바·라우팅·키맵·AdminContext
@@ -154,6 +154,11 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다(바
 ### UI/UX
 - Tabler CSS 프레임워크 (다크 사이드바 + 라이트 콘텐츠)
 - Toast 알림 (success/error/info, 3초 자동 소멸)
+- **로딩 표시** — `shared/Spinner.tsx` 3종. 모양은 CSS `.sr-spinner` 하나가 갖는다
+  (conic-gradient 를 `mask` 로 뚫어 만든 원호. border 로는 그라데이션이 안 된다)
+  - `FullScreenLoader` — 첫 세션 확인. 예전엔 이 구간이 통째로 빈 검은 화면이었다
+  - `LoadingBlock` — Config/Table/Admin/Audit 목록과 홈 화면이 오기 전 그 자리
+  - `Spinner` — 사이드바 트리 로딩, 로그인/회원가입/OAuth 버튼 (누르는 동안 전 버튼 잠금)
 - 페이지 전환 fade 애니메이션
 - 행 진입/삭제/하이라이트 애니메이션
 

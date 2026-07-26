@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AdminsPage } from '../admins/AdminsPage'
 import { AuditPage } from '../audit/AuditPage'
 import { ConfigPage } from '../config/ConfigPage'
+import { LoadingBlock } from '../../shared/Spinner'
 import { TablePage } from '../table/TablePage'
 import { AdminProvider, type AdminContextValue, type ToolbarActions } from './AdminContext'
 import { KeymapHelp } from './KeymapHelp'
@@ -115,6 +116,7 @@ export function Shell({ email, onLogout }: { email: string; onLogout: () => void
                 tableTypes={data.tableTypes}
                 route={route}
                 onNavigate={navigate}
+                ready={data.ready}
               />
             </div>
 
@@ -269,11 +271,14 @@ function ScreenContent({
       return <AdminsPage />
     case 'audit':
       return <AuditPage />
-    case 'home':
+    case 'home': {
+      // 타입 메타가 오기 전에 "선택하세요"를 띄우면 사이드바가 비어 있는 이유를 오해하게 된다.
+      if (!data.ready) return <LoadingBlock label="Config 목록 불러오는 중" />
+      const empty = data.types.length === 0 && data.tableTypes.length === 0
       return (
         <div className="empty-state">
-          <i className={data.ready && data.types.length === 0 && data.tableTypes.length === 0 ? 'ti ti-package' : 'ti ti-database'} />
-          {data.ready && data.types.length === 0 && data.tableTypes.length === 0 ? (
+          <i className={empty ? 'ti ti-package' : 'ti ti-database'} />
+          {empty ? (
             <>
               <h3>등록된 Config가 없습니다</h3>
               <p>Unity에서 Feature를 설치하고 Deploy하면 여기에 나타납니다.</p>
@@ -286,5 +291,6 @@ function ScreenContent({
           )}
         </div>
       )
+    }
   }
 }

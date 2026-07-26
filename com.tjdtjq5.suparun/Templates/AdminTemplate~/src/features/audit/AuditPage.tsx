@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { enableColResize } from '../../shared/colResize'
+import { LoadingBlock } from '../../shared/Spinner'
 import type { AuditLog } from '../../shared/types'
 import { useAuditLogs } from './useAuditLogs'
 
@@ -75,9 +76,7 @@ export function AuditPage() {
 
   if (!logs) {
     return (
-      <div className="loading-spinner">
-        <div className="spinner-border text-primary" role="status" />
-      </div>
+      <LoadingBlock label="변경 이력 불러오는 중" />
     )
   }
 
