@@ -5,9 +5,10 @@
 
 ## 의존성
 
-- **로컬 브리지 전용** — `SupaRunBridge.ServeAdmin` 이 유일한 서빙 경로다. 호스팅(Cloud Run
-  정적 서빙)은 ADR-0009 로 부활이 결정됐고 #48 에서 온다. 접근 통제는 사람 로그인
-  (이메일+비밀번호) + `admin_user` 다
+- **서빙 경로 둘** (#48) — 로컬 브리지(`SupaRunBridge.ServeAdmin`, 개발 루프)와 Cloud Run
+  정적 서빙(`/admin`, 원격 CS 접근). 같은 dist 다. 판별은 `__SUPARUN_BRIDGE` 주입 여부 —
+  호스팅본은 셋업·ops·배포 블록을 렌더하지 않고 곧장 로그인이다. 접근 통제는 사람 로그인
+  (이메일+비밀번호) + `admin_user` + RLS
 - 외부 CDN: Tabler CSS/JS, Bootstrap 5, Supabase JS v2, Chart.js, Sortable
 - 빌드: vite 8 + React 19 + TypeScript 7 (`@xyflow/react` 는 노드 그래프용, ADR-0002)
 

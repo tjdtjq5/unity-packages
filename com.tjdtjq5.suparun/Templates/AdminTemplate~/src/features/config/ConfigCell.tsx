@@ -62,7 +62,7 @@ export function ConfigCell({ row, field, saved, onChange }: CellProps) {
   const [jsonOpen, setJsonOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const [polyOpen, setPolyOpen] = useState(false)
-  const { fkSources, typeCatalog, canWrite } = useAdmin()
+  const { fkSources, typeCatalog, canWrite, promoteOnly } = useAdmin()
 
   if (isFieldDisabled(row, field)) {
     return (
@@ -75,12 +75,12 @@ export function ConfigCell({ row, field, saved, onChange }: CellProps) {
   const val = row[field.name]
   const shown = String(val ?? '')
 
-  // game-viewer — 모든 셀이 읽기 표시다 (#24). 에디터 진입 자체를 막는다.
+  // game-viewer(#24) 또는 승격 전용 환경(#50) — 모든 셀이 읽기 표시다. 에디터 진입 자체를 막는다.
   // 객체 값(json·다형·rewards)은 원문 그대로 보여준다 — 예쁘게가 아니라 정확하게.
-  if (!canWrite) {
+  if (!canWrite || promoteOnly) {
     const display = typeof val === 'object' && val !== null ? JSON.stringify(val) : shown
     return (
-      <td data-field={field.name} title="game-viewer — 읽기 전용">
+      <td data-field={field.name} title={promoteOnly ? '승격 전용 — dev 에서 수정' : 'game-viewer — 읽기 전용'}>
         <span>{display}</span>
       </td>
     )

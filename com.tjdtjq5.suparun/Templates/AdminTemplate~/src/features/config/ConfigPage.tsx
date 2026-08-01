@@ -28,23 +28,26 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
     reorder,
     exportData,
   } = useConfigRows(configType)
-  const { setToolbarActions, canWrite } = useAdmin()
+  const { setToolbarActions, canWrite, promoteOnly, navigate } = useAdmin()
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const hostRef = useRef<HTMLDivElement>(null)
   const tbodyRef = useRef<HTMLTableSectionElement>(null)
 
+  // 편집 가능 = game-admin(#24) 이고 승격 전용 환경(#50)이 아니다.
+  const editable = canWrite && !promoteOnly
+
   const fields = configType.fields
   const visible = fields.filter((f) => !f.isHidden)
   // 검색 중에는 드래그 정렬을 막는다 (표시 순서 ≠ 실제 순서이므로) — 바닐라와 동일.
-  // 정렬도 쓰기라 game-viewer 는 못 끈다 (#24).
-  const sortable = canWrite && !filter && fields.some((f) => f.isSortOrder)
+  // 정렬도 쓰기라 game-viewer·승격 전용 환경은 못 끈다 (#24·#50).
+  const sortable = editable && !filter && fields.some((f) => f.isSortOrder)
 
   // 툴바 버튼(추가·내보내기·가져오기)은 껍데기(PageHeader)에 있으므로 동작만 올려보낸다.
-  // addRow 를 안 올리면 추가 버튼이 안 그려진다 — game-viewer 의 쓰기 UI 거부 (#24).
+  // addRow 를 안 올리면 추가 버튼이 안 그려진다 — 쓰기 UI 거부 (#24·#50).
   useEffect(() => {
-    setToolbarActions({ addRow: canWrite ? addRow : undefined, exportData })
+    setToolbarActions({ addRow: editable ? addRow : undefined, exportData })
     return () => setToolbarActions(null)
-  }, [addRow, exportData, canWrite, setToolbarActions])
+  }, [addRow, exportData, editable, setToolbarActions])
 
   // Ctrl+Z — 입력 중에는 무시한다 (바닐라와 동일 정책)
   useEffect(() => {
@@ -115,6 +118,22 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
   // 감사 카드(#28)도 같다: 행이 다 지워진 표일수록 "누가 지웠나" 가 필요하다.
   const badge = (
     <>
+      {/* 승격 전용 잠금(#50) — 편집 UI 가 없는 이유와 대신 가야 할 길을 그 자리에서 말한다. */}
+      {promoteOnly && canWrite && (
+        <div className="alert alert-warning m-2 mb-0">
+          <b>이 환경은 승격 전용입니다.</b> 데이터는 dev 에서 수정해 업로드 → 비교 → 게시로
+          반영하세요.{' '}
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault()
+              navigate({ kind: 'versions' })
+            }}
+          >
+            Game Configs 로 이동 <i className="ti ti-arrow-right" />
+          </a>
+        </div>
+      )}
       <PolicyBadge tableName={configType.tableName} />
       <AuditCard configType={configType.tableName} />
     </>
@@ -208,7 +227,7 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
                   />
                 ))}
                 <td>
-                  {canWrite && (
+                  {editable && (
                     <div className="btn-list flex-nowrap">
                       <button
                         className="btn btn-ghost-primary btn-icon btn-sm"

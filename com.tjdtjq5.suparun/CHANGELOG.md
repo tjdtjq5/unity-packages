@@ -41,6 +41,15 @@
 - 어드민 설정에 **게임 로그인**(`platform_auth`) 토글. SettingsView 에만 있던 UI다
 - `POST /auth/claim-admin` — 로그인 신원을 GoTrue 에 되물어 확정하고 `admin_user` 등록 +
   **game-admin 롤 부여**(`SupaRunAdminClaim`). 빈 표의 RLS 매듭을 PAT 가 끊는 자리다
+- **어드민 호스팅 부활 + 릴리스 계층** (#48~#51, ADR-0009 결정 1·2 + ADR-0010 결정 5~8) —
+  Cloud Run 이 어드민 dist 를 정적 서빙(`/admin` — 어드민 API 는 부활하지 않음, 접속값은
+  배포 시점 치환, `__SUPARUN_BRIDGE` 부재=호스팅본 판별로 ops/브리지 화면 미렌더).
+  배포 리비전에 릴리스 태그(`--tag rel-<sha7>`, workflow_dispatch 로 태그·무트래픽 지정 가능).
+  prod 어드민 승격 전용 잠금(`suparun_is_promote_only` — 이름 규약, config admin_write 정책+UI).
+  릴리스 매니페스트(`suparun_release` — logic version·git·해시·리비전 태그·메모·단계 기록)와
+  오케스트레이션(`ReleaseOrchestrator` — 트래픽 전환→게시→logic 게이트, 순차+단계 기록) +
+  Releases 화면. ⚠ ASP.NET: MapGet 리다이렉트는 `/admin/` 까지 매칭돼 정적 미들웨어를
+  건너뛰게 한다 — 미들웨어로 리다이렉트할 것(실측 무한 루프)
 - **config publish·릴리스 모델** (#30~#35, ADR-0010) — 업로드=미게시 버전 스냅샷(내용 해시
   = 버전 ID, git SHA 동반, `suparun_version_upload`), 게시=복원기 재사용+`active_config_version`
   스탬프(`suparun_version_publish` — 롤백은 재게시), 버전 diff RPC 2종(테이블/행 단위).

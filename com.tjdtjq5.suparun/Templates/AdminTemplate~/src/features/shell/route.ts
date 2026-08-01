@@ -31,6 +31,8 @@ export type Route =
   | { kind: 'versions' }
   // 버전 비교 (#32·#33). base/next 는 메모리로만 넘긴다 — 해시 좌표는 새로고침에 안 남아도 된다.
   | { kind: 'compare'; base?: string; next?: string }
+  // 릴리스 매니페스트 (#51). 릴리스가 환경 안의 표라 환경 안이다.
+  | { kind: 'releases' }
   // 설정도 환경 안이다. 이름·로그인·배포·위험 영역 전부 **이 프로젝트**의 값이라,
   // 앱 레벨에 두면 "환경을 고르기 전인데 어느 환경을 고치는가" 가 어긋난다(실제로 어긋나 있었다).
   | { kind: 'envSettings' }
@@ -79,6 +81,8 @@ export function routeToHash(r: Route): string | null {
       return 'game_configs'
     case 'compare':
       return 'game_configs/compare'
+    case 'releases':
+      return 'releases'
     // home 은 해시를 남긴다 — 안 그러면 빈 해시가 되어 다시 환경 선택으로 돌아간다.
     case 'home':
       return 'home'
@@ -115,6 +119,7 @@ export function hashToRoute(
   if (h === 'user_roles') return { kind: 'roles' }
   if (h === 'game_configs/compare') return { kind: 'compare' }
   if (h === 'game_configs') return { kind: 'versions' }
+  if (h === 'releases') return { kind: 'releases' }
   if (h === 'home') return { kind: 'home' }
 
   // 해시 없이 들어오면 **환경 선택**부터다. 어느 환경을 보고 있는지 모른 채

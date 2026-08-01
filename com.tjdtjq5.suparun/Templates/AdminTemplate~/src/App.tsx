@@ -28,13 +28,16 @@ import { Shell } from './features/shell/Shell'
  */
 export function App() {
   const preview = isPreview()
+  // 호스팅본(#48) = 브리지 주입이 없다. 셋업·온보딩은 로컬(브리지+PAT)의 일이라 통째로
+  // 건너뛴다 — 호스팅본이 서빙된다는 것 자체가 셋업이 끝난 환경이라는 뜻이다.
+  const hosted = !preview && !bridgeAvailable()
 
   // 셋업이 어디까지 됐는가. 세션보다 먼저 본다 — 프로젝트가 없으면 세션도 없다.
   const [setupState, setSetupState] = useState<SetupState | null | undefined>(undefined)
   useEffect(() => {
-    if (preview) return
+    if (preview || hosted) return
     void setup.state().then(setSetupState).catch(() => setSetupState(null))
-  }, [preview])
+  }, [preview, hosted])
 
   const { session, ready } = useSession()
   const token = session?.access_token
@@ -104,23 +107,25 @@ export function App() {
     )
   }
 
-  if (setupState === undefined) return <FullScreenLoader label="설정 확인 중" />
+  if (!hosted) {
+    if (setupState === undefined) return <FullScreenLoader label="설정 확인 중" />
 
-  // 브리지가 안 잡히면 Unity 가 꺼진 것이다. 이 페이지 자체를 브리지가 내보내므로
-  // 열려 있다면 살아 있었다는 뜻이고, 지금 안 잡히면 그 사이에 닫힌 것이다.
-  if (setupState === null) {
-    return (
-      <Notice tone="warning">
-        <b>Unity 가 응답하지 않습니다.</b>
-        <br />
-        어드민은 Unity 안의 로컬 서버가 내보냅니다. Unity 를 켠 뒤 새로고침하세요.
-      </Notice>
-    )
+    // 브리지가 안 잡히면 Unity 가 꺼진 것이다. 이 페이지 자체를 브리지가 내보내므로
+    // 열려 있다면 살아 있었다는 뜻이고, 지금 안 잡히면 그 사이에 닫힌 것이다.
+    if (setupState === null) {
+      return (
+        <Notice tone="warning">
+          <b>Unity 가 응답하지 않습니다.</b>
+          <br />
+          어드민은 Unity 안의 로컬 서버가 내보냅니다. Unity 를 켠 뒤 새로고침하세요.
+        </Notice>
+      )
+    }
+
+    // 빈칸이 하나라도 있으면 온보딩. 플래그가 아니라 사실로 판정하므로,
+    // 중단했다 돌아와도 그 지점에서 이어진다.
+    if (needsSetup(setupState)) return <OnboardingPage />
   }
-
-  // 빈칸이 하나라도 있으면 온보딩. 플래그가 아니라 사실로 판정하므로,
-  // 중단했다 돌아와도 그 지점에서 이어진다.
-  if (needsSetup(setupState)) return <OnboardingPage />
 
   if (!ready) return <FullScreenLoader label="세션 확인 중" />
 

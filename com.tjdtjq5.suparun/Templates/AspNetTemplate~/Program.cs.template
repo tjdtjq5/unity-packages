@@ -102,10 +102,26 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
-// 어드민 정적 서빙은 아직 없다 — 부활(정적 파일만)은 #48 에서 온다 (ADR-0009).
-// 어드민 전용 API(/admin/api)와 그 인증 미들웨어도 없다 — 어드민 데이터 접근은
-// PostgREST + RLS 롤 함수 계열(is_admin/suparun_is_operator)이 맡는다 (ADR-0004 유지).
-// CS 액션의 서버 측 롤 검증([Service] 경유)은 #38 에서 온다.
+// 어드민 정적 서빙 (#48, ADR-0009 결정 1) — **정적 파일만**이다. 어드민 전용 API 는
+// 돌아오지 않는다: 데이터 접근은 브라우저가 PostgREST + RLS 롤 함수 계열
+// (is_admin/suparun_is_operator)로 직접 한다 (ADR-0004 유지).
+// index.html 의 접속값은 배포 시점에 박혀 있고(DeployManager), __SUPARUN_BRIDGE 는 없다 —
+// 그 부재로 어드민이 스스로 호스팅본임을 알고 ops/브리지 화면을 렌더하지 않는다.
+var adminDist = Path.Combine(AppContext.BaseDirectory, "admin");
+if (Directory.Exists(adminDist) && File.Exists(Path.Combine(adminDist, "index.html")))
+{
+    // 끝의 `/` 리다이렉트는 **엔드포인트가 아니라 미들웨어**다. MapGet("/admin") 으로 하면
+    // 라우팅이 `/admin/` 까지 그 엔드포인트에 매칭시키고(슬래시 허용), 엔드포인트가 잡힌
+    // 요청은 정적 미들웨어가 건너뛰므로 리다이렉트가 자기 자신을 가리켜 무한 루프가 된다(실측).
+    app.Use(async (ctx, next) =>
+    {
+        if (ctx.Request.Path == "/admin") { ctx.Response.Redirect("/admin/"); return; }
+        await next();
+    });
+    var adminFiles = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(adminDist);
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = adminFiles, RequestPath = "/admin" });
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = adminFiles, RequestPath = "/admin" });
+}
 
 app.MapControllers();
 app.MapGet("/health", () => "OK");

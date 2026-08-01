@@ -231,6 +231,55 @@ namespace Tjdtjq5.SupaRun.Tests
             Assert.AreEqual("[]", gone.body.Trim(), "회수 후 롤 행이 없어야 한다");
         }
 
+        [Test]
+        public async Task PromoteOnly_Blocks_Config_Writes_Even_For_Admin()
+        {
+            var c = await Init();
+
+            // 대상 config 표·행 집기 (Viewer_Cannot_Update_Config_Table 과 같은 탐침 방식)
+            var meta = await Send(HttpMethod.Get,
+                $"{c.Url}/rest/v1/suparun_meta?key=eq.config_types&select=value", c.Anon, null);
+            var table = Regex.Match(meta.body, "\"tableName\"\\s*:\\s*\"([a-z0-9_]+)\"");
+            if (!table.Success) return;
+            var tbl = table.Groups[1].Value;
+            var row = await Send(HttpMethod.Get, $"{c.Url}/rest/v1/{tbl}?select=id,sort_order&limit=1", c.Anon, null);
+            var id = Regex.Match(row.body, "\"id\"\\s*:\\s*\"([^\"]+)\"");
+            var so = Regex.Match(row.body, "\"sort_order\"\\s*:\\s*(-?[0-9]+)");
+            if (!id.Success || !so.Success) return;
+
+            // 현재 환경 이름을 읽어 두고(원복용) 잠깐 승격 전용 이름으로 바꾼다 — PAT 는 RLS 밖이라
+            // 잠금과 무관하게 되돌릴 수 있다. finally 로 원복을 보장한다.
+            var nameRow = await Send(HttpMethod.Get,
+                $"{c.Url}/rest/v1/suparun_env?key=eq.name&select=value", c.Anon, c.AdminToken);
+            var orig = Regex.Match(nameRow.body, "\"value\"\\s*:\\s*\"([^\"]*)\"");
+            var origName = orig.Success ? orig.Groups[1].Value : "dev";
+
+            await PatQuery(c,
+                "INSERT INTO suparun_env(key, value, updated_at) VALUES ('name', 'prod-contract', 0) " +
+                "ON CONFLICT (key) DO UPDATE SET value = 'prod-contract';");
+            try
+            {
+                // game-admin 이라도 승격 전용 환경에서는 config 직접 쓰기가 거부돼야 한다 (#50).
+                // 같은 값 PATCH 탐침 — 정책이 뚫려 있어도 데이터는 안 바뀐다.
+                using var req = new HttpRequestMessage(new HttpMethod("PATCH"),
+                    $"{c.Url}/rest/v1/{tbl}?id=eq.{Uri.EscapeDataString(id.Groups[1].Value)}");
+                req.Headers.TryAddWithoutValidation("apikey", c.Anon);
+                req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + c.AdminToken);
+                req.Headers.TryAddWithoutValidation("Prefer", "return=representation");
+                req.Content = new StringContent(
+                    $"{{\"sort_order\":{so.Groups[1].Value}}}", Encoding.UTF8, "application/json");
+                using var res = await Http.SendAsync(req);
+                var body = (await res.Content.ReadAsStringAsync()).Trim();
+                Assert.AreEqual("[]", body,
+                    $"승격 전용 환경에서 game-admin 의 config({tbl}) UPDATE 는 0건이어야 한다");
+            }
+            finally
+            {
+                await PatQuery(c,
+                    $"UPDATE suparun_env SET value = '{origName.Replace("'", "''")}' WHERE key = 'name';");
+            }
+        }
+
         // ── HTTP 유틸 (패키지 HTTP 스택에 의존하지 않는다 — 계약은 바깥에서 두드려야 계약이다) ──
 
         static async Task<(int status, string body)> Send(

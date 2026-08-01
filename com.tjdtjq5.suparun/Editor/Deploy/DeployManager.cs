@@ -285,11 +285,12 @@ namespace Tjdtjq5.SupaRun.Editor
             // Workflow
             files.Add(LoadTemplate(templateRoot, "WorkflowTemplate~/deploy.yml.template", ".github/workflows/deploy.yml", settings));
 
-            // 어드민 dist 는 더 이상 싣지 않는다 — **로컬 브리지가 서빙한다**(SupaRunBridge.ServeAdmin).
-            // `*.supabase.co` 가 HTML 을 text/plain 으로 강제 다운그레이드해서 Supabase 서빙이 막혔고,
-            // Cloud Run 에 두면 "배포해야 어드민이 열리는데 어드민에서 배포 설정을 한다" 는 순환이 생긴다.
-            // 부수 효과로 번들 신선도 검사(CheckAdminDistFreshness)도 필요 없어졌다 —
-            // 브리지는 디스크에서 바로 읽고 no-store 로 내보내므로 새로고침이면 반영된다.
+            // 어드민 dist (#48, ADR-0009 결정 1 — **정적 서빙만** 부활). 어드민 전용 API 는
+            // 돌아오지 않는다: 데이터는 브라우저가 PostgREST 에 직접 붙는다(ADR-0004 유지).
+            // index.html 의 접속값({{...}})은 여기서 박는다 — 호스팅본에는 브리지가 없어 런타임
+            // 주입이 불가능하다. __SUPARUN_BRIDGE 는 안 박는다: 그 **부재**가 곧 호스팅본 판별이라
+            // ops/브리지 화면이 호스팅에서 렌더되지 않는다. 로컬 브리지 서빙(개발 루프)은 그대로다.
+            files.AddRange(GetAdminDistFiles(settings));
 
             // 게임 플랫폼 로그인 — Supabase auth 에 없는 것들이라 서버가 직접 검증해야 한다.
             // 웹 OAuth 는 Supabase 가 처리하므로 서버 코드가 필요 없다.
@@ -310,6 +311,36 @@ namespace Tjdtjq5.SupaRun.Editor
                     "Generated/Auth/AuthGameCenterController.cs", settings));
             }
 
+            return files;
+        }
+
+        /// <summary>
+        /// 어드민 빌드 산출물(dist)을 배포 파일로 싣는다 — 컨테이너의 `admin/` 이 되고
+        /// 서버가 `/admin` 으로 정적 서빙한다. dist 는 전부 텍스트(html/js/css)라
+        /// GeneratedFile(문자열)로 충분하다 — 이미지 등 바이너리를 넣게 되면 이 경로를 바꿔야 한다.
+        /// </summary>
+        static List<GeneratedFile> GetAdminDistFiles(SupaRunSettings settings)
+        {
+            var files = new List<GeneratedFile>();
+            var dist = Path.Combine(GetTemplateRoot(), "AdminTemplate~/dist");
+            if (!Directory.Exists(dist) || !File.Exists(Path.Combine(dist, "index.html")))
+            {
+                Debug.LogWarning(
+                    "[SupaRun:Deploy] 어드민 dist 가 없어 호스팅 없이 배포합니다 — " +
+                    "AdminTemplate~ 에서 `npm run build` 를 먼저 실행하세요.");
+                return files;
+            }
+
+            foreach (var path in Directory.GetFiles(dist, "*", SearchOption.AllDirectories))
+            {
+                var rel = path.Substring(dist.Length + 1).Replace('\\', '/');
+                var content = File.ReadAllText(path);
+                if (rel == "index.html")
+                    content = content
+                        .Replace("{{SUPABASE_URL}}", settings.supabaseUrl ?? "")
+                        .Replace("{{SUPABASE_ANON_KEY}}", SupaRunSettings.Instance.SupabaseAnonKey ?? "");
+                files.Add(new GeneratedFile("admin/" + rel, content));
+            }
             return files;
         }
 

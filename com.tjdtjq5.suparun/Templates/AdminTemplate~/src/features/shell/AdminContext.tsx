@@ -26,6 +26,11 @@ export interface AdminContextValue {
    * UI 겹일 뿐이다 — 진짜 거부는 RLS(is_admin)가 한다. UI 만 뚫어도 저장은 조용히 실패한다.
    */
   canWrite: boolean
+  /**
+   * 승격 전용 환경인가 (#50, ADR-0010 결정 7 — 이름 규약 prod). 참이면 config 행 편집 UI 를
+   * 걷어내고 승격 경로를 안내한다. RLS(admin_write 의 suparun_is_promote_only)가 2겹째다.
+   */
+  promoteOnly: boolean
   /** `[ForeignKey]` 드롭다운 옵션 (참조 대상 Config 이름 → 행 목록). */
   fkSources: Record<string, FkOption[]>
   /** Rewards 모달용 재화/아이템 목록 (`currency_def`, `inventory_item_def`). */

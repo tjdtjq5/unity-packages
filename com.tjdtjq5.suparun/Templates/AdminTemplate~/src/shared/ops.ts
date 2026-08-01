@@ -103,6 +103,15 @@ export const ops = {
   /** dev 데이터를 대상 환경의 **미게시 버전**으로 올린다 (ADR-0010, #30). 라이브 무영향. */
   uploadVersion: (target: string) =>
     bridge.post<{ started: boolean }>('/ops/upload-version', { target }),
+
+  /** 릴리스 오케스트레이션 (#51) — 대상은 편집 환경 자신. 진행·결과는 매니페스트가 진실이다. */
+  createRelease: (p: {
+    logicVersion: number
+    logicMin: number
+    versionSchema: string
+    memo: string
+    revisionTag: string
+  }) => bridge.post<{ started: boolean }>('/ops/release', p),
 }
 
 /** 아직 도는 중인가. 폴링을 계속할지 정한다. */

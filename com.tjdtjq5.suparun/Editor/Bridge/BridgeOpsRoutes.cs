@@ -229,6 +229,23 @@ namespace Tjdtjq5.SupaRun.Editor
                     return;
                 }
 
+                // 릴리스 오케스트레이션 (#51) — 트래픽 전환 → 게시 → logic 게이트, 순차+단계 기록.
+                // 대상은 **편집 환경 자신**이다(릴리스는 그 환경 안의 조작) — 다른 ops 와 달리
+                // target 을 받지 않는다.
+                case "/ops/release" when m == "POST":
+                {
+                    var body = BridgeIo.ReadBody(req);
+                    var lv = (int?)body["logicVersion"] ?? 0;
+                    var lmin = (int?)body["logicMin"] ?? 1;
+                    var schema = (string)body["versionSchema"] ?? "";
+                    if (lv <= 0 || schema.Length == 0)
+                    { BridgeIo.Fail(res, 400, "logicVersion 과 versionSchema 가 필요합니다."); return; }
+                    if (_schemaRunning) { BridgeIo.Fail(res, 409, "이미 진행 중입니다."); return; }
+                    RunRelease(s, lv, lmin, schema, (string)body["memo"], (string)body["revisionTag"]).Forget();
+                    BridgeIo.Write(res, 200, new JObject { ["started"] = true });
+                    return;
+                }
+
                 // 데이터는 이제 즉시 주입되지 않는다 — 대상에 **미게시 버전**을 만들 뿐이고
                 // (ADR-0010, #30), 라이브 반영은 대상 어드민의 게시(publish)가 따로 한다.
                 case "/ops/upload-version" when m == "POST":
@@ -329,6 +346,26 @@ namespace Tjdtjq5.SupaRun.Editor
                     _schemaError = "반영 실패 — Unity Console 을 확인하세요.";
                     _schemaLabel = null;
                 }
+            }
+            catch (Exception ex)
+            {
+                _schemaError = ex.Message;
+                _schemaLabel = null;
+            }
+            finally { _schemaRunning = false; }
+        }
+
+        static async UniTaskVoid RunRelease(
+            SupaRunSettings s, int logicVersion, int logicMin, string schema, string memo, string tag)
+        {
+            _schemaRunning = true;
+            _schemaError = null;
+            _schemaLabel = $"릴리스 실행 중 — logic {logicVersion}, {schema}";
+            try
+            {
+                var relId = await ReleaseOrchestrator.RunAsync(s, logicVersion, logicMin, schema, memo, tag);
+                if (relId != null) _schemaLabel = $"릴리스 완료 — {relId}";
+                else { _schemaError = "릴리스 실패 — 매니페스트의 단계 기록을 확인하세요."; _schemaLabel = null; }
             }
             catch (Exception ex)
             {

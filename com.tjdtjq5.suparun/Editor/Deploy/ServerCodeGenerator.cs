@@ -33,6 +33,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 GenerateEnvMigration(),
                 GenerateSnapshotMigration(),
                 GenerateVersionMigration(),
+                GenerateReleaseMigration(),
                 GenerateConfigMetaMigration(specTypes),
                 GenerateTypeCatalogMigration(specTypes),
                 GenerateAdminUserMigration(),
@@ -71,6 +72,7 @@ namespace Tjdtjq5.SupaRun.Editor
             files.Add(GenerateEnvMigration());
             files.Add(GenerateSnapshotMigration());
             files.Add(GenerateVersionMigration());
+            files.Add(GenerateReleaseMigration());
             files.Add(GenerateConfigMetaMigration(specTypes));
             files.Add(GenerateTypeCatalogMigration(specTypes));
             files.Add(GenerateTableMetaMigration(tableTypes));
@@ -908,8 +910,15 @@ END $$;
 
                 // 어드민이 Supabase 에 직접 쓰므로 쓰기 정책이 필요하다 (ADR-0004).
                 // 지금까지는 서버가 service_role 로 RLS 를 우회해 썼기에 정책이 없었다.
+                //
+                // 승격 전용 잠금(#50)이 식에 끼면서 DROP+CREATE 로 바꿨다 — IF NOT EXISTS 로는
+                // 기존 DB 가 옛 식(is_admin 만)에 머문다. prod(이름 규약)에서는 game-admin 이라도
+                // 직접 쓰기가 거부된다 — 데이터는 dev 에서 만들어 업로드→diff→게시 경로로만.
                 sb.AppendLine();
-                AppendPolicy(sb, tableName, "admin_write", "FOR ALL", "is_admin()", "is_admin()");
+                sb.AppendLine($"DROP POLICY IF EXISTS admin_write ON {tableName};");
+                sb.AppendLine($"CREATE POLICY admin_write ON {tableName} FOR ALL " +
+                              "USING (is_admin() AND NOT suparun_is_promote_only()) " +
+                              "WITH CHECK (is_admin() AND NOT suparun_is_promote_only());");
 
                 // 변경 이력은 트리거로 남긴다 — 클라이언트가 건너뛸 수 없다.
                 // [SpecData] 에만 단다. [UserData] 에 달면 게임 플레이마다 로그가 쌓여 폭발한다.
@@ -1319,6 +1328,18 @@ BEGIN
     );
 END $$;
 
+-- **승격 전용 환경인가** (ADR-0010 결정 7, #50). 이름 규약(prod 포함)으로 판정한다 —
+-- 어드민 타이틀바 경고색과 같은 규약이라 화면과 정책이 같은 말을 한다.
+-- 참이면 config 데이터의 PostgREST 직접 쓰기가 정책에서 거부된다(관리표는 제외).
+-- 게시(suparun_version_publish)는 SECURITY DEFINER 라 이 잠금과 무관하게 동작한다 —
+-- 경로가 하나면 사고도 하나다.
+CREATE OR REPLACE FUNCTION suparun_is_promote_only() RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+BEGIN
+    RETURN coalesce((SELECT value FROM suparun_env WHERE key = 'name'), '') ~* 'prod';
+END $$;
+
 -- ── 변경 이력 자동 기록 ──
 -- 어드민이 Supabase 에 직접 쓰게 되면서, 기록을 클라이언트에 맡기면 건너뛸 수 있어
 -- 감사가 무의미해진다. 트리거로 내리면 **어떤 경로로 고쳐도** 남는다.
@@ -1444,7 +1465,8 @@ BEGIN
 
     IF p_preset = 'public' THEN
         EXECUTE format('CREATE POLICY public_read ON %I FOR SELECT USING (true)', p_table);
-        EXECUTE format('CREATE POLICY admin_write ON %I FOR ALL USING (is_admin()) WITH CHECK (is_admin())', p_table);
+        -- 승격 전용 환경(#50)에서는 game-admin 이라도 config 직접 쓰기가 거부된다
+        EXECUTE format('CREATE POLICY admin_write ON %I FOR ALL USING (is_admin() AND NOT suparun_is_promote_only()) WITH CHECK (is_admin() AND NOT suparun_is_promote_only())', p_table);
 
     ELSIF p_preset = 'admin' THEN
         EXECUTE format('CREATE POLICY admin_all ON %I FOR ALL USING (is_admin()) WITH CHECK (is_admin())', p_table);
@@ -2063,6 +2085,7 @@ BEGIN
 END $$;
 
 -- ── diff: 행 단위 (#33) ──
+-- (릴리스 매니페스트는 _suparun_release.sql — 별 함수 의존이 없어 파일이 나뉘어도 안전하다)
 DROP FUNCTION IF EXISTS suparun_version_diff_rows(text, text, text);
 CREATE FUNCTION suparun_version_diff_rows(p_base text, p_new text, p_table text)
 RETURNS TABLE(row_id text, status text, before_json text, after_json text)
@@ -2108,6 +2131,59 @@ BEGIN
             v_b, p_table, v_n, p_table);
     END IF;
 END $$;
+");
+        }
+
+        /// <summary>
+        /// 릴리스 매니페스트 (ADR-0010 결정 5·6, #51).
+        ///
+        /// 릴리스 = 무엇이 함께 나갔는가의 기록이다: logic version(클라 호환 게이트), git SHA,
+        /// config 버전 해시, Cloud Run 리비전 태그, 메모, 게시 시각/행위자. 승격 오케스트레이션
+        /// (ReleaseOrchestrator)이 **순차 실행 + 단계별 기록**으로 이 표를 채운다 — 교차 시스템
+        /// 원자성은 주장하지 않는다(additive-only 스키마 전제).
+        /// </summary>
+        static GeneratedFile GenerateReleaseMigration()
+        {
+            return new GeneratedFile("Generated/Migrations/_suparun_release.sql",
+@"-- ══ 릴리스 매니페스트 (자동 생성, ADR-0010) ═══════════════════════════
+-- 한 릴리스로 무엇이 함께 나갔는가. 오케스트레이션의 단계별 성공/실패가 steps 에 쌓인다.
+
+CREATE TABLE IF NOT EXISTS suparun_release (
+    id            TEXT PRIMARY KEY,
+    logic_version INT NOT NULL,
+    logic_min     INT NOT NULL DEFAULT 1,
+    git_sha       TEXT,
+    content_hash  TEXT,
+    revision_tag  TEXT,
+    memo          TEXT,
+    status        TEXT NOT NULL DEFAULT 'running',
+    steps         JSONB NOT NULL DEFAULT '[]',
+    published_at  BIGINT,
+    published_by  TEXT,
+    created_at    BIGINT NOT NULL,
+    created_by    TEXT
+);
+
+ALTER TABLE suparun_release ENABLE ROW LEVEL SECURITY;
+
+-- 열람은 롤 보유자 전체, 쓰기는 game-admin. 관리표라 승격 전용 잠금(#50)의 대상이 아니다 —
+-- 릴리스는 prod 에서 만드는 조작 그 자체다.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_release' AND policyname = 'operator_read') THEN
+    CREATE POLICY operator_read ON suparun_release FOR SELECT USING (suparun_is_operator());
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_release' AND policyname = 'admin_write') THEN
+    CREATE POLICY admin_write ON suparun_release FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+  END IF;
+END $$;
+
+-- 릴리스도 감사에 남는다 — 이력의 이력이지만, 누가 릴리스 행을 고쳤는가는 다른 질문이다.
+DROP TRIGGER IF EXISTS audit_suparun_release ON suparun_release;
+CREATE TRIGGER audit_suparun_release
+  AFTER INSERT OR UPDATE OR DELETE ON suparun_release
+  FOR EACH ROW EXECUTE FUNCTION suparun_audit('id');
 ");
         }
 

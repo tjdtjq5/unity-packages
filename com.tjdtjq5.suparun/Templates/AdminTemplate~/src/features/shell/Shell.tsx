@@ -10,11 +10,13 @@ import { OpsPage } from '../ops/OpsPage'
 import { RolesPage } from '../roles/RolesPage'
 import { SetupProjectPage } from '../setup/SetupProjectPage'
 import { ComparePage } from '../versions/ComparePage'
+import { ReleasesPage } from '../versions/ReleasesPage'
 import { VersionsPage } from '../versions/VersionsPage'
 import { LoadingBlock } from '../../shared/Spinner'
 import { SecretsPage } from '../secrets/SecretsPage'
 import { SnapshotPage } from '../snapshot/SnapshotPage'
 import { TablePage } from '../table/TablePage'
+import { bridgeAvailable } from '../../shared/bridge'
 import { AdminProvider, type AdminContextValue, type ToolbarActions } from './AdminContext'
 import { EnvSwitcher } from './EnvSwitcher'
 import { KeymapHelp } from './KeymapHelp'
@@ -62,13 +64,13 @@ export function Shell({
   useEffect(() => {
     if (!data.ready || restored) return
     setRestored(true)
-    setRoute(
-      hashToRoute(
-        location.hash,
-        (tn) => data.types.some((t) => t.tableName === tn),
-        (tn) => data.tableTypes.some((t) => t.tableName === tn),
-      ),
+    const r = hashToRoute(
+      location.hash,
+      (tn) => data.types.some((t) => t.tableName === tn),
+      (tn) => data.tableTypes.some((t) => t.tableName === tn),
     )
+    // 호스팅본(#48)은 자기 환경 하나뿐이라 환경 선택이 무의미하다 — 곧장 환경 안(home)으로.
+    setRoute(!bridgeAvailable() && r.kind === 'environments' ? { kind: 'home' } : r)
   }, [data.ready, data.types, data.tableTypes, restored])
 
   const navigate = useCallback((r: Route) => {
@@ -99,6 +101,8 @@ export function Shell({
   useKeymap({ scrollTargetId: CONTENT_ID, onCycleConfig, onToggleHelp })
 
   const canWrite = roles.includes('game-admin')
+  // 승격 전용 판정(#50) — 타이틀바 경고색(isProd)과 같은 이름 규약을 쓴다.
+  const promoteOnly = /prod/i.test(data.envName || '')
 
   const ctx = useMemo<AdminContextValue>(
     () => ({
@@ -108,11 +112,12 @@ export function Shell({
       rewardSources: data.rewardSources,
       typeCatalog: data.typeCatalog,
       canWrite,
+      promoteOnly,
       setPageSubtitle: setSubtitle,
       navigate,
       setToolbarActions: setActions,
     }),
-    [data.types, data.tableTypes, data.fkSources, data.rewardSources, data.typeCatalog, canWrite, navigate],
+    [data.types, data.tableTypes, data.fkSources, data.rewardSources, data.typeCatalog, canWrite, promoteOnly, navigate],
   )
 
   const view = describeRoute(route, data.types, data.tableTypes)
@@ -227,8 +232,20 @@ export function Shell({
                       navigate({ kind: 'versions' })
                     }}
                   >
-                    <span className="branch">└─</span>
+                    <span className="branch">├─</span>
                     <span className="label">game_configs</span>
+                  </a>
+                  {/* 릴리스 매니페스트 (#51) — 무엇이 함께 나갔는가. 열람 전 롤, 생성은 로컬+game-admin. */}
+                  <a
+                    className={`tree-item${route.kind === 'releases' ? ' active' : ''}`}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate({ kind: 'releases' })
+                    }}
+                  >
+                    <span className="branch">└─</span>
+                    <span className="label">releases</span>
                   </a>
                 </div>
 
@@ -309,8 +326,9 @@ export function Shell({
                       <span className="label">user_roles</span>
                     </a>
                   )}
-                  {/* 운영·설정은 맨 아래다 — 되돌리기 어려운 일들이라 지나가다 누르는 자리가 아니다. */}
-                  {canWrite && (
+                  {/* 운영·설정은 맨 아래다 — 되돌리기 어려운 일들이라 지나가다 누르는 자리가 아니다.
+                      ops 는 Unity 를 시키는 화면이라 호스팅본(#48 — 브리지 없음)에는 아예 없다. */}
+                  {canWrite && bridgeAvailable() && (
                     <a
                       className={`tree-item${route.kind === 'ops' ? ' active' : ''}`}
                       href="#"
@@ -479,6 +497,8 @@ function describeRoute(
       return shell('Manage Game Configs', 'GAME_CONFIGS.SH', '~/game_configs')
     case 'compare':
       return shell('Compare Game Configs', 'GAME_CONFIGS.SH', '~/game_configs/compare')
+    case 'releases':
+      return shell('Manage Releases', 'RELEASES.SH', '~/releases')
     case 'home':
       return shell('Overview', 'DASHBOARD.SH', '~/admin')
   }
@@ -504,6 +524,17 @@ function ScreenContent({
         <i className="ti ti-lock" />
         <h3>game-admin 전용 화면입니다</h3>
         <p>현재 롤로는 조작 화면에 들어갈 수 없습니다.</p>
+      </div>
+    )
+  }
+
+  // ops 는 Unity(브리지)를 시키는 화면 — 호스팅본(#48)에는 시킬 Unity 가 없다.
+  if ((route.kind === 'ops' || route.kind === 'setup') && !bridgeAvailable()) {
+    return (
+      <div className="empty-state">
+        <i className="ti ti-plug-off" />
+        <h3>로컬 어드민 전용 화면입니다</h3>
+        <p>이 화면은 Unity 브리지가 필요합니다 — 개발 머신의 어드민에서 여세요.</p>
       </div>
     )
   }
@@ -544,6 +575,8 @@ function ScreenContent({
       return <VersionsPage />
     case 'compare':
       return <ComparePage base={route.base} next={route.next} />
+    case 'releases':
+      return <ReleasesPage />
     case 'home': {
       // 타입 메타가 오기 전에 "선택하세요"를 띄우면 사이드바가 비어 있는 이유를 오해하게 된다.
       if (!data.ready) return <LoadingBlock label="Config 목록 불러오는 중" />

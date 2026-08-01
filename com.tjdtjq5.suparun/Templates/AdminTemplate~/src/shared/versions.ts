@@ -92,3 +92,37 @@ export async function diffRows(base: string, next: string, table: string): Promi
   if (r.error) throw new Error(r.error.message)
   return r.data ?? []
 }
+
+// ── 릴리스 매니페스트 (#51, ADR-0010 결정 5) ──────────────────
+
+export interface ReleaseStep {
+  step: string
+  ok: boolean
+  at: number
+  detail?: string
+}
+
+export interface Release {
+  id: string
+  logic_version: number
+  logic_min: number
+  git_sha: string | null
+  content_hash: string | null
+  revision_tag: string | null
+  memo: string | null
+  status: 'running' | 'done' | 'failed'
+  steps: ReleaseStep[]
+  published_at: number | null
+  published_by: string | null
+  created_at: number
+  created_by: string | null
+}
+
+export async function listReleases(): Promise<Release[]> {
+  const r = await client()
+    .from('suparun_release')
+    .select<Release[]>('*')
+    .order('created_at', { ascending: false })
+  if (r.error) throw new Error(r.error.message)
+  return r.data ?? []
+}
