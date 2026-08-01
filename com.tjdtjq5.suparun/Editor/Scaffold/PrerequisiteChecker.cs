@@ -449,11 +449,14 @@ namespace Tjdtjq5.SupaRun.Editor
 
         static (string id, string name)[] _gcpProjectsCache;
         static string[] _ghReposCache;
-        static double _projectsCacheTime, _reposCacheTime;
+        // ⚠ `EditorApplication.timeSinceStartup` 이 아니라 UtcNow 다.
+        // 이 둘은 브리지가 **스레드풀에서** 부른다(CLI 대기 동안 에디터를 얼리지 않으려고).
+        // Unity API 는 메인 스레드 전용이라 거기서 만지면 예외가 난다.
+        static System.DateTime _projectsCacheAt, _reposCacheAt;
 
         public static (string id, string name)[] GetGcpProjects()
         {
-            if (_gcpProjectsCache != null && EditorApplication.timeSinceStartup - _projectsCacheTime < 60)
+            if (_gcpProjectsCache != null && (System.DateTime.UtcNow - _projectsCacheAt).TotalSeconds < 60)
                 return _gcpProjectsCache;
 
             var path = FindGcloud();
@@ -470,13 +473,13 @@ namespace Tjdtjq5.SupaRun.Editor
                     return (parts[0].Trim(), parts.Length > 1 ? parts[1].Trim() : "");
                 })
                 .ToArray();
-            _projectsCacheTime = EditorApplication.timeSinceStartup;
+            _projectsCacheAt = System.DateTime.UtcNow;
             return _gcpProjectsCache;
         }
 
         public static string[] GetGhRepos()
         {
-            if (_ghReposCache != null && EditorApplication.timeSinceStartup - _reposCacheTime < 60)
+            if (_ghReposCache != null && (System.DateTime.UtcNow - _reposCacheAt).TotalSeconds < 60)
                 return _ghReposCache;
 
             var path = FindGh();
@@ -489,7 +492,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 .Where(line => !string.IsNullOrEmpty(line.Trim()))
                 .Select(line => line.Trim())
                 .ToArray();
-            _reposCacheTime = EditorApplication.timeSinceStartup;
+            _reposCacheAt = System.DateTime.UtcNow;
             return _ghReposCache;
         }
 
@@ -537,6 +540,93 @@ namespace Tjdtjq5.SupaRun.Editor
             Run(ghPath, $"secret set CLOUD_RUN_REGION --repo {ghRepo} --body {region}");
 
             return (true, email, null);
+        }
+
+        // ── 설치 명령 ──
+        // 링크만 주면 사이트에 가서 받아 눌러야 한다. 복사해 붙일 수 있는 한 줄이 훨씬 빠르다.
+
+        /// <summary>이 플랫폼에서 그 도구를 까는 한 줄. 화면이 복사 버튼으로 내놓는다.</summary>
+        public static string InstallCommand(string tool) => tool switch
+        {
+            "gcloud" => IsWindows
+                ? "winget install --id Google.CloudSDK -e"
+                : "brew install --cask google-cloud-sdk",
+            "gh" => IsWindows
+                ? "winget install --id GitHub.cli -e"
+                : "brew install gh",
+            "dotnet" => IsWindows
+                ? "winget install --id Microsoft.DotNet.SDK.8 -e"
+                : "brew install --cask dotnet-sdk",
+            _ => null,
+        };
+
+        // ── 결제 계정 ──
+        // 자동 설정 실패의 최다 원인이다. 지금까지는 수십 초 기다렸다 실패한 **뒤에야** 알았다.
+        // 누르기 전에 알 수 있으면 그 시간을 통째로 아낀다.
+
+        static string _billingProject;
+        static bool? _billingEnabled;
+
+        public static void InvalidateBillingCache() => _billingProject = null;
+
+        /// <summary>이 프로젝트에 결제 계정이 붙어 있는가. 프로젝트가 바뀌면 다시 묻는다.</summary>
+        public static bool IsBillingEnabled(string projectId)
+        {
+            if (string.IsNullOrEmpty(projectId)) return false;
+            if (_billingProject == projectId && _billingEnabled.HasValue) return _billingEnabled.Value;
+
+            var gcloud = FindGcloud() ?? "gcloud";
+            var (code, output) = Run(gcloud,
+                $"billing projects describe {projectId} --format=value(billingEnabled)");
+
+            _billingProject = projectId;
+            _billingEnabled = code == 0 && output.Trim().ToLowerInvariant() == "true";
+            return _billingEnabled.Value;
+        }
+
+        /// <summary>계정 목록. `(id, 표시이름)` — id 는 `billingAccounts/XXXX-...` 형태다.</summary>
+        public static (string id, string name)[] GetBillingAccounts()
+        {
+            var gcloud = FindGcloud() ?? "gcloud";
+            var (code, output) = Run(gcloud,
+                "billing accounts list --filter=open=true --format=value(name,displayName)");
+            if (code != 0 || string.IsNullOrWhiteSpace(output)) return new (string, string)[0];
+
+            return output
+                .Split('\n')
+                .Select(l => l.Trim())
+                .Where(l => l.Length > 0)
+                .Select(l =>
+                {
+                    var parts = l.Split('\t');
+                    var id = parts[0].Trim();
+                    var name = parts.Length > 1 ? parts[1].Trim() : id;
+                    return (id, name);
+                })
+                .ToArray();
+        }
+
+        public static (bool success, string error) LinkBilling(string projectId, string billingAccount)
+        {
+            var gcloud = FindGcloud() ?? "gcloud";
+            var (code, output) = Run(gcloud,
+                $"billing projects link {projectId} --billing-account={billingAccount}");
+
+            InvalidateBillingCache();
+            return code == 0 ? (true, null) : (false, output);
+        }
+
+        // ── GCP 프로젝트 생성 ──
+        // 지금까지는 드롭다운에 없으면 콘솔로 나가야 했다. Supabase 쪽엔 [새 프로젝트]가 있어 비대칭이었다.
+
+        public static (bool success, string error) CreateGcpProject(string projectId, string displayName)
+        {
+            var gcloud = FindGcloud() ?? "gcloud";
+            var name = string.IsNullOrWhiteSpace(displayName) ? projectId : displayName;
+            var (code, output) = Run(gcloud,
+                $"projects create {projectId} --name=\"{name}\"");
+
+            return code == 0 ? (true, null) : (false, output);
         }
 
         // ── 실행 ──

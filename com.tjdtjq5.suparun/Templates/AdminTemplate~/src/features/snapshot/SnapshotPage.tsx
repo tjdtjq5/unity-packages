@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { queueIdConstants } from '../../shared/idsync'
 import { LoadingBlock, Spinner } from '../../shared/Spinner'
 import type { Snapshot } from '../../shared/snapshot'
 import { toast } from '../../shared/toast'
@@ -32,6 +33,8 @@ export function SnapshotPage() {
     const backup = await restore(s.schema_name)
     setRestoring(null)
     if (backup) {
+      // 복원은 PK 집합째 되돌린다 — Id 상수도 따라가야 한다. 곧 리로드되므로 즉시 발사.
+      queueIdConstants(true)
       toast(`"${s.label}" 로 복원됨 — 직전 상태는 ${backup}`, 'success')
       // 복원은 보고 있던 표까지 바꾼다. 낡은 화면을 그대로 두면 다음 편집이 옛 값 위에 얹힌다.
       setTimeout(() => location.reload(), 900)

@@ -5,7 +5,9 @@
 
 ## 의존성
 
-- `../AspNetTemplate~/` — 서버가 `/admin` 경로로 이 페이지를 정적 파일로 서빙
+- **로컬 브리지 전용** — `SupaRunBridge.ServeAdmin` 이 유일한 서빙 경로다. 배포(서버 `/admin`)는
+  없다: 공개 URL 에선 로그인이 유일한 문인데 그 로그인을 기계 계정 자동화로 없앴기 때문.
+  접근 통제는 Supabase 조직 멤버십(각자 PAT)이 맡는다
 - 외부 CDN: Tabler CSS/JS, Bootstrap 5, Supabase JS v2, Chart.js, Sortable
 - 빌드: vite 8 + React 19 + TypeScript 7 (`@xyflow/react` 는 노드 그래프용, ADR-0002)
 
@@ -25,14 +27,20 @@ AdminTemplate~/
 │   ├── shared/         api / supabase / toast / types / Modal / Spinner / snapshot / policy
 │   │                   colResize / castValue / env / chart / db / meta
 │   └── features/       화면 단위 폴더
-│       ├── auth/       로그인 · 세션 구독
 │       ├── shell/      껍데기 — 레이아웃·사이드바·툴바·라우팅·키맵·AdminContext
+│       │               EnvSwitcher(타이틀바 환경 드롭다운) / TitlebarClock(시계)
 │       ├── nodegraph/  [NodeGraph] 컬럼이 여는 노드 캔버스 (ADR-0002)
 │       │               NodeGraphModal / GraphNode / graphIO / validate / nodegraph.css
-│       ├── snapshot/   [SpecData] 시점 저장·복원 — SnapshotPage / RestoreModal /
-│       │               QuickSnapshotButton(타이틀바) / useSnapshots
-│       ├── environment/ 환경(dev/prod) 현황 카드 — EnvironmentPage
-│       └── …           admins / audit / table / config
+│       ├── snapshot/   [SpecData] 시점 저장·복원 — SnapshotPage / RestoreModal / useSnapshots
+│       ├── environment/ 환경 현황 카드 · 이 환경 설정(환경 안)
+│       │               EnvironmentPage / EnvSettingsPage / AuthProvidersBlock
+│       ├── setup/      첫 셋업(온보딩)과 미연결 프로젝트 셋업
+│       │               OnboardingPage / SetupProjectPage
+│       ├── deploy/     배포 대상 체크리스트 — DeployBlock
+│       ├── ops/        **Unity 를 시키는 화면** — 스키마 반영·Id 상수·배포·승격. OpsPage
+│       ├── logs/       서버 로그(`server_log`) — LogsPage
+│       ├── secrets/    이 환경의 비밀 — SecretsPage (값은 절대 표시하지 않는다)
+│       └── …           audit / table / config  (auth·admins 폴더는 없다 — 아래 인증 참조)
 │
 ├── node_modules/       (gitignore)
 └── dist/               ← 빌드 산출물. **커밋한다** (소비 프로젝트는 Node 불필요)
@@ -81,27 +89,68 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다(바
 
 > ⚠ **`position: fixed` 인 오버레이는 반드시 `document.body` 로 portal 한다.**
 > 바닐라가 `document.body.appendChild()` 로 붙이던 것을 React 이관 때 셀 안에 그대로 렌더하면
-> 표 레이아웃에 갇혀 엉뚱한 곳에 뜬다. 해당 요소는 `.icon-grid-overlay`(모달)와 `.ss-pop`(검색 드롭다운).
-> 모달은 `shared/Modal.tsx`, 드롭다운은 `SearchSelect` 가 각각 portal + 좌표 계산을 담당한다.
-> z-index 순서: `.ss-pop`(1100) > `.icon-grid-overlay`(1090) — 모달 안에서도 드롭다운이 보여야 한다.
+> 표 레이아웃에 갇혀 엉뚱한 곳에 뜬다. 해당 요소는 `.icon-grid-overlay`(모달)·`.ss-pop`(검색 드롭다운)·
+> `.tb-env-menu`(타이틀바 환경 드롭다운 — 타이틀바 z 1000 안에 그리면 사이드바 navbar z 1030 이 덮는다).
+> 모달은 `shared/Modal.tsx`, 드롭다운은 `SearchSelect`/`EnvSwitcher` 가 각각 portal + 좌표 계산을 담당한다.
+> z-index 순서: `.tb-env-menu`(1200) > `.ss-pop`(1100) > `.icon-grid-overlay`(1090) — 모달 안에서도 드롭다운이 보여야 한다.
 
 ## 플레이스홀더 변수
 
-배포 시 SupaRun이 아래 플레이스홀더를 실제 값으로 치환합니다.
+브리지가 서빙할 때 실제 값으로 치환합니다(`SupaRunBridge.InjectEnvAsync` — 런타임 주입이라
+환경을 바꿔도 재빌드가 없다). 같은 자리에서 `__SUPARUN_BRIDGE`(포트·토큰)와
+`__SUPARUN_SESSION`(기계 계정 세션)도 함께 꽂힌다.
 
 | 플레이스홀더 | 타입 | 설명 |
 |-------------|------|------|
 | `{{SUPABASE_URL}}` | string | Supabase 프로젝트 URL (`https://xxx.supabase.co`) |
 | `{{SUPABASE_ANON_KEY}}` | string | Supabase Anonymous Key |
-| `{{AUTH_PROVIDERS_JSON}}` | JSON 배열 | OAuth 프로바이더 목록 (예: `["google","kakao"]`) |
 
 ## 주요 기능
 
-### 인증
-- **이메일 로그인/회원가입**: Supabase Auth `signInWithPassword` / `signUp`
-- **OAuth 로그인**: `{{AUTH_PROVIDERS_JSON}}`에 설정된 프로바이더 동적 생성 (Google, Kakao, Apple)
-- **세션 관리**: `onAuthStateChange`로 토큰 자동 갱신, 만료 시 재로그인 유도
-- **첫 번째 가입자 자동 admin 승인**: `admin_users` 테이블 비어있으면 첫 유저가 admin
+### 인증 — **사람 로그인이 없다** (기계 계정 자동 로그인)
+
+- 이 페이지는 로컬 브리지 전용이고, 연 사람은 이미 브리지 토큰(=PAT 대행 전권)을 쥐고 있다.
+  로그인 화면은 전권자에게 또 세운 문이었다 — **접근 통제는 Supabase 조직 멤버십(각자 PAT)**
+- RLS 가 요구하는 세션은 브리지가 **기계 계정**(`{OS계정}.{머신명}@suparun.local`)으로 만들어
+  `window.__SUPARUN_SESSION` 으로 꽂아 준다 — Unity 쪽 `SupaRunMachineAccount` 참조.
+  App 이 `setSession` 으로 싣고, 이후 갱신은 supabase-js 가 refresh_token 으로 알아서 한다
+- 첫 관리자 매듭(`admin_user` 가 비면 아무도 못 씀)도 브리지가 PAT 로 스스로 푼다 —
+  버튼도 가입도 없다. 감사로그(updated_by)에는 기계 계정 이메일이 남아 사람이 읽힌다
+- 401/403 이나 세션 주입 실패는 안내 화면 하나로 수렴한다(원인은 Unity Console)
+
+> 로그인 방식은 네 번 바뀌었다. OAuth 만(프로바이더 앱 등록 ~10분) → 매직링크(기본 메일
+> **시간당 2통**) → 이메일+비밀번호(메일 미사용) → **기계 계정 자동 로그인**(사람 로그인 소멸,
+> 2026-08-01). jwt_secret 직접 서명안은 기각 — Supabase 신규 프로젝트가 비대칭 서명키로
+> 넘어가면 서명 비밀 자체를 못 얻는다. 정식 발급 창구(Auth)에 줄서는 쪽이 체계와 무관하다.
+
+### 서버 로그 (`[SYSTEM] > server_log`)
+
+레벨 필터(전체/error/warn) · 50개 페이징 · 행을 눌러 스택트레이스와 request body 를 편다.
+
+> ⚠ 이 화면은 옛 Unity 대시보드의 Monitor 탭이었고, 그쪽은 **anon key** 로 읽었다.
+> 그래서 `server_log` 는 RLS 를 켠 적이 없었다 — anon key 는 게임 빌드에서 뽑히므로
+> request_body·player_id·스택트레이스가 사실상 공개였다. 어드민은 관리자 세션으로 읽으므로
+> 그 표를 잠글 수 있고, `admin_read` 정책이 함께 들어갔다. 서버는 직접 Postgres 연결(표 소유자)로
+> 쓰므로 RLS 를 타지 않는다.
+
+### 운영 (`[SYSTEM] > ops`)
+
+**Unity 를 시키는 화면.** 옛 대시보드 Deploy 탭이 통째로 여기로 왔다.
+
+| 블록 | 내용 |
+|---|---|
+| 배포 | **스키마 선반영** → idle → verifying → deploying → tracking → success/failed/skipped |
+| 승격 | 대상 환경 선택 → ① 스키마 반영 ② 데이터 승격 |
+
+스키마·Id 상수 블록은 없다 — 스키마는 자동을 켠 환경(설정 토글)은 컴파일이, 끈 환경은
+배포가(선반영, 실패 시 중단) 밀고, **Id 상수는 행 추가/삭제/복사·스냅샷 복원 때 어드민이
+자동 트리거한다**(`shared/idsync.ts` — 디바운스 2.5초, 정책 판정은 브리지, 생성기에 내용 비교
+가드가 있어 PK 집합이 안 바뀌면 재컴파일 없음).
+
+- **확인은 여기서 받는다.** 브리지는 받은 대로 실행한다 — Unity 쪽에서 모달을 띄우면
+  브라우저는 눌린 줄 알고 기다리는데 그 모달은 Unity 창 뒤에 숨는다
+- **되돌리기 비싼 것만** 확인을 받는다(승격). 스키마 반영·Id 생성은 그냥 실행한다
+- 진행 중일 때만 3초 폴링한다. 가만히 있는 화면을 두드리지 않는다
 
 ### Config CRUD
 - **사이드바**: Config 타입별 그룹/비그룹 네비게이션, `/_types` API로 자동 생성
@@ -178,8 +227,35 @@ dev / prod 각각을 카드 하나로. 왼쪽은 신원(무엇인가), 오른쪽
   그 자리에 커넥션 사용량을 넣었고, 이쪽이 실제로 겪을 수 있는 문제다
 - 추이 그래프도 뺐다. 메트릭 API 가 주는 것은 **현재값 스냅샷** 하나뿐이라 시계열을 그리려면
   누군가 주기적으로 쌓아야 하는데, 브라우저는 탭이 닫히면 멈춘다
-- 카드에 `에디터` / `빌드` 배지를 띄운다 — 어느 환경이 컴파일 대상이고 어느 것이 빌드에 구워지는지가
-  이 프로젝트에서 실제로 사고를 막는 정보다
+- 카드에 `에디터` 배지를 띄운다 — 어느 환경이 컴파일·빌드 대상인지가 사고를 막는 정보다
+  (`빌드` 배지는 없다 — 빌드 = 편집 환경)
+- **카드 클릭 = 입장.** 로컬(브리지)에서는 연결된 환경이면 **전환 입장**(편집 환경 전환 + 리로드 —
+  컴파일 대상도 같이 바뀐다. prod 여도 묻지 않는다: 카드 클릭이 곧 의도), 미연결 프로젝트면
+  **셋업 화면**(`setup/<ref>`)으로 들어간다. 배포 어드민(브리지 없음)은 예전대로 —
+  배포된 환경만 새 탭, 미연결은 입장 불가
+
+### 설정 (`[SYSTEM] > settings`) — 환경 안
+
+한때 앱 레벨(환경을 고르기 전)에 있었으나 내용물이 전부 특정 프로젝트의 값이라 환경 안으로 옮겼다.
+"환경 슬롯" 리스트는 **해체됐다** — ①연결·이름 짓기는 미연결 카드 입장 후 `SetupProjectPage` 에서,
+②편집 환경 전환은 카드 클릭(전환 입장)으로, ③빌드 지정·연결 해제는 이 화면에서 한다.
+
+| 블록 | 내용 |
+|---|---|
+| 이 환경 | 이름(브리지 op `/ops/env-rename` — 슬롯·해시파일·DB 동시 갱신) · **컴파일 후 자동 스키마 반영 토글** · **행 편집 시 Id 상수 자동 생성 토글**(둘 다 환경별 팀 공유값 — Unity 설정 파일, git diff 발생. dev만 켜는 것이 의도) |
+| 배포 | DeployBlock 체크리스트 (변화 없음) |
+| 게임 로그인 | 플레이어 로그인 수단만 (어드민 웹 프로바이더 블록은 인증 개편으로 소멸) |
+| 위험 영역 | **이 프로젝트만** — 연결 해제(슬롯만 삭제) · 프로젝트 삭제. 다른 프로젝트는 거기 들어가서 지운다 |
+
+> **이름의 진실은 슬롯(Unity 설정)이다.** DB(`suparun_env.name`)는 사본 — 셋업/이름 변경 때
+> 브리지가 박아 준다. DB 만 고치면 카드(DB 이름)와 슬롯(Unity 이름)이 서로 다른 이름을 말한다.
+
+### 미연결 프로젝트 셋업 (`setup/<ref>`) — 로컬 전용
+
+미연결 카드로 들어와 이름을 정하면 멈추지 않고 끝까지 간다:
+슬롯 생성 → 연결(키 수신) → **편집 환경 전환(자동 — prod 이름이어도 묻지 않는다)** → 스키마 반영
+시작 → 리로드. 리로드 뒤는 온보딩이 이어받아 반영 진행과 첫 관리자 등록을 처리한다.
+빈 슬롯(이름만 미리 만들기) 흐름은 사라졌다 — 이름 짓기가 여기로 왔기 때문이다.
 
 ### 스냅샷 / 복원 (`[SYSTEM] > snapshots`)
 
@@ -213,6 +289,11 @@ dev / prod 각각을 카드 하나로. 왼쪽은 신원(무엇인가), 오른쪽
 - **가져오기**: JSON 파일 업로드로 기존 데이터 교체 (`/_import`)
 
 ### UI/UX
+- **타이틀바 = "지금 어디에 누구로, 언제인가"** — `SUPARUN.ADMIN :: [환경 ▾] › 화면` 경로 +
+  시계(`YY.MM.DD HH:mm:ss`, 배지 클릭으로 로컬↔UTC 토글·localStorage 기억).
+  환경 드롭다운은 로컬(브리지)에서 **확인창 없는 즉시 전환 입장**(카드 클릭과 같은 결정),
+  배포 어드민에선 표시 전용 칩(클릭=환경 화면). prod 강조는 일부러 없다(사용자 결정).
+  사이드바 상태줄의 `env` 행은 "dev" 하드코딩 거짓 표시라 제거했다
 - Tabler CSS 프레임워크 (다크 사이드바 + 라이트 콘텐츠)
 - Toast 알림 (success/error/info, 3초 자동 소멸)
 - **로딩 표시** — `shared/Spinner.tsx` 3종. 모양은 CSS `.sr-spinner` 하나가 갖는다

@@ -116,9 +116,21 @@ namespace Tjdtjq5.SupaRun.Editor
             if (files.Count > 0)
             {
                 Directory.CreateDirectory(outputDir);
+                // 내용이 같으면 건드리지 않는다 — 자동 트리거(어드민 행 편집)마다 무조건 쓰면
+                // 값만 고쳐도 재컴파일이 돈다. 바뀐 파일이 있을 때만 Refresh 를 부른다.
+                var wrote = 0;
                 foreach (var (name, content) in files)
-                    File.WriteAllText(Path.Combine(outputDir, name), content);
-                AssetDatabase.Refresh();
+                {
+                    var path = Path.Combine(outputDir, name);
+                    if (File.Exists(path) && File.ReadAllText(path) == content) continue;
+                    File.WriteAllText(path, content);
+                    wrote++;
+                }
+                if (wrote > 0)
+                {
+                    AssetDatabase.Refresh();
+                    UnityEngine.Debug.Log($"[SupaRun] Id 상수 갱신 — {wrote}개 파일. 컴파일이 이어집니다.");
+                }
             }
 
             result.Ok = result.Errors.Count == 0;

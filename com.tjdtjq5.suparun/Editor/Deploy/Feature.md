@@ -26,15 +26,13 @@
 
 ## 환경 (dev / prod …)
 
-설정은 `SupaRunSettings.EnvironmentData` 목록으로 들고, **편집 환경**과 **빌드 환경**을 따로 가리킨다.
+설정은 `SupaRunSettings.EnvironmentData` 목록으로 들고, 선택 축은 **편집 환경 하나뿐이다** —
+컴파일 시 스키마 자동 반영(환경별 `autoSchemaSync` 가 켜진 경우)·어드민·에디터 플레이·
+**게임 빌드 산출물**(`Resources/SupaRunConfig.json`)이 전부 이걸 따라간다.
 
-| 축 | 무엇이 따라가는가 |
-|---|---|
-| `editorEnvironment` | 컴파일 시 스키마 자동 반영 · 어드민 · 대시보드 · 에디터 플레이 |
-| `buildEnvironment` | 빌드 산출물의 `Resources/SupaRunConfig.json` |
-
-둘을 나눈 이유는 **dev 를 보면서 prod 빌드를 뽑는 것이 정상 상태**이기 때문이다. 하나로 묶으면
-빌드마다 편집 환경을 바꿔야 하고, 되돌리기를 잊으면 그 다음 컴파일이 라이브 스키마를 건드린다.
+빌드 환경 포인터는 없앴다(2026-08-01). "dev 를 보며 prod 빌드" 를 위해 축을 나눴었지만,
+환경 전환이 드롭다운 한 번이 된 뒤로는 출시 빌드 전에 prod 로 전환하는 쪽이 더 단순하다.
+prod 편집 중 컴파일이 라이브 스키마를 건드리는 문제는 환경별 자동 반영 OFF 가 구조로 막는다.
 
 - `settings.supabaseUrl` 등 기존 프로퍼티는 **현재 편집 환경의 값**을 돌려준다.
   덕분에 `SupaRunSettings` 를 참조하는 20여 곳이 수정 없이 환경을 따라간다

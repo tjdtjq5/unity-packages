@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listProjects, type SupabaseProject } from '../../shared/projects'
 import {
-  formatAge,
   formatBytes,
   isHealthy,
   levelOf,
@@ -9,7 +8,10 @@ import {
   type EnvironmentInfo,
 } from '../../shared/environments'
 import { env as suparunEnv } from '../../shared/env'
+import { bridgeAvailable } from '../../shared/bridge'
+import { ops } from '../../shared/ops'
 import { LoadingBlock, Spinner } from '../../shared/Spinner'
+import { toast } from '../../shared/toast'
 import { useAdmin } from '../shell/AdminContext'
 import { CreateProjectModal } from './CreateProjectModal'
 
@@ -120,16 +122,20 @@ export function EnvironmentPage() {
           <p>Unity 대시보드에서 어드민을 한 번 열면 현황이 기록됩니다.</p>
         </div>
       ) : (
-        cards.map((c) => (
-          <EnvCard
-            key={c.key}
-            env={c.env}
-            project={c.project}
-            busy={false}
-            isHere={!!here && (c.project?.ref ?? c.env?.project_ref) === here}
-            onEnter={() => navigate({ kind: 'home' })}
-          />
-        ))
+        cards.map((c) => {
+          const ref = c.project?.ref ?? c.env?.project_ref
+          return (
+            <EnvCard
+              key={c.key}
+              env={c.env}
+              project={c.project}
+              busy={false}
+              isHere={!!here && ref === here}
+              onHome={() => navigate({ kind: 'home' })}
+              onSetup={() => ref && navigate({ kind: 'setup', projectRef: ref })}
+            />
+          )
+        })
       )}
 
       {creating && (
@@ -150,33 +156,56 @@ function EnvCard({
   project: p,
   busy,
   isHere,
-  onEnter,
+  onHome,
+  onSetup,
 }: {
   env?: EnvironmentInfo
   project?: SupabaseProject
   busy: boolean
-  /** 이 어드민이 붙어 있는 프로젝트인가. 그러면 입장이 화면 전환이고, 아니면 다른 사이트로 이동이다. */
+  /** 이 어드민이 붙어 있는 프로젝트인가. 그러면 입장이 화면 전환이고, 아니면 이동이다. */
   isHere: boolean
-  onEnter: () => void
+  onHome: () => void
+  /** 미연결 프로젝트의 셋업 화면으로. 로컬(브리지)에서만 불린다. */
+  onSetup: () => void
 }) {
   // 이름은 환경명이 있으면 그것, 없으면 프로젝트명. 환경 이름이 사람이 부르는 이름이다.
   const label = e?.name ?? p?.name ?? '(이름 없음)'
   const projectRef = p?.ref ?? e?.project_ref
   const status = p?.status ?? e?.status
   const region = p?.region ?? e?.region
+  const local = bridgeAvailable()
+  /** 전환 입장 진행 중 — selectEnv 가 돌아오면 페이지째 리로드된다. */
+  const [entering, setEntering] = useState(false)
 
   const paused = status === 'INACTIVE'
   const starting = status === 'COMING_UP' || status === 'RESTORING' || busy
   const healthy = !paused && !starting && (e ? isHealthy(e) : status === 'ACTIVE_HEALTHY')
   const linked = !!e
-  // 들어갈 수 있는 조건: 여기이거나(화면 전환), 배포된 다른 환경이거나(새 탭 + 재로그인)
-  const canEnter = healthy && (isHere || !!e?.cloud_run_url)
+  // 입장은 로컬(브리지)뿐이다 — 배포 어드민은 없다(어드민은 로컬 전용, 접근 통제는
+  // Supabase 조직 멤버십). 연결 환경은 편집 환경 전환+리로드로, 미연결은 셋업 화면으로.
+  const canEnter = healthy && (isHere || local)
 
   function enter() {
-    if (!canEnter) return
-    if (isHere) onEnter()
-    else if (e?.cloud_run_url)
-      window.open(`${e.cloud_run_url.replace(/\/$/, '')}/admin`, '_blank', 'noopener')
+    if (!canEnter || entering) return
+    if (isHere) {
+      onHome()
+      return
+    }
+    if (!local) return
+    if (!linked) {
+      onSetup()
+      return
+    }
+    // 전환 입장 — 편집 환경을 옮기고 리로드하면 브리지가 새 환경 값을 다시 꽂는다.
+    // 컴파일 대상도 함께 바뀐다. prod 여도 묻지 않는 것이 이 화면의 결정이다(카드 클릭이 곧 의도).
+    setEntering(true)
+    ops
+      .selectEnv(e!.name)
+      .then(() => window.location.reload())
+      .catch((err) => {
+        toast(err instanceof Error ? err.message : String(err), 'error')
+        setEntering(false)
+      })
   }
 
   const diskPercent =
@@ -201,7 +230,7 @@ function EnvCard({
     >
       <div className="env-card-side">
         <div className="env-card-title">
-          {starting ? (
+          {starting || entering ? (
             <Spinner size={11} />
           ) : (
             <span className={`env-dot ${healthy ? 'ok' : paused ? 'paused' : 'down'}`} />
@@ -217,7 +246,7 @@ function EnvCard({
           </span>
           {isHere && <span className="env-badge here">현재 위치</span>}
           {e?.is_editor && <span className="env-badge editor">에디터</span>}
-          {e?.is_build && <span className="env-badge build">빌드</span>}
+          {/* 빌드 뱃지는 없다 — 빌드 = 편집 환경(빌드 환경 포인터 삭제) */}
           {/* 환경에 안 붙은 프로젝트 — 만들었지만 아직 역할이 없다 */}
           {!linked && <span className="env-badge">미연결</span>}
         </div>
@@ -234,16 +263,13 @@ function EnvCard({
             </>
           )}
           <dt>도메인</dt>
+          {/* 게임 서버 도메인 — 표시만 한다. 배포 어드민이 없으니 열 곳도 없다. */}
           <dd className="env-domain" title={e?.cloud_run_url ?? p?.url ?? ''}>
-            {e?.cloud_run_url ? (
-              <a href={e.cloud_run_url} target="_blank" rel="noreferrer">
-                {stripScheme(e.cloud_run_url)}
-              </a>
-            ) : p?.url ? (
-              stripScheme(p.url)
-            ) : (
-              '미배포'
-            )}
+            {e?.cloud_run_url
+              ? stripScheme(e.cloud_run_url)
+              : p?.url
+                ? stripScheme(p.url)
+                : '미배포'}
           </dd>
           {projectRef && (
             <>
@@ -292,49 +318,30 @@ function EnvCard({
               />
             </div>
 
-            {e.services && (
-              <div className="env-services">
-                {Object.entries(e.services).map(([name, ok]) => (
-                  <span key={name} className={`env-service ${ok ? 'ok' : 'down'}`}>
-                    {ok ? '●' : '○'} {name}
-                  </span>
-                ))}
-              </div>
-            )}
           </>
         ) : (
           // 환경에 안 붙은 프로젝트는 지표를 모은 적이 없다. 무엇을 해야 하는지만 말한다.
           <div className="env-unlinked">
             아직 환경에 연결되지 않았습니다.
             <br />
-            Unity 대시보드 &gt; Settings 에서 이 프로젝트를 환경으로 등록하면 지표가 표시됩니다.
+            {local
+              ? '들어가서 이름을 붙이고 셋업하면 환경이 됩니다.'
+              : '로컬 어드민(Unity)에서 들어가 셋업할 수 있습니다.'}
           </div>
         )}
 
         {/* 카드 전체가 진입점이다 — 되돌릴 수 없는 조작은 설정으로 옮겼다.
-            들어가려다 지우는 사고를 구조로 막는다. */}
-        <div className="env-enter-hint">
-          {canEnter ? (
-            isHere ? (
-              <>
-                <i className="ti ti-login me-1" />
-                눌러서 입장
-              </>
-            ) : (
-              <>
-                <i className="ti ti-external-link me-1" />
-                눌러서 이 환경 열기 (다시 로그인해야 합니다)
-              </>
-            )
-          ) : paused ? (
-            <span className="text-muted">일시정지 상태입니다 — 설정에서 깨울 수 있습니다</span>
-          ) : !linked ? (
-            <span className="text-muted">환경에 연결되지 않아 입장할 수 없습니다</span>
-          ) : null}
-        </div>
-
-        {/* 실시간이 아니라는 사실을 숨기지 않는다 */}
-        {e && <div className="env-collected">Unity 가 수집: {formatAge(e.collected_at)}</div>}
+            들어가려다 지우는 사고를 구조로 막는다.
+            들어갈 수 없을 때만 이유를 적는다. 들어갈 수 있으면 커서와 뱃지로 이미 보인다. */}
+        {!canEnter && (
+          <div className="env-enter-hint">
+            {paused ? (
+              <span className="text-muted">일시정지 상태입니다 — 설정에서 깨울 수 있습니다</span>
+            ) : !linked ? (
+              <span className="text-muted">로컬 어드민에서만 셋업할 수 있습니다</span>
+            ) : null}
+          </div>
+        )}
       </div>
     </div>
   )

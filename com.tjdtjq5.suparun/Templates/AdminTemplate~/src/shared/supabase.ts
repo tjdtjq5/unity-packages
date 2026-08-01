@@ -10,6 +10,8 @@ import { env } from './env'
  */
 
 export interface SupabaseUser {
+  /** `admin_user.user_id` 와 맞춰 관리자 여부를 확인할 때 쓴다(shared/bridge.ts). */
+  id?: string
   email?: string
 }
 
@@ -22,25 +24,17 @@ interface AuthError {
   message: string
 }
 
-export type AuthEvent =
-  | 'INITIAL_SESSION'
-  | 'SIGNED_IN'
-  | 'SIGNED_OUT'
-  | 'TOKEN_REFRESHED'
-  | 'USER_UPDATED'
-  | 'PASSWORD_RECOVERY'
-
 interface SupabaseAuth {
-  // 이메일/비밀번호 로그인은 쓰지 않는다 — 어드민 진입은 OAuth 전용이다.
-  signInWithOAuth(o: {
-    provider: string
-    options?: { redirectTo?: string }
+  /**
+   * 브리지가 주입한 기계 계정 세션을 싣는다. **사람 로그인은 없다** —
+   * 이후 갱신(refresh)은 supabase-js 가 refresh_token 으로 알아서 한다.
+   */
+  setSession(o: {
+    access_token: string
+    refresh_token: string
   }): Promise<{ error: AuthError | null }>
-  signOut(): Promise<unknown>
+
   getSession(): Promise<{ data: { session: SupabaseSession | null } }>
-  onAuthStateChange(cb: (event: AuthEvent, session: SupabaseSession | null) => void): {
-    data: { subscription: { unsubscribe(): void } }
-  }
 }
 
 // ── PostgREST 쿼리 (ADR-0004) ──────────────────────────────

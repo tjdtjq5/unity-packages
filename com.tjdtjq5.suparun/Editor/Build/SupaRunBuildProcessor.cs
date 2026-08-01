@@ -29,22 +29,20 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             var settings = SupaRunSettings.Instance;
 
-            // 1. Config JSON — **buildEnvironment** 를 굽는다. 에디터가 보는 환경이 아니다.
-            // dev 를 보면서 prod 빌드를 뽑는 것이 정상 상태이므로 둘을 절대 같은 것으로 읽지 않는다.
-            var buildEnv = settings.GetEnvironment(settings.BuildEnvironment);
-            if (buildEnv == null)
-            {
-                Debug.LogWarning(
-                    $"[SupaRun:Build] 빌드 환경 '{settings.BuildEnvironment}' 을 찾을 수 없어 " +
-                    "현재 편집 환경으로 대신 굽습니다. 대시보드 > Settings 에서 빌드 환경을 확인하세요.");
-                buildEnv = settings.Current;
-            }
+            // 1. Config JSON — **편집 환경**을 굽는다. 빌드 환경 포인터는 없앴다:
+            // 환경 전환이 드롭다운 한 번이 된 뒤로, 출시 빌드는 prod 로 전환하고 뽑는 것이
+            // 규약이다. 어느 환경이 구워졌는지는 아래 로그가 유일한 증거이므로 지우지 말 것.
+            var buildEnv = settings.Current;
+
+            // Cloud Run 주소는 그 환경의 `suparun_env` 에 있다(배포 결과라 파일에 없다).
+            // 편집 환경과 빌드 환경이 다를 수 있으므로 **빌드 환경 것을 따로 읽는다.**
+            var cloudRunUrl = SupaRunSettings.CloudRunUrlOf(buildEnv);
 
             var config = new SupaRunRuntimeConfig
             {
                 supabaseUrl = buildEnv.supabaseUrl,
                 supabaseAnonKey = buildEnv.supabaseAnonKey,
-                cloudRunUrl = buildEnv.cloudRunUrl
+                cloudRunUrl = cloudRunUrl
             };
 
             // 빌드 산출물이 어느 환경을 보는지는 나중에 되짚기 어렵다. 로그로 남긴다.
@@ -62,20 +60,22 @@ namespace Tjdtjq5.SupaRun.Editor
             Debug.Log($"[SupaRun:Build] Config 생성: {ConfigPath}");
 
             // 서버 URL 미설정 경고 (빌드에서는 항상 서버 호출이므로 필수)
-            if (string.IsNullOrEmpty(buildEnv.cloudRunUrl))
+            if (string.IsNullOrEmpty(cloudRunUrl))
             {
                 Debug.LogWarning(
                     $"[SupaRun:Build] 환경 '{buildEnv.name}' 에 cloudRunUrl 이 없습니다. " +
                     "빌드에서 서버 API 호출이 실패합니다. 그 환경으로 배포를 먼저 진행하세요.");
             }
 
-            // 2. Android 딥링크 (소셜 로그인 활성화 시)
-            if (report.summary.platform == BuildTarget.Android &&
-                settings.enabledAuthProviders != null &&
-                settings.enabledAuthProviders.Count > 1) // Guest 외에 소셜이 있으면
-            {
+            // 2. Android 딥링크
+            //
+            // 조건 없이 항상 넣는다. 예전에는 "소셜 로그인이 켜져 있으면" 이었는데, 그 목록의 진실이
+            // Supabase 로 옮겨가면서 **빌드 시점에 동기로 알 방법이 없어졌다**(빌드 프로세서는 await 불가).
+            //
+            // 없는 편이 더 위험하다 — 나중에 웹 로그인을 켰을 때 콜백이 안 돌아오고,
+            // 원인이 매니페스트라는 것을 알아채기 어렵다. 있어도 intent-filter 하나일 뿐이다.
+            if (report.summary.platform == BuildTarget.Android)
                 EnsureAndroidDeepLink();
-            }
         }
 
         public void OnPostprocessBuild(BuildReport report)

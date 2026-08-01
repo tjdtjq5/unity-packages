@@ -30,11 +30,16 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 GenerateSupaRunCoreMigration(),
                 GenerateSecretMigration(),
+                GenerateEnvMigration(),
                 GenerateSnapshotMigration(),
                 GenerateConfigMetaMigration(specTypes),
                 GenerateTypeCatalogMigration(specTypes),
                 GenerateAdminUserMigration(),
                 GenerateAdminAuditMigration(),
+                // 서버 로그도 시스템 표다. 여기 없어서 **배포할 때만** 만들어졌는데,
+                // 그 사이 RLS 를 켜는 변경이 반영될 길이 없었다(어드민 로그 화면이 이 표를 읽는다).
+                // 파일명이 `_` 로 시작하지 않아 정렬상 core 뒤에 오므로 is_admin() 은 이미 있다.
+                new GeneratedFile("Generated/Migrations/server_logs.sql", GenerateServerLogsMigration()),
             }
             .Concat(specTypes.Select(GenerateMigration))
             .ToList();
@@ -62,6 +67,7 @@ namespace Tjdtjq5.SupaRun.Editor
             // 파일명이 `_` 로 시작해 다른 마이그레이션보다 먼저 실행된다 (ADR-0004).
             files.Add(GenerateSupaRunCoreMigration());
             files.Add(GenerateSecretMigration());
+            files.Add(GenerateEnvMigration());
             files.Add(GenerateSnapshotMigration());
             files.Add(GenerateConfigMetaMigration(specTypes));
             files.Add(GenerateTypeCatalogMigration(specTypes));
@@ -771,7 +777,9 @@ public static class ServerLogger
 
         static string GenerateServerLogsMigration()
         {
-            return @"CREATE TABLE IF NOT EXISTS server_log (
+            return @"-- ══ 서버 로그 (자동 생성) ══════════════════════════════════════════════
+-- 서버가 service_role 로 쓰고, 어드민이 관리자 자격으로 읽는다.
+CREATE TABLE IF NOT EXISTS server_log (
     id TEXT PRIMARY KEY,
     level TEXT NOT NULL,
     message TEXT NOT NULL,
@@ -787,6 +795,20 @@ public static class ServerLogger
 
 CREATE INDEX IF NOT EXISTS idx_server_log_level_createdat ON server_log (level, createdat DESC);
 CREATE INDEX IF NOT EXISTS idx_server_log_createdat ON server_log (createdat DESC);
+
+-- ⚠ 이 표는 오랫동안 RLS 가 꺼져 있었다. 그동안 **anon key 만 있으면 누구나 읽혔고**,
+-- 그 키는 게임 빌드에 들어간다 — request_body·player_id·스택트레이스가 그대로 노출된다.
+-- 읽는 쪽이 Unity 대시보드(anon key 사용)였기 때문에 생긴 구멍이라, 그 화면을 어드민으로
+-- 옮기면서 함께 닫는다. 어드민은 로그인한 관리자로 읽으므로 아래 정책을 지난다.
+--
+-- 서버는 service_role 로 쓰므로 RLS 를 타지 않는다 — 쓰기 정책이 없어도 기록은 그대로 남는다.
+ALTER TABLE server_log ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'server_log' AND policyname = 'admin_read') THEN
+    CREATE POLICY admin_read ON server_log FOR SELECT USING (is_admin());
+  END IF;
+END $$;
 ";
         }
 
@@ -1442,7 +1464,7 @@ END $$;
         {
             return new GeneratedFile("Generated/Migrations/_suparun_secret.sql",
 @"-- ══ 공유 비밀 (자동 생성) ══════════════════════════════════════════════
--- git 에 올릴 수 없지만 팀이 공유해야 하는 값들. 관리자 로그인 뒤에서만 보인다.
+-- git 에 올릴 수 없지만 팀이 공유해야 하는 값들.
 
 CREATE TABLE IF NOT EXISTS suparun_secret (
     key        TEXT PRIMARY KEY,
@@ -1453,15 +1475,71 @@ CREATE TABLE IF NOT EXISTS suparun_secret (
 
 ALTER TABLE suparun_secret ENABLE ROW LEVEL SECURITY;
 
--- 읽기 정책도 관리자 전용이다. 공개 읽기를 붙이는 순간 이 표의 존재 이유가 사라진다.
+-- 값을 **읽는 경로를 아예 없앤다.**
+-- 예전 정책은 admin_all(FOR ALL) 이라 SELECT 까지 열려 있었고, 관리자로 로그인하면 브라우저에서
+-- PostgREST 로 PAT 가 그대로 읽혔다 — 관리자 계정 하나가 곧 Supabase 계정 전체였다.
+-- SELECT 정책을 두지 않으면 그 경로가 닫힌다. Unity 는 PAT(service_role)로 읽으므로 영향이 없다.
+--
+-- DROP 을 명시하는 이유: 아래 CREATE 들이 IF NOT EXISTS 라서, 옛 admin_all 이 남아 있으면
+-- 새 정책만 추가되고 읽기는 계속 열린 채로 **조용히** 지나간다.
+DROP POLICY IF EXISTS admin_all ON suparun_secret;
+
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_secret' AND policyname = 'admin_all') THEN
-    CREATE POLICY admin_all ON suparun_secret FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_secret' AND policyname = 'admin_insert') THEN
+    CREATE POLICY admin_insert ON suparun_secret FOR INSERT WITH CHECK (is_admin());
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_secret' AND policyname = 'admin_update') THEN
+    CREATE POLICY admin_update ON suparun_secret FOR UPDATE USING (is_admin()) WITH CHECK (is_admin());
+  END IF;
+END $$;
+
+-- 목록은 **값을 뺀 채로만** 준다. 어드민 화면에 필요한 것은 '무엇이 언제 누구에 의해 채워졌나'
+-- 뿐이고 값은 필요 없다. SECURITY DEFINER + 첫 줄 is_admin() 은 ADR-0004 결정 18 과 같은 형태다.
+CREATE OR REPLACE FUNCTION suparun_secret_list()
+RETURNS TABLE(key TEXT, updated_at BIGINT, updated_by TEXT)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+BEGIN
+    IF NOT is_admin() THEN
+        RAISE EXCEPTION '관리자만 조회할 수 있습니다';
+    END IF;
+    RETURN QUERY SELECT s.key, s.updated_at, s.updated_by FROM suparun_secret s ORDER BY s.key;
 END $$;
 
 -- 값 자체는 감사 로그에 남기지 않는다. 로그를 읽을 수 있으면 비밀도 읽히기 때문이다.
 -- 누가 언제 바꿨는지는 updated_at/updated_by 로 충분하다.
+");}
+
+        /// <summary>
+        /// 이 환경의 설정. **어드민이 쓰고 Unity 가 읽는다.**
+        ///
+        /// `suparun_meta` 와 나누는 이유: 그쪽은 `public_read` 라 anon key 만 있으면 누구나 읽는다.
+        /// anon key 는 게임 빌드에서 추출되므로, 거기에 GCP 프로젝트·GitHub 레포를 두면 사실상 공개다.
+        /// </summary>
+        static GeneratedFile GenerateEnvMigration()
+        {
+            return new GeneratedFile("Generated/Migrations/_suparun_env.sql",
+@"-- ══ 환경 설정 (자동 생성) ══════════════════════════════════════════════
+-- 이 환경(= 이 Supabase 프로젝트)의 설정. 어드민이 쓰고 Unity 가 읽는다.
+-- 환경마다 자기 것만 담는다 — '환경 공통' 설정을 두지 않기로 했기 때문이다.
+
+CREATE TABLE IF NOT EXISTS suparun_env (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    updated_by TEXT
+);
+
+ALTER TABLE suparun_env ENABLE ROW LEVEL SECURITY;
+
+-- ⚠ 쓰기 정책을 **반드시** 함께 만든다.
+-- suparun_meta 는 public_read(SELECT) 만 있고 쓰기 정책이 없어서, 어드민의 저장이 RLS 에 막혀
+-- 조용히 실패해 왔다(실측 확인). RLS 거부는 로그를 남기지 않아 화면의 토스트 말고는 흔적이 없다.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_env' AND policyname = 'admin_all') THEN
+    CREATE POLICY admin_all ON suparun_env FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+  END IF;
+END $$;
 ");}
 
         static GeneratedFile GenerateSnapshotMigration()

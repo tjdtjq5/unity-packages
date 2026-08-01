@@ -170,7 +170,7 @@ var expensive = await ServerAPI.QueryShopItems(q => q
 |---|---|---|
 | 용도 | 플레이어 데이터 (변동) | 게임 설정 (고정) |
 | 예시 | Player, Item, GuildMember | ShopItem, LevelTable |
-| 누가 수정 | [Service]에서만 | 개발자 (대시보드에서) |
+| 누가 수정 | [Service]에서만 | 개발자 (어드민에서) |
 | 클라이언트 | 읽기만 | 읽기만 |
 | 캐싱 | 매번 조회 | 서버 메모리 캐싱 |
 

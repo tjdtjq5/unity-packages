@@ -1,4 +1,5 @@
 import { isPreview } from './env'
+import { queueIdConstants } from './idsync'
 import { sb, type PostgrestFilter } from './supabase'
 
 /**
@@ -62,6 +63,8 @@ export async function insertRow<T>(table: string, row: unknown): Promise<T> {
   if (error) throw new Error(describe(error))
   const rows = data ?? []
   if (rows.length === 0) throw new Error('추가되었으나 결과를 받지 못했습니다.')
+  // 행이 늘었다 = PK 집합이 바뀌었을 수 있다. 값 수정(updateRow)은 트리거하지 않는다.
+  queueIdConstants()
   return rows[0]
 }
 
@@ -106,6 +109,7 @@ export async function deleteRow(table: string, pkColumn: string, pkValue: string
   const { data, error } = await client().from(table).delete().eq(pkColumn, pkValue).select()
   if (error) throw new Error(describe(error))
   if ((data ?? []).length === 0) throw new Error(BLOCKED)
+  queueIdConstants()
 }
 
 /**

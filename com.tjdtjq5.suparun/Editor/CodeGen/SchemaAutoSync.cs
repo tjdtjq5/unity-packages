@@ -28,7 +28,6 @@ namespace Tjdtjq5.SupaRun.Editor
     /// </summary>
     public static class SchemaAutoSync
     {
-        const string EnabledKey = "SupaRun.AutoSyncSchema";
         const string LegacyHashFile = "ProjectSettings/SupaRunSchemaHash.txt";
 
         /// <summary>
@@ -56,6 +55,30 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         /// <summary>
+        /// 환경 이름이 바뀌면 반영 기록도 따라간다. 두고 오면 새 이름의 첫 반영이
+        /// "변경 있음" 으로 보여 전체 스키마를 다시 민다(멱등이라 무해하지만 느리고,
+        /// 옛 이름의 기록이 유령 파일로 남는다).
+        /// </summary>
+        public static void RenameHashFiles(string from, string to)
+        {
+            MoveIfExists(HashFileFor(from), HashFileFor(to));
+            MoveIfExists(AdminAssetsHashFileFor(from), AdminAssetsHashFileFor(to));
+        }
+
+        static void MoveIfExists(string from, string to)
+        {
+            try
+            {
+                if (!File.Exists(from) || File.Exists(to)) return;
+                File.Move(from, to);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[SupaRun:Schema] 반영 기록 이름 변경 실패 — {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// 환경 도입 전의 해시 파일을 첫 환경 것으로 물려받는다. 멱등.
         /// 물려받지 않으면 이미 반영된 스키마를 전부 다시 밀어 넣게 된다(멱등이라 무해하지만 느리다).
         /// </summary>
@@ -74,95 +97,29 @@ namespace Tjdtjq5.SupaRun.Editor
             }
         }
 
-        /// <summary>
-        /// **기본 꺼짐.** 켜면 컴파일할 때마다 실제 DB 에 스키마가 반영된다.
-        ///
-        /// 기본값이 false 인 이유: 처음 켜는 순간 [UserData] 테이블에 RLS 정책이 새로 생긴다.
-        /// 지금은 정책이 하나도 없어 anon 이 완전 차단된 상태인데, 그 문을 여는 변경이다.
-        /// 게임 클라이언트도 같은 anon key 를 쓰므로 **한 번은 사람이 SQL 을 보고 켜야 한다.**
-        /// 켠 뒤에는 ADR-0004 결정 5 대로 컴파일마다 자동 반영된다.
-        /// </summary>
-        public static bool Enabled
-        {
-            get => EditorPrefs.GetBool(EnabledKey, false);
-            set => EditorPrefs.SetBool(EnabledKey, value);
-        }
-
-        /// <summary>
-        /// 반영하면 무엇이 생기는지 요약한다. raw SQL 을 다 읽는 사람은 없으므로 개수만 센다.
-        /// 직전 반영과 같으면 그 사실도 알려준다.
-        /// </summary>
-        public static string Summarize()
-        {
-            List<GeneratedFile> files;
-            try
-            {
-                files = DeployManager.GenerateSchemaSql();
-            }
-            catch (Exception ex)
-            {
-                return $"SQL 생성 실패 — {ex.Message}";
-            }
-            if (files == null || files.Count == 0) return "[SpecData]/[UserData] 클래스가 없습니다.";
-
-            int policies = 0, triggers = 0, tables = 0, addColumns = 0;
-            foreach (var f in files)
-            {
-                policies += CountOccurrences(f.Content, "CREATE POLICY ");
-                triggers += CountOccurrences(f.Content, "CREATE TRIGGER ");
-                tables += CountOccurrences(f.Content, "CREATE TABLE IF NOT EXISTS ");
-                addColumns += CountOccurrences(f.Content, "ADD COLUMN IF NOT EXISTS ");
-            }
-
-            // 요약도 **편집 환경 기준**이다. 반영 기록이 환경마다 다르므로
-            // 어느 환경을 보고 있는지에 따라 "변경됨" 판정이 달라진다.
-            var stored = ReadStoredHashes(HashFileFor(SupaRunSettings.Instance.EditorEnvironment));
-            var changed = files
-                .Where(f => !stored.TryGetValue(Path.GetFileName(f.Path), out var h) || h != HashOf(f.Content))
-                .Select(f => Path.GetFileName(f.Path))
-                .OrderBy(n => n, StringComparer.Ordinal)
-                .ToList();
-
-            var sb = new StringBuilder();
-            sb.AppendLine(changed.Count == 0
-                ? "직전 반영과 동일 — 눌러도 바뀌는 것이 없습니다."
-                : $"바뀐 파일 {changed.Count}개 — {string.Join(", ", changed)}");
-            sb.AppendLine($"  마이그레이션 파일  {files.Count}개 (전체)");
-            sb.AppendLine($"  테이블(있으면 유지) {tables}개");
-            sb.AppendLine($"  컬럼 추가 시도      {addColumns}개");
-            sb.AppendLine($"  RLS 정책            {policies}개");
-            sb.Append($"  변경이력 트리거      {triggers}개");
-            return sb.ToString();
-        }
-
-        static int CountOccurrences(string text, string token)
-        {
-            int n = 0, i = 0;
-            while ((i = text.IndexOf(token, i, StringComparison.Ordinal)) >= 0) { n++; i += token.Length; }
-            return n;
-        }
-
         [DidReloadScripts]
         static void OnScriptsReloaded()
         {
             // 도메인 리로드는 Play 진입/종료에도 일어난다. 그때 DB 를 건드릴 이유가 없다.
             if (EditorApplication.isPlayingOrWillChangePlaymode) return;
-            if (!Enabled) return;
+
+            // 자동 반영은 **환경별 팀 공유값**이다(EnvironmentData.autoSchemaSync — 어드민 설정에서
+            // 켠다). dev 는 켜고 prod 는 꺼 두면 prod 를 편집 중일 때 컴파일해도 스키마가 밀리지
+            // 않는다 — 확인창 대신 구조로 막는 안전장치다. 꺼진 환경은 배포가 반영을 겸한다.
+            if (!SupaRunSettings.Instance.Current.autoSchemaSync) return;
 
             // 컴파일 직후는 에디터가 바쁘다. 한 프레임 물러나 실행한다.
             EditorApplication.delayCall += () => Sync(silent: true).Forget();
         }
 
-        /// <summary>대시보드 버튼용 — 해시가 같아도 강제로 밀어 넣는다. 대상은 현재 편집 환경.</summary>
-        public static UniTask SyncNow() => Sync(silent: false, force: true);
-
         /// <summary>
-        /// **지정한 환경**에 스키마를 반영한다. prod 는 컴파일로 자동 반영되지 않으므로 이 경로로만 바뀐다.
+        /// **지정한 환경**에 스키마를 반영한다. 자동 반영을 끈 환경은 배포(선반영)와 승격만이
+        /// 이 경로로 들어온다. 반환값은 성공 여부 — 배포가 이걸 보고 중단을 결정한다.
         ///
         /// 편집 환경을 prod 로 잠깐 바꿔서 반영하는 방식은 쓰지 않는다 —
         /// 되돌리는 것을 잊으면 그 다음 컴파일이 곧바로 라이브 스키마를 건드린다.
         /// </summary>
-        public static UniTask SyncToEnvironment(SupaRunSettings.EnvironmentData env, bool force = true) =>
+        public static UniTask<bool> SyncToEnvironment(SupaRunSettings.EnvironmentData env, bool force = true) =>
             Sync(silent: false, force: force, target: env);
 
         /// <summary>
@@ -214,11 +171,12 @@ namespace Tjdtjq5.SupaRun.Editor
             }
         }
 
-        static async UniTask Sync(bool silent, bool force = false,
+        /// <summary>반환값 = 성공 여부. 실패는 로그로 남기고 던지지 않는다(컴파일 훅 경로).</summary>
+        static async UniTask<bool> Sync(bool silent, bool force = false,
             SupaRunSettings.EnvironmentData target = null)
         {
             var settings = SupaRunSettings.Instance;
-            if (settings == null) return;
+            if (settings == null) return true;
 
             // 대상 미지정이면 편집 환경. 컴파일 훅이 이 경로로 들어온다.
             var env = target ?? settings.Current;
@@ -232,14 +190,14 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (!silent)
                     Debug.LogWarning(
                         $"[SupaRun:Schema] 환경 '{env.name}' 에 Supabase Access Token 또는 URL 이 없습니다.");
-                return;
+                return false;
             }
 
             List<GeneratedFile> sqlFiles;
             try
             {
                 var generated = DeployManager.GenerateSchemaSql();
-                if (generated == null || generated.Count == 0) return;   // [SpecData]/[UserData] 없음
+                if (generated == null || generated.Count == 0) return true;   // [SpecData]/[UserData] 없음
 
                 // 이름순 정렬은 서버(Program.cs)의 실행 순서와 같아야 한다 —
                 // _suparun_core.sql 이 먼저 와야 다른 파일의 정책이 is_admin() 을 찾는다.
@@ -250,7 +208,7 @@ namespace Tjdtjq5.SupaRun.Editor
             catch (Exception ex)
             {
                 if (!silent) Debug.LogWarning($"[SupaRun:Schema] SQL 생성 예외 — {ex.Message}");
-                return;
+                return false;
             }
 
             // 파일별로 비교해 **바뀐 것만** 고른다.
@@ -264,7 +222,7 @@ namespace Tjdtjq5.SupaRun.Editor
             if (changed.Count == 0)
             {
                 if (!silent) Debug.Log($"[SupaRun:Schema] '{env.name}' 변경 없음 — 스킵");
-                return;
+                return true;
             }
 
             var names = changed.Select(f => Path.GetFileName(f.Path)).ToList();
@@ -306,12 +264,13 @@ namespace Tjdtjq5.SupaRun.Editor
                 Debug.LogWarning(
                     $"[SupaRun:Schema] {failed.Count}/{changed.Count}개 실패: {string.Join(", ", failed)}\n" +
                     "다음 컴파일에 재시도합니다. 반복되면 SQL 을 확인하세요.");
-                return;
+                return failed.Count == 0;
             }
 
             foreach (var f in changed) stored[Path.GetFileName(f.Path)] = HashOf(f.Content);
             WriteStoredHashes(hashFile, Prune(stored, sqlFiles));
             Debug.Log($"[SupaRun:Schema] '{env.name}' 반영 완료 — {changed.Count}개. 어드민을 새로고침하면 보입니다.");
+            return true;
         }
 
         /// <summary>

@@ -19,7 +19,6 @@ export interface EnvironmentInfo {
   /** 에디터가 지금 보고 있는 환경인가. 컴파일 시 스키마가 여기로 간다. */
   is_editor?: boolean
   /** 빌드에 구워지는 환경인가. */
-  is_build?: boolean
   /** epoch millis — 언제 수집했는가. 값의 신선도를 판단하는 유일한 근거다. */
   collected_at?: number
 
@@ -77,16 +76,6 @@ export function formatBytes(n?: number): string {
     i++
   }
   return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`
-}
-
-/** 수집 시각을 "3분 전" 꼴로. 값이 얼마나 낡았는지가 이 화면의 핵심 정보다. */
-export function formatAge(ms?: number): string {
-  if (!ms) return '수집된 적 없음'
-  const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000))
-  if (sec < 60) return '방금'
-  if (sec < 3600) return `${Math.floor(sec / 60)}분 전`
-  if (sec < 86400) return `${Math.floor(sec / 3600)}시간 전`
-  return `${Math.floor(sec / 86400)}일 전`
 }
 
 /** 사용률에 따른 색 등급. 0~100 을 받는다. */

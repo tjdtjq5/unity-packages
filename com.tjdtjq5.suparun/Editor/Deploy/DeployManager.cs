@@ -27,10 +27,6 @@ namespace Tjdtjq5.SupaRun.Editor
 
             Debug.Log($"[SupaRun:Deploy] 스캔 완료 — Table: {tableTypes.Length}, Config: {specTypes.Length}, Service: {logicTypes.Length}");
 
-            // 생성 전에 세운다 — 코드를 다 만들고 밀어 넣은 뒤에 알리면 이미 2분을 쓴 뒤다.
-            var stale = CheckAdminDistFreshness();
-            if (stale != null) return (null, null, stale);
-
             onProgress?.Invoke("서버 코드 생성 중...");
             var files = ServerCodeGenerator.Generate(tableTypes, specTypes, logicTypes, settings);
             files.AddRange(GetTemplateFiles(settings));
@@ -106,9 +102,6 @@ namespace Tjdtjq5.SupaRun.Editor
                     DeployRegistry.MarkDeployed(endpoints.ToArray());
 
                     Debug.Log($"[SupaRun:Deploy] 배포 목록 업데이트: {endpoints.Count}개 엔드포인트");
-
-                    // autoconfirm 보장 (어드민 회원가입 즉시 로그인용)
-                    _ = EnsureAutoConfirm(settings);
 
                     onSuccess?.Invoke();
                 },
@@ -186,16 +179,6 @@ namespace Tjdtjq5.SupaRun.Editor
                 try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); }
                 catch { /* ignore */ }
             }
-        }
-
-        /// <summary>어드민 회원가입 즉시 로그인을 위해 autoconfirm 보장.</summary>
-        static async UniTaskVoid EnsureAutoConfirm(SupaRunSettings settings)
-        {
-            var token = SupaRunSettings.Instance.SupabaseAccessToken;
-            if (string.IsNullOrEmpty(token)) return;
-            var r = await SupabaseManagementApi.PatchAuthConfig(
-                settings.SupabaseProjectId, token, "{\"mailer_autoconfirm\":true}");
-            if (r.Ok) Debug.Log("[SupaRun:Deploy] autoconfirm 설정 완료");
         }
 
         /// <summary>pg_cron 잡 관리. [Cron] 있으면 활성화+등록, 없으면 기존 잡 삭제.</summary>
@@ -293,48 +276,29 @@ namespace Tjdtjq5.SupaRun.Editor
             // Workflow
             files.Add(LoadTemplate(templateRoot, "WorkflowTemplate~/deploy.yml.template", ".github/workflows/deploy.yml", settings));
 
-            // Admin 웹 페이지 — 빌드 산출물(dist/)을 싣는다. ADR-0003 결정 2·3.
-            //   소스는 AdminTemplate~/src/ 이고 `npm run build` 가 dist/ 를 만든다.
-            //   산출물 파일명을 고정했으므로 재귀 순회 없이 명시 등록으로 충분하다.
-            //   dist/ 는 git 에 커밋되므로 소비 프로젝트에 Node 는 필요 없다 (결정 7).
-            var adminDist = Path.Combine(templateRoot, "AdminTemplate~/dist");
-            if (File.Exists(Path.Combine(adminDist, "index.html")))
-            {
-                files.Add(LoadTemplate(templateRoot, "AdminTemplate~/dist/index.html", "admin/index.html", settings));
+            // 어드민 dist 는 더 이상 싣지 않는다 — **로컬 브리지가 서빙한다**(SupaRunBridge.ServeAdmin).
+            // `*.supabase.co` 가 HTML 을 text/plain 으로 강제 다운그레이드해서 Supabase 서빙이 막혔고,
+            // Cloud Run 에 두면 "배포해야 어드민이 열리는데 어드민에서 배포 설정을 한다" 는 순환이 생긴다.
+            // 부수 효과로 번들 신선도 검사(CheckAdminDistFreshness)도 필요 없어졌다 —
+            // 브리지는 디스크에서 바로 읽고 no-store 로 내보내므로 새로고침이면 반영된다.
 
-                // CSS 는 빌드 구성에 따라 생성되지 않을 수 있다(아직 스타일 import 가 없는 단계 등).
-                foreach (var asset in new[] { "index.js", "index.css" })
-                {
-                    if (File.Exists(Path.Combine(adminDist, "assets", asset)))
-                        files.Add(LoadTemplate(templateRoot, "AdminTemplate~/dist/assets/" + asset,
-                            "admin/assets/" + asset, settings));
-                }
-            }
-            else
+            // 게임 플랫폼 로그인 — Supabase auth 에 없는 것들이라 서버가 직접 검증해야 한다.
+            // 웹 OAuth 는 Supabase 가 처리하므로 서버 코드가 필요 없다.
+            var platform = settings.platformAuth;
+            if (platform.Contains("GPGS") || platform.Contains("GameCenter"))
             {
-                Debug.LogWarning("[SupaRun] 어드민 빌드 산출물(AdminTemplate~/dist)이 없습니다. " +
-                                 "AdminTemplate~ 에서 `npm ci && npm run build` 를 실행하세요. " +
-                                 "어드민 페이지 없이 배포를 계속합니다.");
+                files.Add(LoadTemplate(templateRoot, "AuthTemplate~/PlatformAuthRequest.cs.template",
+                    "Generated/Auth/PlatformAuthRequest.cs", settings));
             }
-
-            // Auth 플랫폼 (GPGS/GameCenter 활성화 시)
-            if (settings.enabledAuthProviders != null)
+            if (platform.Contains("GPGS"))
             {
-                if (settings.enabledAuthProviders.Contains("GPGS") || settings.enabledAuthProviders.Contains("GameCenter"))
-                {
-                    files.Add(LoadTemplate(templateRoot, "AuthTemplate~/PlatformAuthRequest.cs.template",
-                        "Generated/Auth/PlatformAuthRequest.cs", settings));
-                }
-                if (settings.enabledAuthProviders.Contains("GPGS"))
-                {
-                    files.Add(LoadTemplate(templateRoot, "AuthTemplate~/AuthGPGSController.cs.template",
-                        "Generated/Auth/AuthGPGSController.cs", settings));
-                }
-                if (settings.enabledAuthProviders.Contains("GameCenter"))
-                {
-                    files.Add(LoadTemplate(templateRoot, "AuthTemplate~/AuthGameCenterController.cs.template",
-                        "Generated/Auth/AuthGameCenterController.cs", settings));
-                }
+                files.Add(LoadTemplate(templateRoot, "AuthTemplate~/AuthGPGSController.cs.template",
+                    "Generated/Auth/AuthGPGSController.cs", settings));
+            }
+            if (platform.Contains("GameCenter"))
+            {
+                files.Add(LoadTemplate(templateRoot, "AuthTemplate~/AuthGameCenterController.cs.template",
+                    "Generated/Auth/AuthGameCenterController.cs", settings));
             }
 
             return files;
@@ -355,64 +319,10 @@ namespace Tjdtjq5.SupaRun.Editor
             content = content.Replace("{{SUPABASE_URL}}", settings.supabaseUrl ?? "");
             content = content.Replace("{{SUPABASE_ANON_KEY}}", SupaRunSettings.Instance.SupabaseAnonKey ?? "");
 
-            // OAuth provider 목록 (Guest, GPGS, GameCenter 제외 = 웹 OAuth만)
-            var q = '"';
-            var oauthProviders = settings.enabledAuthProviders?
-                .Where(p => p != "Guest" && p != "GPGS" && p != "GameCenter")
-                .Select(p => q + p.ToLower() + q) ?? Enumerable.Empty<string>();
-            content = content.Replace("{{AUTH_PROVIDERS_JSON}}", "[" + string.Join(",", oauthProviders) + "]");
+            // {{AUTH_PROVIDERS_JSON}} 은 없앴다 — 웹 OAuth 목록의 진실은 Supabase auth config 이고,
+            // 어드민은 그것을 직접 읽는다(shared/bridge.ts 의 whoAmI). 사본을 구울 이유가 없었다.
 
             return new GeneratedFile(outputPath, content);
-        }
-
-        /// <summary>
-        /// src 를 고쳐 놓고 `npm run build` 를 안 돌린 채 배포하는 것을 막는다.
-        /// 중단하기로 했으면 그 사유를, 계속해도 되면 null 을 돌려준다.
-        ///
-        /// 예전에는 `dist` 가 **아예 없을 때만** 경고했다. 그런데 실제로 자주 일어나는 것은
-        /// "없음" 이 아니라 "낡음" 이고, 그때는 배포가 성공하고 로그도 깨끗한데 화면만 안 바뀐다.
-        /// 2분을 다 쓰고 나서야 알게 되는 실패라 여기서 세운다.
-        ///
-        /// 판단은 수정 시각으로 한다. git 체크아웃은 **바뀐 파일에만** 현재 시각을 찍으므로,
-        /// src 와 dist 가 함께 갱신되면 차이가 거의 0 이고 사람이 src 만 고쳤을 때 벌어진다.
-        /// 여유(60초)를 두는 이유는 새로 클론한 직후 파일들의 시각이 몇 초씩 흩어지기 때문이다.
-        /// </summary>
-        static string CheckAdminDistFreshness()
-        {
-            var templateRoot = GetTemplateRoot();
-            var bundle = Path.Combine(templateRoot, "AdminTemplate~/dist/assets/index.js");
-            var src = Path.Combine(templateRoot, "AdminTemplate~/src");
-            // src 가 없으면 패키지 사본을 그대로 쓰는 소비 프로젝트다 — 낡을 수가 없다.
-            if (!File.Exists(bundle) || !Directory.Exists(src)) return null;
-
-            var builtAt = File.GetLastWriteTimeUtc(bundle);
-            string newest = null;
-            var newestAt = builtAt;
-            foreach (var f in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
-            {
-                var t = File.GetLastWriteTimeUtc(f);
-                if (t <= newestAt) continue;
-                newestAt = t;
-                newest = f;
-            }
-
-            if (newest == null || (newestAt - builtAt).TotalSeconds < 60) return null;
-
-            var msg =
-                "어드민 소스가 빌드 산출물보다 최신입니다.\n\n" +
-                $"가장 최근 수정  {Path.GetFileName(newest)}  ({newestAt.ToLocalTime():HH:mm})\n" +
-                $"번들 빌드 시각  {builtAt.ToLocalTime():HH:mm}\n\n" +
-                "이대로 배포하면 어드민 화면은 바뀌지 않습니다.\n" +
-                "AdminTemplate~ 에서 `npm run build` 를 먼저 실행하세요.";
-
-            Debug.LogWarning("[SupaRun] " + msg.Replace("\n", " "));
-
-            // 배치 모드에서는 물어볼 수 없다. 로그만 남기고 진행한다.
-            if (Application.isBatchMode) return null;
-
-            return EditorUtility.DisplayDialog("어드민 빌드가 낡았습니다", msg, "그래도 배포", "취소")
-                ? null
-                : "어드민 빌드가 낡아 배포를 취소했습니다. AdminTemplate~ 에서 `npm run build` 를 실행하세요.";
         }
 
         static string GetTemplateRoot()

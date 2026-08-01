@@ -10,8 +10,6 @@
 export interface SuparunEnv {
   supabaseUrl: string
   supabaseAnonKey: string
-  /** OAuth 프로바이더 목록 (`["google","kakao"]`). 비어 있으면 OAuth 섹션을 숨긴다. */
-  authProviders: string[]
   /** Supabase 프로젝트 ref (`https://xxx.supabase.co` → `xxx`). 대시보드 링크에 쓴다. */
   projectRef: string
 }
@@ -19,7 +17,6 @@ export interface SuparunEnv {
 const EMPTY: SuparunEnv = {
   supabaseUrl: '',
   supabaseAnonKey: '',
-  authProviders: [],
   projectRef: '',
 }
 

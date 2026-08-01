@@ -7,7 +7,7 @@
 
 | 대상 | 경로 | 용도 |
 |------|------|------|
-| SupaRunUI | `../Dashboard/UI/SupaRunUI.cs` | 공용 IMGUI 헬퍼 (알림 바, NotificationType) — 바닐라 IMGUI |
+| SupaRunUI | `../UI/SupaRunUI.cs` | 공용 IMGUI 헬퍼 (알림 바, NotificationType) — 바닐라 IMGUI |
 | Newtonsoft.Json | Unity 내장 | feature.json 직렬화/역직렬화 |
 | 패키지 Templates | `../../Features~/` | Feature 템플릿 원본 (패키지 내 숨김 폴더) |
 

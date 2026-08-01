@@ -148,6 +148,40 @@ code, kbd, pre, samp, .text-mono, .font-mono { font-family: var(--mono); font-si
 .terminal-titlebar .meta { color: var(--dim); font-size: 10px; letter-spacing: 0.1em; }
 @keyframes blink { 0%, 60% { opacity: 1; } 80% { opacity: 0.3; } }
 
+/* ── 타이틀바 환경 전환기 + 시계 ── */
+.tb-env { position: relative; display: inline-block; vertical-align: middle; }
+.tb-env-chip {
+  background: none; border: 1px solid var(--line); border-radius: 3px;
+  color: var(--green); font: inherit; letter-spacing: inherit;
+  padding: 1px 8px; cursor: pointer; vertical-align: middle;
+}
+.tb-env-chip:hover { border-color: var(--green-2); background: rgba(255,255,255,0.04); }
+.tb-env-chip .caret { color: var(--dim); margin-left: 5px; }
+/* 메뉴·백드롭은 body 로 portal 된다(.ss-pop 과 같은 사정) — 타이틀바(z 1000) 안에 그리면
+   사이드바(Tabler navbar, z 1030)가 덮는다. 그래서 z 는 .ss-pop(1100) 계열로 맞춘다.
+   body 로 나가면 타이틀바 폰트 상속도 끊기므로 여기서 직접 정한다. */
+.tb-env-backdrop { position: fixed; inset: 0; z-index: 1190; }
+.tb-env-menu {
+  position: fixed; min-width: 170px; z-index: 1200; /* top/left 는 칩 위치에서 인라인 계산 */
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+  padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+}
+.tb-env-menu button {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  color: var(--fg); font: inherit; letter-spacing: inherit;
+  padding: 5px 8px; cursor: pointer; border-radius: 3px;
+}
+.tb-env-menu button:hover { background: rgba(255,255,255,0.05); color: var(--green); }
+.tb-env-menu button.cur { color: var(--green); }
+.tb-env-menu .sep { border-top: 1px solid var(--line); margin: 4px 0; }
+.tb-clock { color: var(--dim); margin-right: 14px; }
+.tb-clock .tz {
+  background: none; border: 1px solid var(--line); border-radius: 3px;
+  color: var(--green-2); font: inherit; padding: 0 5px; margin-left: 5px; cursor: pointer;
+}
+.tb-clock .tz:hover { border-color: var(--green-2); }
+
 /* ── Terminal Prompt (페이지 상단) ── */
 .terminal-prompt {
   font-family: var(--mono);
@@ -1687,11 +1721,9 @@ code { color: var(--green); background: var(--bg); padding: 1px 4px; border-radi
 window.__SUPARUN_ENV = (function () {
   var url = '{{SUPABASE_URL}}';
   var anonKey = '{{SUPABASE_ANON_KEY}}';
-  var providers = [];
-  try { providers = JSON.parse('{{AUTH_PROVIDERS_JSON}}'); } catch (e) { providers = []; }
   var ref = '';
   try { ref = new URL(url).hostname.split('.')[0]; } catch (e) { ref = ''; }
-  return { supabaseUrl: url, supabaseAnonKey: anonKey, authProviders: providers, projectRef: ref };
+  return { supabaseUrl: url, supabaseAnonKey: anonKey, projectRef: ref };
 })();
 
 // 부팅 실패 방어 — React 가 뜨기만 하면 이후 에러는 React 쪽에서 다룬다.

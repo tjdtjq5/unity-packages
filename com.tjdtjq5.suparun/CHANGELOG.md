@@ -1,5 +1,44 @@
 # Changelog
 
+## [Unreleased]
+
+### Breaking Changes
+- **Unity 대시보드(EditorWindow) 삭제.** 화면은 어드민 웹 하나뿐이다. 화면이 둘이면 같은 값을
+  두 곳이 다른 근거로 쓰게 되고, 그러면 반드시 어긋난다. Unity 는 브리지를 통해 **로컬에서만
+  할 수 있는 일**(gcloud·gh·dotnet·파일 쓰기)을 대신한다.
+  - 지운 것: `SupaRunDashboard` · `SetupWizard` · `SupabaseSetup` · `StatusTab` · `DeployTab` ·
+    `MonitorTab` · `ServicesTab` · `SettingsView` · `ProjectManagerUI` · `EditorInputDialog`
+  - 옮긴 곳: 배포·스키마·승격 → 어드민 `#ops` / 서버 로그 → `#logs` / 설정 → `#settings` /
+    환경 슬롯 → `#environments`
+  - `Editor/Dashboard/` → `Editor/Menu/`(툴바·요금 메뉴), `Editor/UI/`(알림 바)
+  - 메뉴 `Tjdtjq/SupaRun/Dashboard`(`Ctrl+Shift+Q`) 제거. `Admin`(`Ctrl+Shift+D`)만 남는다
+- **`UserSettings/SupaRunUserSettings.json` 제거.** 마지막까지 남아 있던 `serverLogToConsole` ·
+  `setupCompleted` 의 유일한 사용처가 대시보드였다. 개인 값은 전부 EditorPrefs 로 간다.
+- **어드민 로그인이 이메일 + 비밀번호로 바뀌었다.** 매직링크는 Supabase 기본 메일이
+  **시간당 2통**이라 재로그인이 대기열을 탔다. 비밀번호는 메일을 아예 안 보낸다.
+  가입은 관리자가 0명일 때만 열린다.
+
+### Security
+- **`server_log` 에 RLS 를 켰다** (`admin_read` = `is_admin()`). 이 표는 RLS 가 꺼져 있어
+  **anon key 만 있으면 누구나 읽혔고**, 그 키는 게임 빌드에 들어간다 —
+  `request_body` · `player_id` · 스택트레이스가 사실상 공개였다. 읽는 쪽이 anon key 를 쓰는
+  Unity 대시보드였기 때문에 생긴 구멍이라, 그 화면을 어드민으로 옮기면서 함께 닫았다.
+  서버는 직접 Postgres 연결(표 소유자)로 쓰므로 기록은 그대로 남는다.
+- `server_logs.sql` 을 `GenerateSchemaSql` 에 등록했다. 그 전에는 **배포할 때만** 만들어져
+  위 정책이 컴파일 경로로 반영될 길이 없었다.
+
+### Added
+- `Editor/Bridge/BridgeOpsRoutes.cs` — `/ops/*` 실행 라우트(스키마·Id 상수·배포·승격·환경).
+  준비(`/setup/*`·`/deploy/*`)와 나눈 기준은 파일 크기가 아니라 **성격**이다: 이쪽은 되돌리기 어렵다
+- `Editor/Bridge/SupaRunAdmin.cs` — 어드민 진입점. `Open(hash)` 로 특정 화면을 바로 연다
+- `Editor/Bridge/Feature.md` — 브리지 문서(경계·라우트·함정)
+- 어드민 `features/ops/` · `features/logs/`
+- 어드민 환경 슬롯(`EnvSlots`) — 추가·삭제·편집/빌드 환경 지정·**Supabase 프로젝트 연결**.
+  `POST /setup/project` 가 `env` 를 받게 되어, 새 슬롯을 편집 환경으로 옮기지 않고도 붙일 수 있다
+- 어드민 설정에 **게임 로그인**(`platform_auth`) 토글. SettingsView 에만 있던 UI다
+- `POST /setup/reset-password` — 메일 없이 비밀번호를 바꾼다.
+  ⚠ pgcrypto 는 `extensions` 스키마에 있어 `extensions.crypt(...)` 로 명시해야 한다
+
 ## [1.0.0] - 2026-07-24
 
 ### Breaking Changes

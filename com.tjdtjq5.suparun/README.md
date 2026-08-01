@@ -57,16 +57,22 @@ var result = await ServerAPI.CurrencyService.GetBalance(playerId);
 
 ## 설정 파일 (v0.5.1+)
 
-설정은 두 파일로 분리되어 저장된다:
+설정은 **값의 성격에 따라** 네 곳으로 나뉜다. 기준은 "누가 이 값의 유일한 주인인가" 다 —
+같은 값을 두 곳이 다른 근거로 쓰면 반드시 어긋나기 때문이다.
 
-| 파일 | git | 내용 |
+| 저장소 | git | 내용 |
 |------|-----|------|
-| `ProjectSettings/SupaRunProjectSettings.json` | ✅ 커밋 | URL, AnonKey, DB Password, Access Token, GitHub Token, Cron Secret, GCP/Auth 정책 등 (22개 필드) |
-| `UserSettings/SupaRunUserSettings.json` | ❌ 미커밋 | `serverLogToConsole`, `setupCompleted` |
+| `ProjectSettings/SupaRunProjectSettings.json` | ✅ 커밋 | **부트스트랩뿐** — 환경 이름 · Supabase URL · anon key. 셋 다 공개값이고, 이것이 있어야 팀원이 클론만으로 붙는다 |
+| EditorPrefs | ❌ 로컬 | 비밀(Access Token · DB 비밀번호 · GitHub Token · Cron Secret), 편집/빌드 환경 선택, 캐시 |
+| `suparun_env` (Supabase) | — | 어드민이 정하는 값(GCP 프로젝트 · 리전 · 서비스명 · 레포 · 로그인 방식)과 Unity 가 굽는 사실(Cloud Run URL · 서비스계정) |
+| `suparun_secret` (Supabase) | — | 팀이 공유해야 하는 비밀. **INSERT/UPDATE 정책만 있고 SELECT 는 없다** — 넣을 수는 있어도 읽어 갈 수는 없다 |
 
-> ⚠ **시크릿(DB Password / Access Token / GitHub Token / Cron Secret)이 `ProjectSettings/`에 평문 저장되어 git에 커밋됩니다. private repo 전용 사용을 가정합니다.** 외부 공개 저장소에서는 사용하지 마세요.
+> **비밀은 git 에 남지 않는다.** 예전에는 `ProjectSettings/` 에 평문으로 들어가 private repo
+> 전용을 가정했는데, 지금은 EditorPrefs 와 `suparun_secret` 으로 나갔다.
+> Supabase Access Token(PAT)은 계정 마스터키라 **로컬에만** 둔다.
 
-기존 v0.4.x 사용자는 첫 실행 시 자동 마이그레이션됩니다 (단일 `UserSettings/SupaRunSettings.json` → 2개 파일 분배 + 원본은 `.bak`으로 백업).
+`UserSettings/SupaRunUserSettings.json` 은 더 이상 쓰지 않는다 — 마지막까지 남아 있던 두 값의
+사용처(대시보드)가 없어지면서 파일 자체가 비었다. 남아 있다면 지워도 된다.
 
 ## 디버깅
 

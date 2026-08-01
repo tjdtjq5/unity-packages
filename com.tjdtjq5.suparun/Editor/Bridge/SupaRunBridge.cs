@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Text;
 using System.Threading;
@@ -41,45 +42,6 @@ namespace Tjdtjq5.SupaRun.Editor
         public static string Token { get; private set; }
         public static bool Running => _listener?.IsListening == true;
 
-        /// <summary>진행 중인 로그인의 1회용 state. 콜백이 우리가 시작한 것인지 확인한다.</summary>
-        static string _authState;
-
-        /// <summary>이 브리지가 받을 OAuth 콜백 주소. Supabase 허용 목록에 있어야 한다.</summary>
-        public static string CallbackUrl => $"http://127.0.0.1:{Port}/auth/callback";
-
-        /// <summary>로그인을 시작하며 state 를 발급한다. 반환값을 redirect_to 에 실어 보낸다.</summary>
-        public static string BeginAuth()
-        {
-            _authState = GeneratePassword();
-            return $"{CallbackUrl}?state={_authState}";
-        }
-
-        /// <summary>
-        /// 콜백 중간 페이지. fragment 를 query 로 옮겨 다시 부른다.
-        /// state 는 이미 URL 에 있으므로 그대로 실어 보낸다.
-        /// </summary>
-        const string CallbackHtml = @"<!doctype html><html><head><meta charset=""utf-8"">
-<title>SupaRun</title><style>
-body{font-family:ui-monospace,Menlo,Consolas,monospace;background:#050807;color:#d8e4d8;
-display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-.b{text-align:center}.g{color:#00ff66}
-</style></head><body><div class=""b"" id=""m"">로그인 처리 중…</div><script>
-(function(){
-  var hash = location.hash.replace(/^#/, '');
-  var state = new URLSearchParams(location.search).get('state') || '';
-  var m = document.getElementById('m');
-  if (!hash) { m.textContent = '토큰을 받지 못했습니다.'; return; }
-  fetch('/auth/token?' + hash + '&state=' + encodeURIComponent(state))
-    .then(function(r){ return r.json(); })
-    .then(function(j){
-      m.innerHTML = j && j.ok
-        ? '<span class=""g"">로그인되었습니다.</span><br>이 창을 닫고 Unity 로 돌아가세요.'
-        : '실패: ' + ((j && j.error) || '알 수 없음');
-    })
-    .catch(function(e){ m.textContent = '실패: ' + e; });
-})();
-</script></body></html>";
-
         static SupaRunBridge()
         {
             // 도메인 리로드마다 static 생성자가 다시 돈다 — 그래서 컴파일 후에도 알아서 되살아난다.
@@ -87,6 +49,16 @@ display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
         }
 
         // ── 수명 ──
+
+        /// <summary>
+        /// 꺼져 있으면 켠다. 어드민을 이 브리지가 서빙하므로 꺼져 있으면 **어드민 자체가 안 열린다.**
+        /// `[InitializeOnLoad]` 의 delayCall 이 도메인 리로드 상황에 따라 걸리지 않는 것을 실측으로
+        /// 확인했다(강제 재컴파일 뒤 `Running=False`). 여는 쪽에서 한 번 더 보장한다.
+        /// </summary>
+        public static void EnsureRunning()
+        {
+            if (!Running) Start();
+        }
 
         static void Start()
         {
@@ -129,8 +101,6 @@ display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
             EditorApplication.update += Pump;
             AssemblyReloadEvents.beforeAssemblyReload += Stop;
             EditorApplication.quitting += Stop;
-
-            PublishEndpointAsync().Forget();
         }
 
         static void Stop()
@@ -185,42 +155,6 @@ display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
             var path = req.Url.AbsolutePath.TrimEnd('/');
             try
             {
-                // ── OAuth 콜백 ──
-                // 브라우저가 리다이렉트로 도착하므로 **토큰을 요구할 수 없다.** 대신 로그인 시작 때
-                // 발급한 state 를 확인한다.
-                //
-                // 두 번 오가는 이유: Supabase 는 토큰을 URL **fragment**(`#access_token=…`)로 주는데
-                // fragment 는 서버로 전송되지 않는다. 그래서 1차로 HTML 을 주고, 그 안의 JS 가
-                // fragment 를 읽어 2차 요청으로 넘긴다. 런타임 OAuthHandler 도 같은 방식이다.
-                if (path == "/auth/callback")
-                {
-                    WriteHtml(res, CallbackHtml);
-                    return;
-                }
-
-                if (path == "/auth/token")
-                {
-                    var state = req.QueryString["state"];
-                    if (string.IsNullOrEmpty(_authState) || state != _authState)
-                    {
-                        Write(res, 400, Err("로그인 요청이 만료되었거나 일치하지 않습니다"));
-                        return;
-                    }
-                    _authState = null;   // 1회용
-
-                    var access = req.QueryString["access_token"];
-                    var refresh = req.QueryString["refresh_token"];
-                    if (string.IsNullOrEmpty(access))
-                    {
-                        Write(res, 400, Err("토큰이 없습니다"));
-                        return;
-                    }
-
-                    SupaRunEditorAuth.StoreTokens(access, refresh);
-                    Write(res, 200, new JObject { ["ok"] = true });
-                    return;
-                }
-
                 // ping 만 토큰 없이 답한다 — 어드민이 "Unity 가 켜져 있나" 를 물어보는 통로다.
                 if (path == "/ping")
                 {
@@ -230,9 +164,27 @@ display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
                         ["ok"] = true,
                         ["unity"] = Application.unityVersion,
                         ["editor_env"] = s.EditorEnvironment,
-                        // 토큰 자체는 주지 않는다. 어드민은 DB 에서 읽는다.
+                        // 토큰은 여기서 주지 않는다. 어드민은 서빙될 때 `window.__SUPARUN_BRIDGE` 로 받는다
+                        // (InjectEnv 참조) — 같은 출처가 아니면 애초에 손에 넣을 수 없다.
                         ["needs_token"] = true,
                     });
+                    return;
+                }
+
+                // ── 어드민 정적 서빙 ──
+                // 토큰 검사 **앞**에 둔다. 브라우저가 <script src> 로 가져가므로 헤더를 붙일 수 없다.
+                // 127.0.0.1 만 열려 있고 내보내는 것은 공개값(anon key)뿐이라 열어도 잃을 것이 없다.
+                var raw = req.Url.AbsolutePath;
+                if (raw == "/admin")
+                {
+                    // 끝의 `/` 가 없으면 index.html 의 `./assets/…` 가 루트로 풀려 404 가 난다.
+                    res.Redirect("/admin/");
+                    res.Close();
+                    return;
+                }
+                if (raw.StartsWith("/admin/"))
+                {
+                    await ServeAdmin(res, raw.Substring("/admin/".Length));
                     return;
                 }
 
@@ -242,10 +194,30 @@ display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
                     return;
                 }
 
-                // 프로젝트·리전은 `suparun-admin` Edge Function 으로 옮겼다.
-                // 브리지를 거치면 Unity 가 켜져 있어야만 되는데, 그건 기획자가 웹만 여는 경우를 막는다.
-                // 여기 남는 것은 **로컬에서만 할 수 있는 일**뿐이다.
-                Write(res, 404, Err($"알 수 없는 경로: {path}"));
+                // 같은 출처만 받는다. 어드민을 이 브리지가 서빙하므로 다른 오리진이 부를 이유가 없다 —
+                // 토큰이 새더라도 다른 사이트가 PAT 를 쓰지 못하게 막는 두 번째 벽이다.
+                if (!string.IsNullOrEmpty(origin) && origin != $"http://127.0.0.1:{Port}")
+                {
+                    Write(res, 403, Err($"허용되지 않은 출처: {origin}"));
+                    return;
+                }
+
+                // 배포 체크리스트는 라우트가 많아 별도 파일로 뺐다.
+                if (BridgeDeployRoutes.Matches(path))
+                {
+                    await BridgeDeployRoutes.Handle(req, res, path);
+                    return;
+                }
+
+                // 실행 계열(스키마 반영·배포·승격·환경). 준비(위)와 나눠 둔 이유는
+                // 파일 크기가 아니라 성격이다 — 이쪽은 되돌리기 어려운 일을 한다.
+                if (BridgeOpsRoutes.Matches(path))
+                {
+                    await BridgeOpsRoutes.Handle(req, res, path);
+                    return;
+                }
+
+                await HandlePat(req, res, path);
                 return;
             }
             catch (Exception ex)
@@ -255,42 +227,137 @@ display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
             }
         }
 
-        // ── 접속 정보 게시 ──
+        // ── PAT 대행 ──
 
         /// <summary>
-        /// 포트·토큰을 `suparun_meta.bridge` 에 적어 어드민이 찾아올 수 있게 한다.
-        /// 관리자만 읽는 자리라 토큰을 여기 두는 것이 안전하다.
+        /// 브라우저가 못 하는 Management API 호출을 대신한다.
         ///
-        /// 값이 그대로면 쓰지 않는다 — 컴파일마다 DB 를 두드릴 이유가 없다.
+        /// 브라우저가 직접 못 부르는 이유가 둘이다 — `api.supabase.com` 의 CORS 가 `https://supabase.com`
+        /// 오리진만 허용하고, PAT 는 계정 마스터키라 내려보낼 수 없다.
+        ///
+        /// 한때 이 자리를 `suparun-admin` Edge Function 이 맡았다. 근거는 "Unity 가 꺼져 있어도
+        /// 웹만 열어 보는 사람" 이었는데, **어드민 자체를 이 브리지가 서빙하게 되면서 그 전제가 사라졌다.**
         /// </summary>
-        static async UniTaskVoid PublishEndpointAsync()
+        static async UniTask HandlePat(HttpListenerRequest req, HttpListenerResponse res, string path)
         {
-            var settings = SupaRunSettings.Instance;
-            var env = settings.Current;
-            var id = SupaRunSettings.ProjectIdOf(env.supabaseUrl);
-            var token = SupaRunSettings.AccessTokenOf(env);
-            if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(token)) return;
-
-            var stamp = $"{Port}:{Token}";
-            var prefKey = EditorPrefUtils.ProjectPrefix + "BridgePublished";
-            if (EditorPrefs.GetString(prefKey, "") == stamp) return;
-
-            var payload = new JObject
+            var env = SupaRunSettings.Instance.Current;
+            var pat = SupaRunSettings.AccessTokenOf(env);
+            if (string.IsNullOrEmpty(pat))
             {
-                ["port"] = Port,
-                ["token"] = Token,
-                ["unity"] = Application.unityVersion,
-            }.ToString(Formatting.None);
+                Write(res, 409, Err("Access Token 이 없습니다.",
+                    "대시보드 > Settings > Supabase 에서 PAT 를 입력하세요."));
+                return;
+            }
 
-            var sql =
-                "INSERT INTO suparun_meta(key, value, updated_at) " +
-                $"VALUES ('bridge', $bridge${payload}$bridge$::jsonb, now()) " +
-                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();";
+            var m = req.HttpMethod;
 
-            var r = await SupabaseManagementApi.RunQuery(id, token, sql);
-            if (r.Ok) EditorPrefs.SetString(prefKey, stamp);
-            else r.LogIfFailed("브리지 접속 정보 게시");
+            // ── 프로젝트 ──
+
+            if (path == "/projects" && m == "GET")
+            {
+                var r = await SupabaseManagementApi.ListProjects(pat);
+                if (!r.Ok) { Fail(res, r); return; }
+
+                var arr = new JArray();
+                foreach (var p in r.Value)
+                    arr.Add(new JObject
+                    {
+                        ["ref"] = p.id,
+                        ["name"] = p.name,
+                        ["status"] = p.status,
+                        ["region"] = p.region,
+                        ["url"] = $"https://{p.id}.supabase.co",
+                    });
+                Write(res, 200, new JObject { ["projects"] = arr });
+                return;
+            }
+
+            if (path == "/projects" && m == "POST")
+            {
+                var body = ReadBody(req);
+                var name = ((string)body["name"] ?? "").Trim();
+                if (name.Length == 0) { Write(res, 400, Err("이름이 필요합니다.")); return; }
+
+                var slug = await FirstOrgSlug(pat);
+                if (slug == null) { Write(res, 502, Err("조직을 찾지 못했습니다.")); return; }
+
+                var created = await SupabaseManagementApi.CreateProject(pat,
+                    new SupabaseManagementApi.CreateProjectRequest
+                    {
+                        name = name,
+                        organizationSlug = slug,
+                        dbPass = GeneratePassword(),
+                        region = (string)body["region"] ?? "",
+                        plan = (string)body["plan"] ?? "",
+                    });
+                if (!created.Ok) { Fail(res, created); return; }
+
+                // 만든 직후는 아직 COMING_UP 이다. 어드민이 상태를 폴링한다.
+                Write(res, 200, new JObject
+                {
+                    ["ref"] = created.Value.id,
+                    ["name"] = created.Value.name,
+                    ["status"] = created.Value.status,
+                });
+                return;
+            }
+
+            if (path == "/projects" && m == "DELETE")
+            {
+                var target = req.QueryString["ref"];
+                if (string.IsNullOrEmpty(target)) { Write(res, 400, Err("ref 가 필요합니다.")); return; }
+
+                var r = await SupabaseManagementApi.DeleteProject(target, pat);
+                if (!r.Ok) { Fail(res, r); return; }
+                Write(res, 200, new JObject { ["ok"] = true });
+                return;
+            }
+
+            // ── 생성 보조 ──
+
+            if (path == "/regions" && m == "GET")
+            {
+                var slug = await FirstOrgSlug(pat);
+                if (slug == null) { Write(res, 502, Err("조직을 찾지 못했습니다.")); return; }
+
+                var r = await SupabaseManagementApi.AvailableRegions(pat, slug);
+                if (!r.Ok) { Fail(res, r); return; }
+
+                var arr = new JArray();
+                foreach (var g in r.Value)
+                    arr.Add(new JObject { ["code"] = g.code, ["label"] = g.Label });
+                Write(res, 200, new JObject { ["regions"] = arr });
+                return;
+            }
+
+            if (path == "/api-keys" && m == "GET")
+            {
+                var target = req.QueryString["ref"];
+                if (string.IsNullOrEmpty(target)) { Write(res, 400, Err("ref 가 필요합니다.")); return; }
+
+                var r = await SupabaseManagementApi.GetAnonKey(target, pat);
+                if (!r.Ok) { Fail(res, r); return; }
+                Write(res, 200, new JObject { ["anonKey"] = r.Value });
+                return;
+            }
+
+            // 웹 로그인 프로바이더 라우트(/auth-config)는 없다 — 어드민 로그인이 기계 계정
+            // 자동 로그인으로 바뀌면서 사람용 웹 OAuth 를 켜고 끌 자리가 사라졌다.
+
+            Write(res, 404, Err($"알 수 없는 경로: {path}"));
         }
+
+        /// <summary>계정의 첫 조직 slug. 프로젝트 생성과 리전 조회가 요구한다.</summary>
+        static async UniTask<string> FirstOrgSlug(string pat)
+        {
+            var r = await SupabaseManagementApi.ListOrganizations(pat);
+            return r.Ok && r.Value.Length > 0 ? r.Value[0].slug : null;
+        }
+
+
+        /// <summary>Management API 실패를 그대로 전달한다. 원인이 어드민 화면까지 도달해야 한다.</summary>
+        static void Fail<T>(HttpListenerResponse res, SupabaseResult<T> r) =>
+            Write(res, 502, Err(r.Message, r.Hint));
 
         // ── 유틸 ──
 
@@ -315,12 +382,13 @@ display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
             return sb.ToString();
         }
 
-        static JObject Err(string message, string hint = null)
-        {
-            var o = new JObject { ["error"] = message };
-            if (!string.IsNullOrEmpty(hint)) o["hint"] = hint;
-            return o;
-        }
+        // 응답 헬퍼는 BridgeIo 로 옮겼다 — 배포 라우트(BridgeDeployRoutes)와 공용이다.
+        static JObject Err(string message, string hint = null) => BridgeIo.Err(message, hint);
+
+        static void Write(HttpListenerResponse res, int status, JObject body) =>
+            BridgeIo.Write(res, status, body);
+
+        static JObject ReadBody(HttpListenerRequest req) => BridgeIo.ReadBody(req);
 
         static void WriteHtml(HttpListenerResponse res, string html)
         {
@@ -332,14 +400,123 @@ display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
             res.Close();
         }
 
-        static void Write(HttpListenerResponse res, int status, JObject body)
+
+        // ── 어드민 정적 서빙 ──
+
+        /// <summary>
+        /// 어드민 dist 를 여기서 내보낸다.
+        ///
+        /// **왜 Supabase 가 아닌가**: `*.supabase.co` 는 HTML 을 `text/plain` 으로 강제 다운그레이드한다
+        /// (Storage · Edge Function 둘 다, 확장자·명시적 헤더와 무관 — 실측 확인). 브라우저가 렌더링하지 않는다.
+        ///
+        /// **왜 Cloud Run 이 아닌가**: 어드민에서 배포 설정을 입력하려는데 그 어드민이 배포돼야 열리는
+        /// 순환이 생긴다. 로컬은 배포와 무관하게 열려 그 고리를 끊는다.
+        /// </summary>
+        static async UniTask ServeAdmin(HttpListenerResponse res, string rel)
         {
-            var bytes = Encoding.UTF8.GetBytes(body.ToString(Formatting.None));
-            res.StatusCode = status;
-            res.ContentType = "application/json; charset=utf-8";
+            var root = AdminDistRoot();
+            if (root == null)
+            {
+                Write(res, 503, Err("어드민 빌드 산출물(AdminTemplate~/dist)이 없습니다",
+                    "AdminTemplate~ 에서 `npm ci && npm run build` 를 실행하세요."));
+                return;
+            }
+
+            if (string.IsNullOrEmpty(rel)) rel = "index.html";
+
+            // `..` 로 패키지 밖 파일을 읽어가지 못하게 막는다. 로컬이라도 브라우저가 부르는 경로다.
+            var full = Path.GetFullPath(Path.Combine(root, rel));
+            if (!full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                !File.Exists(full))
+            {
+                Write(res, 404, Err($"없는 파일: {rel}"));
+                return;
+            }
+
+            if (Path.GetFileName(full).Equals("index.html", StringComparison.OrdinalIgnoreCase))
+                WriteHtml(res, await InjectEnvAsync(File.ReadAllText(full)));
+            else
+                WriteFile(res, full);
+        }
+
+        /// <summary>
+        /// 어드민 dist 의 **물리** 경로. `file:` 패키지는 `Packages/` 아래에 실재하지 않으므로
+        /// AssetDatabase 가상 경로로는 File IO 가 되지 않는다. `resolvedPath` 가 유일하게 옳다.
+        /// </summary>
+        static string AdminDistRoot()
+        {
+            var pkg = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(SupaRunBridge).Assembly);
+            if (pkg == null) return null;
+            var dist = Path.GetFullPath(Path.Combine(pkg.resolvedPath, "Templates/AdminTemplate~/dist"));
+            return Directory.Exists(dist) ? dist : null;
+        }
+
+        /// <summary>
+        /// 접속 정보를 **런타임에** 꽂는다. 배포할 때 치환하던 것을 여기로 옮기면
+        /// 환경을 바꿔도 다시 빌드할 일이 없다 — 새로고침이면 된다.
+        /// </summary>
+        static async UniTask<string> InjectEnvAsync(string html)
+        {
+            var s = SupaRunSettings.Instance;
+
+            // 브리지 접속 정보는 **여기서만** 준다.
+            // 예전에는 `suparun_meta.bridge` 에 적어 어드민이 DB 에서 읽어 갔는데, 그 표는
+            // `public_read` 라 anon key 만 있으면 토큰이 그대로 읽혔다. anon key 는 게임 빌드에서
+            // 뽑히므로 사실상 공개다 — 아래 PAT 대행 라우트가 붙은 지금 그건 곧 계정 전권이다.
+            // 같은 출처로 내려주면 그 경로 자체가 사라진다.
+            var bridge = "<script>window.__SUPARUN_BRIDGE={port:" + Port + ",token:\"" + Token + "\"};</script>";
+
+            // 기계 계정 세션도 같은 방식으로 꽂는다 — 사람 로그인은 없다. 실패하면 안 꽂고,
+            // 화면이 "브리지가 세션을 주지 못했다" 를 안내한다(원인은 Unity Console 에 있다).
+            var session = "";
+            try
+            {
+                var t = await SupaRunMachineAccount.EnsureSessionAsync(s.Current);
+                if (t != null)
+                {
+                    var j = new JObject
+                    {
+                        ["access_token"] = t.Value.access,
+                        ["refresh_token"] = t.Value.refresh,
+                    };
+                    session = "<script>window.__SUPARUN_SESSION=" +
+                              j.ToString(Newtonsoft.Json.Formatting.None) + ";</script>";
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[SupaRun:Auth] 세션 주입 실패 — {ex.Message}");
+            }
+
+            return html
+                .Replace("</head>", bridge + session + "</head>")
+                .Replace("{{SUPABASE_URL}}", s.supabaseUrl ?? "")
+                .Replace("{{SUPABASE_ANON_KEY}}", s.SupabaseAnonKey ?? "");
+        }
+
+        static void WriteFile(HttpListenerResponse res, string full)
+        {
+            var bytes = File.ReadAllBytes(full);
+            res.StatusCode = 200;
+            res.ContentType = MimeOf(Path.GetExtension(full));
             res.ContentLength64 = bytes.Length;
             res.OutputStream.Write(bytes, 0, bytes.Length);
             res.Close();
+        }
+
+        static string MimeOf(string ext)
+        {
+            switch (ext.ToLowerInvariant())
+            {
+                case ".js":    return "text/javascript; charset=utf-8";
+                case ".css":   return "text/css; charset=utf-8";
+                case ".json":
+                case ".map":   return "application/json; charset=utf-8";
+                case ".svg":   return "image/svg+xml";
+                case ".png":   return "image/png";
+                case ".woff2": return "font/woff2";
+                default:       return "application/octet-stream";
+            }
         }
     }
 }

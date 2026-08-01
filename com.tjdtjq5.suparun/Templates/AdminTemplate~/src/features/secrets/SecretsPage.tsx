@@ -1,0 +1,158 @@
+import { useCallback, useEffect, useState } from 'react'
+import {
+  generateSecret,
+  KNOWN_SECRETS,
+  loadSecretMeta,
+  saveSecret,
+  type KnownSecret,
+  type SecretMeta,
+} from '../../shared/secrets'
+import { env } from '../../shared/env'
+import { LoadingBlock, Spinner } from '../../shared/Spinner'
+import { sb } from '../../shared/supabase'
+import { toast } from '../../shared/toast'
+
+/**
+ * 공유 비밀.
+ *
+ * **설정과 화면을 나눈 이유**: 드나드는 빈도가 다르다. 설정은 자주 보고 비밀은 드물게 만진다.
+ * 섞어 두면 설정을 보러 갔다가 비밀이 눈에 들어오고, 나중에 "설정은 보되 비밀은 못 보는"
+ * 역할이 필요해졌을 때 화면부터 갈라야 한다.
+ *
+ * 값은 표시하지 않는다 — 표에 SELECT 정책이 없어서 **읽어 올 수도 없다**(shared/secrets.ts).
+ */
+export function SecretsPage() {
+  const [meta, setMeta] = useState<SecretMeta[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [draft, setDraft] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const reload = useCallback(async () => {
+    setError(null)
+    try {
+      setMeta(await loadSecretMeta())
+    } catch (e) {
+      setMeta([])
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }, [])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  async function save(key: string, override?: string) {
+    const value = (override ?? draft[key] ?? '').trim()
+    if (!value) return
+
+    setBusy(key)
+    try {
+      const { data } = sb ? await sb.auth.getSession() : { data: { session: null } }
+      await saveSecret(key, value, data.session?.user?.email ?? 'admin')
+      setDraft((d) => ({ ...d, [key]: '' }))
+      toast('저장했습니다', 'success')
+      await reload()
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  if (meta === null) return <LoadingBlock label="비밀 목록 불러오는 중" />
+
+  const byKey = new Map(meta.map((m) => [m.key, m]))
+
+  // DB 에만 있고 목록에 없는 키도 보여준다 — 모르는 값이 조용히 쌓이는 것이 더 나쁘다.
+  const extra: KnownSecret[] = meta
+    .filter((m) => !KNOWN_SECRETS.some((k) => k.key === m.key))
+    .map((m) => ({ key: m.key, label: m.key, hint: 'SupaRun 이 모르는 키입니다.' }))
+
+  const projectRef = env().projectRef
+
+  return (
+    <div className="appset">
+      <section className="appset-block">
+        <h3 className="appset-title">공유 비밀</h3>
+        <p className="appset-desc">
+          git 에 올릴 수 없지만 팀이 공유해야 하는 값들입니다. <strong>값은 보여주지 않습니다</strong> —
+          읽는 경로 자체가 없어서, 관리자라도 꺼낼 수 없습니다. 빈칸이 정상이고, 채워 넣으면 덮어씁니다.
+        </p>
+
+        {error && <div className="gsetup-warn">{error}</div>}
+
+        {[...KNOWN_SECRETS, ...extra].map((s) => {
+          const m = byKey.get(s.key)
+          return (
+            <div key={s.key} className="appset-row">
+              <div className="appset-row-main">
+                <div className="appset-row-name">
+                  {m ? '✓' : '○'} {s.label}
+                  {s.shared && <span className="appset-row-key"> · 모든 환경 공통</span>}
+                </div>
+                <div className="appset-row-key">{s.hint}</div>
+                <div className="appset-row-key">
+                  {m
+                    ? `채워짐 · ${m.updatedAt ? new Date(m.updatedAt).toLocaleString() : '시각 모름'}${
+                        m.updatedBy ? ` · ${m.updatedBy}` : ''
+                      }`
+                    : '비어 있음'}
+                </div>
+                {s.link && (
+                  <div className="appset-row-key">
+                    <a href={s.link(projectRef)} target="_blank" rel="noreferrer">
+                      {s.linkLabel}
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              <div className="appset-row-fields">
+                {/* 사람이 정할 값이 아니면 만들어 준다 — 입력칸을 띄울 이유가 없다. */}
+                {s.generate ? (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={busy !== null}
+                    onClick={() => void save(s.key, generateSecret())}
+                  >
+                    {busy === s.key ? <Spinner size={12} /> : m ? '새로 만들기' : '만들기'}
+                  </button>
+                ) : (
+                  <>
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      className="form-control form-control-sm"
+                      placeholder={m ? '바꾸려면 새 값을 입력' : '값을 입력'}
+                      value={draft[s.key] ?? ''}
+                      onChange={(e) => setDraft((d) => ({ ...d, [s.key]: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void save(s.key)
+                      }}
+                    />
+                    <button
+                      className="btn btn-primary btn-sm"
+                      disabled={busy !== null || !(draft[s.key] ?? '').trim()}
+                      onClick={() => void save(s.key)}
+                    >
+                      {busy === s.key ? <Spinner size={12} /> : '저장'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </section>
+
+      <section className="appset-block">
+        <h3 className="appset-title">여기 없는 것</h3>
+        <p className="appset-desc">
+          <strong>Supabase Access Token(PAT)</strong> 은 이 목록에 없습니다. 계정 전체의 마스터키라
+          팀이 하나를 돌려쓰면 감사 추적이 사라지고, 그 사람이 나가면 전부 끊깁니다. 각자 발급해
+          <strong> 자기 Unity 에만</strong> 둡니다 — DB 에는 한 번도 올라가지 않습니다.
+        </p>
+      </section>
+    </div>
+  )
+}

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using Cysharp.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 
@@ -9,133 +11,68 @@ namespace Tjdtjq5.SupaRun.Editor
     {
         public const string VERSION = "0.4.0";
 
-        // 신규 분리 경로 — 공유 데이터는 ProjectSettings/, 개인 환경은 UserSettings/
+        // 파일에 남는 것은 **부트스트랩뿐이다.**
+        //
+        // 어드민(`suparun_env`)을 읽으려면 먼저 어느 Supabase 에 붙을지 알아야 하고, 그건
+        // 어드민이 알려줄 수 없다 — 닭과 달걀이다. 그래서 URL·anon key·이름만 파일에 남는다.
+        // 셋 다 공개값이라 git 에 있어도 잃을 것이 없고, 있어야 팀원이 클론만으로 붙는다.
+        //
+        // 나머지는 전부 밖으로 나갔다:
+        //   비밀 → EditorPrefs (git 밖) + `suparun_secret` (팀 공유)
+        //   판단 → `suparun_env` (어드민이 씀)
+        //   사실 → `suparun_env` (Unity 가 구움)
+        //   편집/빌드 환경 선택 → EditorPrefs (**개인** — 내 선택이 남에게 번지지 않는다)
+        //
+        // `UserSettings/SupaRunUserSettings.json` 은 사라졌다. 마지막까지 남아 있던 두 값
+        // (`serverLogToConsole`·`setupCompleted`)의 유일한 사용처가 대시보드였고, 그 화면이
+        // 없어지면서 파일 하나가 통째로 비었다. 개인 값은 전부 EditorPrefs 로 간다.
         const string ProjectSettingsPath = "ProjectSettings/SupaRunProjectSettings.json";
-        const string UserSettingsPath = "UserSettings/SupaRunUserSettings.json";
 
-        // 레거시 경로 — 마이그레이션 입력 (단일 JSON / .asset / 시크릿 JSON)
-        const string LegacyUnifiedJsonPath = "UserSettings/SupaRunSettings.json";
-        const string LegacyAssetPath = "Assets/Editor/SupaRunSettings.asset";
-        const string LegacySecretsJsonPath = "UserSettings/SupaRunSecrets.json";
-
-        // ── 데이터 클래스 (분리) ──
+        // ── 데이터 클래스 ──
 
         /// <summary>
-        /// 환경 하나(dev / staging / prod …). **환경마다 달라야 하는 값만** 담는다.
+        /// 환경 하나(dev / staging / prod …). **파일에 남는 것은 부트스트랩 셋뿐이다.**
         ///
-        /// 나누는 기준은 "환경을 갈아탈 때 같이 갈아타야 하는가"다.
-        /// Supabase 는 프로젝트 자체가 갈리므로 URL·키·PAT 가 전부 환경별이고,
-        /// Cloud Run 은 서비스를 따로 띄우므로 서비스명·URL 이 환경별이다.
-        /// 반대로 GCP 프로젝트·GitHub 레포는 하나를 공유하므로 여기 없다.
+        /// 이름은 개발자가 부르는 라벨이라 로컬에 둔다. 접속 정보(URL·anon key)는 공개값이고,
+        /// 이것이 있어야 `suparun_env` 를 읽으러 갈 수 있다.
+        ///
+        /// 나머지(Cloud Run URL·서비스명·비밀)는 여기 없다 —
+        /// 비밀은 EditorPrefs, 그 밖은 `suparun_env` 다.
         /// </summary>
         [Serializable]
         public class EnvironmentData
         {
             public string name = "";
-
-            // Supabase — 환경마다 별도 프로젝트
             public string supabaseUrl = "";
             public string supabaseAnonKey = "";
 
-            // ⚠ 아래 비밀 필드들을 **직접 읽지 말 것.** 값은 이 파일이 아니라 EditorPrefs 에 있다
-            //   (git 에 올라가면 안 되므로). 필드는 옛 파일에서 값을 건져 올리는 폴백으로만 남아 있고,
-            //   마이그레이션이 끝나면 빈 문자열이다.
-            //   반드시 AccessTokenOf / DbPasswordOf / CronSecretOf 를 쓴다.
-            public string supabaseDbPassword = "";
-            public string supabaseAccessToken = "";
+            /// <summary>
+            /// 컴파일 후 이 환경에 스키마를 자동 반영할 것인가. **팀 공유값**(git)이다 —
+            /// dev 는 켜고 prod 는 꺼 두면, prod 를 편집 중일 때 컴파일해도 스키마가 밀리지 않는다.
+            /// 꺼진 환경은 배포가 반영을 겸한다(배포 시 항상 선반영).
+            /// 기본 꺼짐: 처음 반영하면 [UserData] 표에 RLS 정책이 새로 생기는데,
+            /// 게임도 같은 anon key 를 쓰므로 그 문은 한 번은 사람이 열어야 한다.
+            /// </summary>
+            public bool autoSchemaSync;
 
-            // Cloud Run — 환경마다 별도 서비스 (어드민 URL 도 따라서 갈린다)
-            public string gcpServiceName = "";
-            public string cloudRunUrl = "";
-            public string cronSecret = "";
+            /// <summary>
+            /// 이 환경의 어드민에서 행이 늘거나 줄면 Id 상수를 자동 재생성할 것인가.
+            /// 마찬가지로 팀 공유값. dev 만 켜는 것이 의도다 — prod 데이터 핫픽스가
+            /// Unity 코드 생성을 유발할 이유가 없다. 수동 버튼은 없다(이것이 유일한 경로).
+            /// </summary>
+            public bool autoIdConstants;
         }
 
         [Serializable]
         class ProjectData
         {
-            // ── 환경 (ADR-0004 후속) ──
+            /// <summary>환경 목록. 팀이 공유해야 붙을 수 있으므로 이것만 git 에 남는다.</summary>
             public System.Collections.Generic.List<EnvironmentData> environments = new();
-            /// <summary>에디터가 보는 환경. 컴파일 시 스키마 자동 반영이 여기로 간다.</summary>
-            public string editorEnvironment = "";
-            /// <summary>빌드에 구워지는 환경. 에디터와 **별개여야 한다** —
-            /// dev 를 보면서 prod 빌드를 뽑는 것이 정상 상태다.</summary>
-            public string buildEnvironment = "";
-
-            // ── 레거시 평면 필드 ──
-            // 환경 도입 전 형식. MigrateEnvironments() 가 environments[0] 으로 옮긴 뒤 비운다.
-            // 필드를 지우면 옛 설정 파일에서 값을 못 읽어 마이그레이션 자체가 불가능해지므로 남긴다.
-            public string supabaseUrl = "";
-            public string supabaseAnonKey = "";
-            public string supabaseDbPassword = "";
-            public string supabaseAccessToken = "";
-
-            // Google Cloud — 프로젝트/리전/서비스계정은 환경 공통
-            public string gcpProjectId = "";
-            public string gcpRegion = "asia-northeast3";
-            public string gcpServiceName = "";
-            public int gcpMinInstances;
-            public bool gcpCloudRunApiEnabled;
-            public string gcpServiceAccountEmail = "";
-
-            // GitHub
-            public string githubRepoName = "";
-            public string githubToken = "";
-
-            // Auth
-            public string enabledAuthProviders = "Guest";
-
-            // 스케일링
-            public int supabaseMaxConnections = 60;
-            public int gcpMaxInstances = 3;
-            public int dbPoolSize = 20;
-
-            // 배포 캐시
-            public string enabledServerCaches = "nuget,docker";
-
-            // 상태 (배포 결과)
-            public string cloudRunUrl = "";
-            public string cronSecret = "";
-        }
-
-        [Serializable]
-        class UserData
-        {
-            public bool serverLogToConsole = true;
-            public bool setupCompleted;
-        }
-
-        // ── 레거시 통합 데이터 (마이그레이션 입력) ──
-
-        [Serializable]
-        class LegacyData
-        {
-            public string supabaseUrl = "";
-            public string supabaseAnonKey = "";
-            public string supabaseDbPassword = "";
-            public string supabaseAccessToken = "";
-            public string gcpProjectId = "";
-            public string gcpRegion = "asia-northeast3";
-            public string gcpServiceName = "";
-            public int gcpMinInstances;
-            public bool gcpCloudRunApiEnabled;
-            public string gcpServiceAccountEmail = "";
-            public string githubRepoName = "";
-            public string githubToken = "";
-            public string enabledAuthProviders = "Guest";
-            public int supabaseMaxConnections = 60;
-            public int gcpMaxInstances = 3;
-            public int dbPoolSize = 20;
-            public string enabledServerCaches = "nuget,docker";
-            public bool serverLogToConsole = true;
-            public bool setupCompleted;
-            public string cloudRunUrl = "";
-            public string cronSecret = "";
         }
 
         // ── 메모리 캐시 + 로드 ──
 
         static ProjectData _project;
-        static UserData _user;
         static SupaRunSettings _instance;
 
         static ProjectData P
@@ -144,10 +81,7 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 if (_project == null)
                 {
-                    MigrateIfNeeded();
                     _project ??= LoadProject();
-                    MigrateEnvironments(_project);
-                    MigrateSecretsOutOfFile(_project);
                 }
                 return _project;
             }
@@ -155,111 +89,32 @@ namespace Tjdtjq5.SupaRun.Editor
 
         // ── 환경 ────────────────────────────────────────────────────
 
-        /// <summary>
-        /// 평면 필드 → environments[0] 이관. 멱등 — 환경이 하나라도 있으면 아무것도 하지 않는다.
-        ///
-        /// 이름을 dev 로 짓는 이유: 기존 프로젝트는 그동안 개발용으로 쓰던 것이고,
-        /// prod 는 깨끗한 새 프로젝트로 따로 만든다는 결정을 따른다.
-        /// </summary>
-        static void MigrateEnvironments(ProjectData p)
-        {
-            p.environments ??= new System.Collections.Generic.List<EnvironmentData>();
-            if (p.environments.Count > 0)
-            {
-                // 선택이 사라진 환경을 가리키면(이름 변경·삭제) 첫 환경으로 되돌린다.
-                if (!p.environments.Exists(e => e.name == p.editorEnvironment))
-                    p.editorEnvironment = p.environments[0].name;
-                if (!p.environments.Exists(e => e.name == p.buildEnvironment))
-                    p.buildEnvironment = p.editorEnvironment;
-                return;
-            }
-
-            // 평면 필드가 통째로 비어 있으면 이관할 것이 없다(신규 프로젝트).
-            if (string.IsNullOrEmpty(p.supabaseUrl) && string.IsNullOrEmpty(p.cloudRunUrl)) return;
-
-            p.environments.Add(new EnvironmentData
-            {
-                name = "dev",
-                supabaseUrl = p.supabaseUrl,
-                supabaseAnonKey = p.supabaseAnonKey,
-                supabaseDbPassword = p.supabaseDbPassword,
-                supabaseAccessToken = p.supabaseAccessToken,
-                gcpServiceName = p.gcpServiceName,
-                cloudRunUrl = p.cloudRunUrl,
-                cronSecret = p.cronSecret,
-            });
-            p.editorEnvironment = "dev";
-            p.buildEnvironment = "dev";
-
-            // 평면 필드를 비운다 — 두 곳에 값이 남으면 어느 쪽이 진실인지 알 수 없다.
-            p.supabaseUrl = p.supabaseAnonKey = p.supabaseDbPassword = p.supabaseAccessToken = "";
-            p.gcpServiceName = p.cloudRunUrl = p.cronSecret = "";
-
-            SaveProject();
-            Debug.Log("[SupaRun] 기존 설정을 환경 'dev' 로 옮겼습니다. 대시보드 > Settings 에서 환경을 추가할 수 있습니다.");
-        }
-
-        /// <summary>
-        /// 비밀을 프로젝트 파일에서 빼내 EditorPrefs 로 옮긴다. 멱등 — 옮길 게 없으면 아무것도 안 한다.
-        ///
-        /// 이 파일은 git 에 커밋된다. PAT 는 Supabase **계정 전체**의 마스터키라 저장소에 남으면
-        /// 클론한 누구나 계정의 모든 프로젝트를 지울 수 있다. 그렇다고 gitignore 로 빼면 팀원이
-        /// 설정을 못 받았는데, 이제 <see cref="SupaRunSecretStore"/> 가 공유를 맡으므로 뺄 수 있다.
-        ///
-        /// 옮기고 나면 이 함수는 두 번 다시 할 일이 없다. 남겨 두는 이유는 git 에서 옛 파일을
-        /// 되돌리거나 다른 브랜치를 체크아웃하면 값이 다시 나타나기 때문이다.
-        /// </summary>
-        static void MigrateSecretsOutOfFile(ProjectData p)
-        {
-            var moved = 0;
-
-            foreach (var env in p.environments)
-            {
-                moved += Move("access_token", env.name, env.supabaseAccessToken, v => env.supabaseAccessToken = v);
-                moved += Move("db_password", env.name, env.supabaseDbPassword, v => env.supabaseDbPassword = v);
-                moved += Move("cron_secret", env.name, env.cronSecret, v => env.cronSecret = v);
-            }
-
-            moved += Move("github_token", null, p.githubToken, v => p.githubToken = v);
-
-            // 환경 이관 전 형식의 평면 필드에도 남아 있을 수 있다.
-            moved += Move("access_token", p.editorEnvironment, p.supabaseAccessToken, v => p.supabaseAccessToken = v);
-            moved += Move("db_password", p.editorEnvironment, p.supabaseDbPassword, v => p.supabaseDbPassword = v);
-            moved += Move("cron_secret", p.editorEnvironment, p.cronSecret, v => p.cronSecret = v);
-
-            if (moved == 0) return;
-
-            SaveProject();
-            Debug.Log($"[SupaRun] 비밀 {moved}개를 프로젝트 파일에서 이 컴퓨터(EditorPrefs)로 옮겼습니다 — " +
-                      "git 에 더 이상 올라가지 않습니다. 팀 공유는 Settings > 에디터 로그인 > 공유 비밀에서 합니다.");
-            return;
-
-            static int Move(string name, string env, string value, Action<string> clearInFile)
-            {
-                if (string.IsNullOrEmpty(value)) return 0;
-                // 로컬에 이미 값이 있으면 덮지 않는다 — 파일 쪽이 옛 브랜치의 값일 수 있다.
-                if (!SupaRunSecretPrefs.Has(name, env)) SupaRunSecretPrefs.Set(name, env, value);
-                clearInFile("");
-                return 1;
-            }
-        }
-
         /// <summary>환경 목록(읽기 전용 뷰). 편집은 AddEnvironment/RemoveEnvironment 로.</summary>
         public System.Collections.Generic.IReadOnlyList<EnvironmentData> Environments => P.environments;
+
+        // 편집 환경 선택은 **개인 것**이라 EditorPrefs 에 둔다(파일 아님).
+        //
+        // 팀 공통으로 두면, A 가 prod 스키마를 반영하려고 편집 환경을 바꾼 순간
+        // 아무것도 모르는 B 의 다음 컴파일이 prod 를 건드린다. 공통이 안전해 보이지만
+        // 사고 범위는 오히려 넓다.
+        const string EditorEnvKey = "EditorEnv";
+
+        static string EnvPref(string key, string fallback)
+        {
+            var v = EditorPrefs.GetString(EditorPrefUtils.ProjectPrefix + key, "");
+            return string.IsNullOrEmpty(v) ? fallback : v;
+        }
 
         /// <summary>에디터가 보는 환경 이름. 컴파일 시 스키마 반영·어드민·대시보드가 전부 이걸 따른다.</summary>
         public string EditorEnvironment
         {
-            get => P.editorEnvironment;
-            set { P.editorEnvironment = value; SaveProject(); }
+            get => EnvPref(EditorEnvKey, P.environments.Count > 0 ? P.environments[0].name : "");
+            set => EditorPrefs.SetString(EditorPrefUtils.ProjectPrefix + EditorEnvKey, value ?? "");
         }
 
-        /// <summary>빌드에 구워지는 환경 이름.</summary>
-        public string BuildEnvironment
-        {
-            get => P.buildEnvironment;
-            set { P.buildEnvironment = value; SaveProject(); }
-        }
+        // 빌드 환경 포인터는 없다 — **빌드 = 편집 환경**이다. 환경 전환이 드롭다운 한 번이
+        // 된 뒤로, "dev 를 보며 prod 빌드" 를 위해 포인터를 따로 둘 이유가 사라졌다.
+        // 출시 빌드는 prod 로 전환하고 뽑는다. 어느 환경이 구워졌는지는 빌드 로그가 말한다.
 
         /// <summary>이름으로 환경을 찾는다. 없으면 null — 승격 도구가 양쪽을 집을 때 쓴다.</summary>
         public EnvironmentData GetEnvironment(string name) =>
@@ -273,12 +128,12 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             get
             {
-                var env = GetEnvironment(P.editorEnvironment);
+                var env = GetEnvironment(EditorEnvironment);
                 if (env != null) return env;
                 if (P.environments.Count == 0)
                 {
                     P.environments.Add(new EnvironmentData { name = "dev" });
-                    P.editorEnvironment = P.buildEnvironment = "dev";
+                    SaveProject();
                 }
                 return P.environments[0];
             }
@@ -295,6 +150,20 @@ namespace Tjdtjq5.SupaRun.Editor
             return env;
         }
 
+        /// <summary>
+        /// 환경 이름 변경. 편집·빌드 선택이 이 이름을 가리키면 같이 따라간다 —
+        /// 선택은 이름 문자열로 저장되므로, 슬롯만 바꾸면 선택이 유령 이름을 가리킨다.
+        /// </summary>
+        public bool RenameEnvironment(string from, string to)
+        {
+            var env = GetEnvironment(from);
+            if (env == null || GetEnvironment(to) != null) return false;
+            env.name = to;
+            if (EditorEnvironment == from) EditorEnvironment = to;
+            SaveProject();
+            return true;
+        }
+
         /// <summary>환경 삭제. 마지막 하나는 지우지 않는다(설정이 통째로 사라지는 것을 막는다).</summary>
         public bool RemoveEnvironment(string name)
         {
@@ -302,23 +171,10 @@ namespace Tjdtjq5.SupaRun.Editor
             var env = GetEnvironment(name);
             if (env == null) return false;
             P.environments.Remove(env);
-            if (P.editorEnvironment == name) P.editorEnvironment = P.environments[0].name;
-            if (P.buildEnvironment == name) P.buildEnvironment = P.environments[0].name;
+            // 선택이 사라진 환경을 가리키면 첫 환경으로 되돌린다.
+            if (EditorEnvironment == name) EditorEnvironment = P.environments[0].name;
             SaveProject();
             return true;
-        }
-
-        static UserData U
-        {
-            get
-            {
-                if (_user == null)
-                {
-                    MigrateIfNeeded();
-                    _user ??= LoadUser();
-                }
-                return _user;
-            }
         }
 
         static ProjectData LoadProject()
@@ -331,26 +187,10 @@ namespace Tjdtjq5.SupaRun.Editor
             return new ProjectData();
         }
 
-        static UserData LoadUser()
-        {
-            if (File.Exists(UserSettingsPath))
-            {
-                try { return JsonUtility.FromJson<UserData>(File.ReadAllText(UserSettingsPath)); }
-                catch (Exception ex) { Debug.LogWarning($"[SupaRun] {UserSettingsPath} 파싱 실패 — 초기화합니다: {ex.Message}"); }
-            }
-            return new UserData();
-        }
-
         static void SaveProject()
         {
             EnsureDirFor(ProjectSettingsPath);
             File.WriteAllText(ProjectSettingsPath, JsonUtility.ToJson(P, true));
-        }
-
-        static void SaveUser()
-        {
-            EnsureDirFor(UserSettingsPath);
-            File.WriteAllText(UserSettingsPath, JsonUtility.ToJson(U, true));
         }
 
         static void EnsureDirFor(string path)
@@ -375,7 +215,8 @@ namespace Tjdtjq5.SupaRun.Editor
         public void Save()
         {
             SaveProject();
-            SaveUser();
+            // 환경 설정은 파일이 아니라 DB 다. 바뀐 키가 없으면 아무것도 하지 않는다.
+            FlushEnvAsync().Forget();
         }
 
         // ── Supabase (현재 편집 환경) ──
@@ -394,15 +235,14 @@ namespace Tjdtjq5.SupaRun.Editor
             set { Current.supabaseAnonKey = value; SaveProject(); }
         }
 
-        // 아래 값들은 **git 에 올라가면 안 되므로** 저장 위치가 다르다 — 파일이 아니라
-        // EditorPrefs 에 있고, 팀 공유는 suparun_secret 테이블이 맡는다(SupaRunSecretPrefs 참조).
-        // 시그니처는 그대로라 호출부는 영향이 없다.
+        // 비밀은 **git 에 올라가면 안 되므로** EditorPrefs 에 있고, 팀 공유는 `suparun_secret` 이 맡는다.
+        // 폴백 인자가 빈 문자열인 이유: 옛 파일에서 값을 건져 올리던 경로가 사라졌다.
         //
         // 환경을 명시해야 하는 곳(승격·스냅샷처럼 두 환경을 동시에 다루는 코드)은
-        // 아래 *Of(env) 정적 메서드를 쓴다. EnvironmentData 의 필드를 직접 읽으면 빈 값이 나온다.
+        // 아래 *Of(env) 를 쓴다.
 
         public static string AccessTokenOf(EnvironmentData env) =>
-            env == null ? "" : SupaRunSecretPrefs.Get("access_token", env.name, env.supabaseAccessToken);
+            env == null ? "" : SupaRunSecretPrefs.Get("access_token", env.name, "");
 
         public static void SetAccessTokenOf(EnvironmentData env, string value)
         {
@@ -410,7 +250,7 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         public static string DbPasswordOf(EnvironmentData env) =>
-            env == null ? "" : SupaRunSecretPrefs.Get("db_password", env.name, env.supabaseDbPassword);
+            env == null ? "" : SupaRunSecretPrefs.Get("db_password", env.name, "");
 
         public static void SetDbPasswordOf(EnvironmentData env, string value)
         {
@@ -418,7 +258,48 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         public static string CronSecretOf(EnvironmentData env) =>
-            env == null ? "" : SupaRunSecretPrefs.Get("cron_secret", env.name, env.cronSecret);
+            env == null ? "" : SupaRunSecretPrefs.Get("cron_secret", env.name, "");
+
+        /// <summary>
+        /// **다른 환경**의 `suparun_env` 값 하나를 읽는다. 빌드·스냅샷처럼 편집 환경이 아닌
+        /// 곳을 들여다봐야 하는 자리에서 쓴다 — 메모리 캐시는 편집 환경 것뿐이다.
+        ///
+        /// 편집 환경이면 캐시로 답한다(왕복 없음).
+        /// </summary>
+        public static async UniTask<string> EnvValueOf(EnvironmentData env, string key)
+        {
+            if (env == null) return "";
+            if (env.name == Instance.EditorEnvironment) return EnvGet(key);
+
+            var id = ProjectIdOf(env.supabaseUrl);
+            var token = AccessTokenOf(env);
+            if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(token)) return "";
+
+            var r = await SupabaseManagementApi.RunQuery(id, token,
+                $"SELECT value FROM suparun_env WHERE key = '{key}';");
+            if (!r.Ok) return "";
+
+            try
+            {
+                var rows = Newtonsoft.Json.Linq.JArray.Parse(r.Value ?? "[]");
+                return rows.Count > 0 ? (string)rows[0]["value"] ?? "" : "";
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>
+        /// 빌드 시점에 쓰는 동기 판. 빌드 파이프라인(`IPreprocessBuildWithReport`)은 await 를 못 한다.
+        /// 편집 환경이면 캐시에서 즉시 답하고, 다른 환경이면 갱신해 두고 쓰라는 뜻으로 빈 값을 준다.
+        /// </summary>
+        public static string CloudRunUrlOf(EnvironmentData env)
+        {
+            if (env == null) return "";
+            if (env.name == Instance.EditorEnvironment) return EnvGet(K_CLOUD_RUN_URL);
+
+            // 빌드 환경이 편집 환경과 다르면 그 값을 여기서 동기로 가져올 방법이 없다.
+            // 빈 값이면 아래 경고가 뜨고, 사람이 편집 환경을 그쪽으로 바꿔 한 번 열면 채워진다.
+            return "";
+        }
 
         public string SupabaseDbPassword
         {
@@ -432,104 +313,225 @@ namespace Tjdtjq5.SupaRun.Editor
             set => SetAccessTokenOf(Current, value);
         }
 
+        // ── 환경 설정 (`suparun_env`) ──────────────────────────────
+        // **어드민이 진실이고 여기는 읽는 쪽이다.** 값은 이 환경의 DB 에 있고,
+        // 대시보드를 열 때와 배포 직전에 RefreshEnvAsync() 로 당겨 온다.
+        //
+        // 파일로 캐시하지 않는다 — 설정을 git 에서 걷어내는 것이 목적이고, 컴파일 경로는
+        // 이 값을 쓰지 않으므로(스키마 반영은 URL·PAT 만 쓴다) 메모리로 충분하다.
+        // 도메인 리로드로 비워지면 다음 갱신 때 다시 채워진다.
+
+        static Dictionary<string, string> _envCache;
+        static readonly HashSet<string> _envDirty = new();
+
+        /// <summary>DB 키 상수. **어드민(shared/envSettings.ts)이 같은 키로 쓴다 — 함부로 바꾸지 말 것.**</summary>
+        const string K_NAME = "name";
+        const string K_GCP_PROJECT = "gcp_project_id";
+        const string K_GCP_REGION = "gcp_region";
+        const string K_GCP_SERVICE = "gcp_service_name";
+        const string K_GCP_MIN = "gcp_min_instances";
+        const string K_GITHUB_REPO = "github_repo_name";
+        const string K_CACHES = "server_caches";
+        // 아래는 사람이 정하지 않는 **사실** — 자동 설정·배포·상태 조회가 알아내 넣는다.
+        const string K_GCP_API_ENABLED = "gcp_api_enabled";
+        const string K_GCP_SERVICE_ACCOUNT = "gcp_service_account";
+        const string K_CLOUD_RUN_URL = "cloud_run_url";
+        const string K_MAX_CONNECTIONS = "max_connections";
+        const string K_MAX_INSTANCES = "max_instances";
+        const string K_DB_POOL_SIZE = "db_pool_size";
+        /// <summary>게임 빌드용 로그인(Guest·GPGS·GameCenter). 웹 OAuth 는 여기 없다.</summary>
+        const string K_PLATFORM_AUTH = "platform_auth";
+
+        static string EnvGet(string key, string fallback = "") =>
+            _envCache != null && _envCache.TryGetValue(key, out var v) && !string.IsNullOrEmpty(v)
+                ? v : fallback;
+
+        static void EnvSet(string key, string value)
+        {
+            _envCache ??= new Dictionary<string, string>();
+            if (_envCache.TryGetValue(key, out var cur) && cur == (value ?? "")) return;
+            _envCache[key] = value ?? "";
+            _envDirty.Add(key);
+        }
+
+        /// <summary>
+        /// 어드민이 정한 설정을 당겨 온다. 대시보드를 열 때와 배포 직전에 부른다.
+        /// 실패하면 **캐시를 건드리지 않는다** — 빈 값으로 덮으면 배포가 엉뚱한 곳으로 간다.
+        /// </summary>
+        public static async UniTask<SupabaseResult<int>> RefreshEnvAsync()
+        {
+            var env = Instance.Current;
+            var id = ProjectIdOf(env.supabaseUrl);
+            var token = AccessTokenOf(env);
+            if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(token))
+                return SupabaseResult<int>.Local(
+                    "편집 환경에 Supabase URL 또는 Access Token 이 없습니다.");
+
+            var r = await SupabaseManagementApi.RunQuery(id, token, "SELECT key, value FROM suparun_env;");
+            if (!r.Ok) return r.CarryFailure<int>();
+
+            var map = new Dictionary<string, string>();
+            try
+            {
+                foreach (var row in Newtonsoft.Json.Linq.JArray.Parse(r.Value ?? "[]"))
+                    map[(string)row["key"]] = (string)row["value"] ?? "";
+            }
+            catch (Exception ex) { return SupabaseResult<int>.Failure(ex); }
+
+            _envCache = map;
+            _envDirty.Clear();
+            return SupabaseResult<int>.Success(map.Count);
+        }
+
+        /// <summary>Save() 가 부른다. 바뀐 키만 올린다.</summary>
+        static async UniTaskVoid FlushEnvAsync()
+        {
+            if (_envDirty.Count == 0 || _envCache == null) return;
+
+            var env = Instance.Current;
+            var id = ProjectIdOf(env.supabaseUrl);
+            var token = AccessTokenOf(env);
+            if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(token)) return;
+
+            var keys = new List<string>(_envDirty);
+            _envDirty.Clear();
+
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var values = new List<string>();
+            foreach (var k in keys)
+            {
+                var v = _envCache.TryGetValue(k, out var s) ? s : "";
+                // 달러 인용 — 값에 따옴표가 있어도 SQL 이 깨지지 않는다.
+                values.Add($"('{k}', $ev${v}$ev$, {now}, 'editor')");
+            }
+
+            var r = await SupabaseManagementApi.RunQuery(id, token,
+                "INSERT INTO suparun_env(key, value, updated_at, updated_by) VALUES " +
+                string.Join(",", values) +
+                " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, " +
+                "updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by;");
+
+            r.LogIfFailed("환경 설정 저장");
+        }
+
+        /// <summary>환경 이름. 어드민에서 정하고 여기서는 읽는다.</summary>
+        public string EnvName
+        {
+            get => EnvGet(K_NAME, Current.name);
+            set => EnvSet(K_NAME, value);
+        }
+
         // ── Google Cloud ──
 
         public string gcpProjectId
         {
-            get => P.gcpProjectId;
-            set { P.gcpProjectId = value; }
+            get => EnvGet(K_GCP_PROJECT);
+            set => EnvSet(K_GCP_PROJECT, value);
         }
 
         public string gcpRegion
         {
-            get => P.gcpRegion;
-            set { P.gcpRegion = value; }
+            get => EnvGet(K_GCP_REGION, "asia-northeast3");
+            set => EnvSet(K_GCP_REGION, value);
         }
 
         /// <summary>Cloud Run 서비스명 — 환경마다 별도 서비스를 띄우므로 환경별이다.</summary>
         public string gcpServiceName
         {
-            get => Current.gcpServiceName;
-            set { Current.gcpServiceName = value; }
+            get => EnvGet(K_GCP_SERVICE);
+            set => EnvSet(K_GCP_SERVICE, value);
         }
 
         public int gcpMinInstances
         {
-            get => P.gcpMinInstances;
-            set { P.gcpMinInstances = value; }
+            get => int.TryParse(EnvGet(K_GCP_MIN), out var n) ? n : 0;
+            set => EnvSet(K_GCP_MIN, value.ToString());
         }
+
+        // 아래 둘은 **사실**이다 — 사람이 정하는 값이 아니라 자동 설정이 알아낸 결과다.
+        // Unity 가 굽고 어드민은 상태로만 본다.
 
         public bool gcpCloudRunApiEnabled
         {
-            get => P.gcpCloudRunApiEnabled;
-            set { P.gcpCloudRunApiEnabled = value; }
+            get => EnvGet(K_GCP_API_ENABLED) == "1";
+            set => EnvSet(K_GCP_API_ENABLED, value ? "1" : "0");
         }
 
         public string gcpServiceAccountEmail
         {
-            get => P.gcpServiceAccountEmail;
-            set { P.gcpServiceAccountEmail = value; }
+            get => EnvGet(K_GCP_SERVICE_ACCOUNT);
+            set => EnvSet(K_GCP_SERVICE_ACCOUNT, value);
         }
 
         // ── GitHub ──
 
         public string githubRepoName
         {
-            get => P.githubRepoName;
-            set { P.githubRepoName = value; }
+            get => EnvGet(K_GITHUB_REPO);
+            set => EnvSet(K_GITHUB_REPO, value);
         }
 
         /// <summary>환경과 무관하다 — 레포 하나를 모든 환경이 공유한다.</summary>
         public string GithubToken
         {
-            get => SupaRunSecretPrefs.Get("github_token", null, P.githubToken);
+            get => SupaRunSecretPrefs.Get("github_token", null, "");
             set => SupaRunSecretPrefs.Set("github_token", null, value);
         }
 
-        // ── Auth ──
+        // ── 게임 로그인 ──
 
-        static System.Collections.Generic.List<string> _authProvidersCache;
-        static string _authProvidersCacheKey;
+        static List<string> _platformAuthCache;
+        static string _platformAuthCacheKey;
 
-        public System.Collections.Generic.List<string> enabledAuthProviders
+        /// <summary>
+        /// 게임 빌드에 들어가는 로그인. **Supabase auth config 에 없는 것들만** 여기 있다.
+        ///
+        /// 웹 OAuth(google·kakao …)는 여기 **없다** — 진실이 Supabase 에 있고 어드민이 직접 읽고 쓴다.
+        /// 예전에는 한 문자열에 둘이 섞여 있었고, 그래서 웹에서 켠 프로바이더가 Unity 가 한 번 돌 때마다
+        /// 지워졌다. 같은 값을 두 곳이 다른 근거로 쓰면 반드시 어긋난다.
+        /// </summary>
+        public static readonly string[] PlatformAuthKinds = { "Guest", "GPGS", "GameCenter" };
+
+        public List<string> platformAuth
         {
             get
             {
-                var raw = P.enabledAuthProviders;
-                if (_authProvidersCacheKey != raw)
+                var raw = EnvGet(K_PLATFORM_AUTH, "Guest");
+                if (_platformAuthCacheKey != raw)
                 {
-                    _authProvidersCacheKey = raw;
-                    _authProvidersCache = string.IsNullOrEmpty(raw)
-                        ? new System.Collections.Generic.List<string>()
-                        : new System.Collections.Generic.List<string>(raw.Split(','));
+                    _platformAuthCacheKey = raw;
+                    _platformAuthCache = string.IsNullOrEmpty(raw)
+                        ? new List<string>()
+                        : new List<string>(raw.Split(','));
                 }
-                return _authProvidersCache;
+                return _platformAuthCache;
             }
             set
             {
-                P.enabledAuthProviders = string.Join(",", value);
-                _authProvidersCacheKey = null;
+                EnvSet(K_PLATFORM_AUTH, string.Join(",", value));
+                _platformAuthCacheKey = null;
             }
         }
 
         // ── 스케일링 ──
+        // 사람이 정하지 않는다 — DB 의 max_connections 에서 StatusTab 이 계산해 넣는다. 즉 **사실**이다.
 
         public int supabaseMaxConnections
         {
-            get => P.supabaseMaxConnections;
-            set { P.supabaseMaxConnections = value; }
+            get => int.TryParse(EnvGet(K_MAX_CONNECTIONS), out var n) && n > 0 ? n : 60;
+            set => EnvSet(K_MAX_CONNECTIONS, value.ToString());
         }
 
         public int gcpMaxInstances
         {
-            get => P.gcpMaxInstances;
-            set { P.gcpMaxInstances = value; }
+            get => int.TryParse(EnvGet(K_MAX_INSTANCES), out var n) && n > 0 ? n : 3;
+            set => EnvSet(K_MAX_INSTANCES, value.ToString());
         }
 
         public int dbPoolSize
         {
-            get => P.dbPoolSize;
-            set { P.dbPoolSize = value; }
+            get => int.TryParse(EnvGet(K_DB_POOL_SIZE), out var n) && n > 0 ? n : 20;
+            set => EnvSet(K_DB_POOL_SIZE, value.ToString());
         }
 
         // ── 배포 캐시 ──
@@ -537,11 +539,15 @@ namespace Tjdtjq5.SupaRun.Editor
         static System.Collections.Generic.List<string> _serverCachesCache;
         static string _serverCachesCacheKey;
 
+        /// <summary>
+        /// ⚠ 돌려주는 리스트를 직접 고쳐도 저장되지 않는다. 값은 `suparun_env` 에 있고
+        /// 세터를 거쳐야 dirty 로 잡힌다 — `caches.Add(x)` 가 아니라 `caches = 새 리스트` 로 쓸 것.
+        /// </summary>
         public System.Collections.Generic.List<string> enabledServerCaches
         {
             get
             {
-                var raw = P.enabledServerCaches;
+                var raw = EnvGet(K_CACHES, "nuget,docker");
                 if (_serverCachesCacheKey != raw)
                 {
                     _serverCachesCacheKey = raw;
@@ -553,29 +559,18 @@ namespace Tjdtjq5.SupaRun.Editor
             }
             set
             {
-                P.enabledServerCaches = string.Join(",", value);
+                EnvSet(K_CACHES, string.Join(",", value));
                 _serverCachesCacheKey = null;
             }
         }
 
         // ── 기타 ──
 
-        public bool serverLogToConsole
-        {
-            get => U.serverLogToConsole;
-            set { U.serverLogToConsole = value; }
-        }
-
-        public bool setupCompleted
-        {
-            get => U.setupCompleted;
-            set { U.setupCompleted = value; }
-        }
-
+        /// <summary>배포 결과. 사람이 정하는 값이 아니라 Cloud Run 이 알려준 주소다.</summary>
         public string cloudRunUrl
         {
-            get => Current.cloudRunUrl;
-            set { Current.cloudRunUrl = value; }
+            get => EnvGet(K_CLOUD_RUN_URL);
+            set => EnvSet(K_CLOUD_RUN_URL, value);
         }
 
         public string CronSecret
@@ -626,192 +621,5 @@ namespace Tjdtjq5.SupaRun.Editor
         public string SupabaseDashboardUrl =>
             $"https://supabase.com/dashboard/project/{SupabaseProjectId}";
 
-        // ── 마이그레이션 ──
-
-        /// <summary>
-        /// 마이그레이션 진입점. 멱등 — ProjectSettings/SupaRunProjectSettings.json이 있으면 스킵.
-        ///
-        /// 흐름:
-        /// 1. 새 분리 파일이 이미 있으면 종료 (마이그레이션 완료 상태)
-        /// 2. 레거시 단일 JSON(UserSettings/SupaRunSettings.json) 발견 → 2개 파일로 분배 + .bak 백업
-        /// 3. 단일 JSON도 없으면 → 더 오래된 .asset/시크릿/EditorPrefs 마이그레이션 시도
-        /// </summary>
-        static void MigrateIfNeeded()
-        {
-            if (File.Exists(ProjectSettingsPath)) return;
-
-            var projectData = new ProjectData();
-            var userData = new UserData();
-            var migrated = false;
-
-            // Step A: 레거시 단일 JSON (v0.3 형식) → 분리
-            if (File.Exists(LegacyUnifiedJsonPath))
-            {
-                try
-                {
-                    var legacy = JsonUtility.FromJson<LegacyData>(File.ReadAllText(LegacyUnifiedJsonPath));
-                    if (legacy != null)
-                    {
-                        ApplyLegacyToSplit(legacy, projectData, userData);
-                        migrated = true;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"[SupaRun] {LegacyUnifiedJsonPath} 파싱 실패 — 빈 설정으로 시작: {ex.Message}");
-                }
-
-                // 레거시 파일 .bak 백업 (실패해도 무시)
-                try
-                {
-                    var bakPath = LegacyUnifiedJsonPath + ".bak";
-                    if (File.Exists(bakPath)) File.Delete(bakPath);
-                    File.Move(LegacyUnifiedJsonPath, bakPath);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"[SupaRun] 레거시 파일 백업 실패: {ex.Message}");
-                }
-            }
-            else
-            {
-                // Step B: v0.2 이전 마이그레이션 (.asset / EditorPrefs / SupaRunSecrets.json)
-                migrated = MigrateFromV02(projectData, userData) || migrated;
-            }
-
-            if (migrated)
-            {
-                _project = projectData;
-                _user = userData;
-                SaveProject();
-                SaveUser();
-                Debug.Log($"[SupaRun] 설정 마이그레이션 완료 → {ProjectSettingsPath} + {UserSettingsPath}");
-            }
-        }
-
-        /// <summary>레거시 통합 데이터 → 분리된 ProjectData/UserData로 복사.</summary>
-        static void ApplyLegacyToSplit(LegacyData legacy, ProjectData project, UserData user)
-        {
-            // ProjectData
-            project.supabaseUrl = legacy.supabaseUrl;
-            project.supabaseAnonKey = legacy.supabaseAnonKey;
-            project.supabaseDbPassword = legacy.supabaseDbPassword;
-            project.supabaseAccessToken = legacy.supabaseAccessToken;
-            project.gcpProjectId = legacy.gcpProjectId;
-            project.gcpRegion = string.IsNullOrEmpty(legacy.gcpRegion) ? "asia-northeast3" : legacy.gcpRegion;
-            project.gcpServiceName = legacy.gcpServiceName;
-            project.gcpMinInstances = legacy.gcpMinInstances;
-            project.gcpCloudRunApiEnabled = legacy.gcpCloudRunApiEnabled;
-            project.gcpServiceAccountEmail = legacy.gcpServiceAccountEmail;
-            project.githubRepoName = legacy.githubRepoName;
-            project.githubToken = legacy.githubToken;
-            project.enabledAuthProviders = string.IsNullOrEmpty(legacy.enabledAuthProviders) ? "Guest" : legacy.enabledAuthProviders;
-            project.supabaseMaxConnections = legacy.supabaseMaxConnections > 0 ? legacy.supabaseMaxConnections : 60;
-            project.gcpMaxInstances = legacy.gcpMaxInstances > 0 ? legacy.gcpMaxInstances : 3;
-            project.dbPoolSize = legacy.dbPoolSize > 0 ? legacy.dbPoolSize : 20;
-            project.enabledServerCaches = string.IsNullOrEmpty(legacy.enabledServerCaches) ? "nuget,docker" : legacy.enabledServerCaches;
-            project.cloudRunUrl = legacy.cloudRunUrl;
-            project.cronSecret = legacy.cronSecret;
-
-            // UserData
-            user.serverLogToConsole = legacy.serverLogToConsole;
-            user.setupCompleted = legacy.setupCompleted;
-        }
-
-        /// <summary>v0.2 이전 마이그레이션: .asset YAML + 시크릿 JSON + EditorPrefs.</summary>
-        static bool MigrateFromV02(ProjectData project, UserData user)
-        {
-            var migrated = false;
-
-            // 1. 레거시 .asset YAML 파싱
-            var assetPath = File.Exists(LegacyAssetPath) ? LegacyAssetPath : null;
-            if (assetPath == null)
-            {
-                const string oldAsset = "Assets/Editor/GameServerSettings.asset";
-                if (File.Exists(oldAsset)) assetPath = oldAsset;
-            }
-
-            if (assetPath != null)
-            {
-                var yaml = File.ReadAllText(assetPath);
-                project.supabaseUrl = ParseYaml(yaml, "supabaseUrl");
-                project.gcpProjectId = ParseYaml(yaml, "gcpProjectId");
-                project.gcpRegion = ParseYaml(yaml, "gcpRegion", "asia-northeast3");
-                project.gcpServiceName = ParseYaml(yaml, "gcpServiceName");
-                project.gcpMinInstances = int.TryParse(ParseYaml(yaml, "gcpMinInstances"), out var mi) ? mi : 0;
-                project.githubRepoName = ParseYaml(yaml, "githubRepoName");
-                project.gcpCloudRunApiEnabled = ParseYaml(yaml, "gcpCloudRunApiEnabled") == "1";
-                project.gcpServiceAccountEmail = ParseYaml(yaml, "gcpServiceAccountEmail");
-                project.cloudRunUrl = ParseYaml(yaml, "cloudRunUrl");
-                project.supabaseMaxConnections = int.TryParse(ParseYaml(yaml, "supabaseMaxConnections"), out var mc) ? mc : 60;
-                project.gcpMaxInstances = int.TryParse(ParseYaml(yaml, "gcpMaxInstances"), out var mx) ? mx : 3;
-                project.dbPoolSize = int.TryParse(ParseYaml(yaml, "dbPoolSize"), out var dp) ? dp : 20;
-
-                user.setupCompleted = ParseYaml(yaml, "setupCompleted") == "1";
-                user.serverLogToConsole = ParseYaml(yaml, "serverLogToConsole", "1") == "1";
-
-                migrated = true;
-            }
-
-            // 2. 레거시 시크릿 JSON
-            if (File.Exists(LegacySecretsJsonPath))
-            {
-                try
-                {
-                    var json = File.ReadAllText(LegacySecretsJsonPath);
-                    var secrets = JsonUtility.FromJson<LegacyData>(json);
-                    if (!string.IsNullOrEmpty(secrets.supabaseAnonKey)) project.supabaseAnonKey = secrets.supabaseAnonKey;
-                    if (!string.IsNullOrEmpty(secrets.supabaseDbPassword)) project.supabaseDbPassword = secrets.supabaseDbPassword;
-                    if (!string.IsNullOrEmpty(secrets.githubToken)) project.githubToken = secrets.githubToken;
-                    if (!string.IsNullOrEmpty(secrets.supabaseAccessToken)) project.supabaseAccessToken = secrets.supabaseAccessToken;
-                    if (!string.IsNullOrEmpty(secrets.cronSecret)) project.cronSecret = secrets.cronSecret;
-                    migrated = true;
-                }
-                catch { /* 파싱 실패 무시 */ }
-                File.Delete(LegacySecretsJsonPath);
-            }
-
-            // 3. EditorPrefs 시크릿
-            var projectPrefix = EditorPrefUtils.ProjectPrefix;
-            var legacyPrefixes = new[] { projectPrefix, "SupaRun_", "GameServer_" };
-
-            var secretMap = new (string key, Action<string> setter)[]
-            {
-                ("SupabaseAnonKey", v => project.supabaseAnonKey = v),
-                ("SupabaseDbPassword", v => project.supabaseDbPassword = v),
-                ("GithubToken", v => project.githubToken = v),
-                ("SupabaseAccessToken", v => project.supabaseAccessToken = v),
-                ("CronSecret", v => project.cronSecret = v),
-            };
-
-            foreach (var (key, setter) in secretMap)
-            {
-                foreach (var prefix in legacyPrefixes)
-                {
-                    var val = EditorPrefs.GetString(prefix + key, "");
-                    if (!string.IsNullOrEmpty(val))
-                    {
-                        setter(val);
-                        EditorPrefs.DeleteKey(prefix + key);
-                        migrated = true;
-                        break;
-                    }
-                }
-            }
-
-            return migrated;
-        }
-
-        /// <summary>간단한 YAML "key: value" 파서.</summary>
-        static string ParseYaml(string yaml, string key, string fallback = "")
-        {
-            var prefix = $"  {key}: ";
-            foreach (var line in yaml.Split('\n'))
-            {
-                if (line.StartsWith(prefix))
-                    return line.Substring(prefix.Length).Trim();
-            }
-            return fallback;
-        }
     }
 }

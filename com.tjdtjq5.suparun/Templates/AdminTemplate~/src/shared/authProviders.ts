@@ -1,7 +1,7 @@
-import { edgeFn } from './edgeFn'
+import { bridge } from './bridge'
 
 /**
- * OAuth 프로바이더 설정. `suparun-admin` Edge Function 을 거친다(shared/edgeFn.ts 참조).
+ * OAuth 프로바이더 설정. 로컬 브리지를 거친다(shared/bridge.ts 참조) — PAT 가 필요한 호출이다.
  */
 
 /** 프로바이더 하나의 현재 상태. secret 은 **절대 돌아오지 않는다.** */
@@ -22,7 +22,7 @@ const KNOWN: { key: string; label: string; field: string }[] = [
 ]
 
 export async function loadProviders(): Promise<ProviderState[]> {
-  const cfg = await edgeFn.get<Record<string, unknown>>('/auth-config')
+  const cfg = await bridge.get<Record<string, unknown>>('/auth-config')
   return KNOWN.map((p) => ({
     key: p.key,
     label: p.label,
@@ -43,5 +43,5 @@ export async function saveProvider(input: {
   clientId: string
   secret: string
 }): Promise<void> {
-  await edgeFn.post('/auth-config', input)
+  await bridge.post('/auth-config', input)
 }

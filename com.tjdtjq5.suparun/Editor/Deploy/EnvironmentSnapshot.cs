@@ -33,10 +33,6 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             var settings = SupaRunSettings.Instance;
 
-            // 올리기 전에 **내려받는다** — 어드민에서 정한 이름·역할을 로컬 설정에 반영한다.
-            // 방향이 둘인 이유: 지표는 Unity 만 알 수 있고(PAT), 역할은 사람이 정하는 것이다.
-            await PullRolesAsync(settings, silent);
-
             var target = settings.Current;
             var targetId = SupaRunSettings.ProjectIdOf(target.supabaseUrl);
             var targetToken = SupaRunSettings.AccessTokenOf(target);
@@ -74,73 +70,6 @@ namespace Tjdtjq5.SupaRun.Editor
         }
 
         /// <summary>
-        /// 어드민이 정한 환경 역할(`suparun_meta.env_roles`)을 로컬 설정에 반영한다.
-        ///
-        /// **역할만 가져온다** — 이름·편집/빌드 지정뿐이고, 접속 정보(URL·키·PAT)는 건드리지 않는다.
-        /// 비밀은 로컬에만 두기로 했고, 어드민은 애초에 그걸 모른다.
-        ///
-        /// 매칭 기준은 project_ref 다. 어드민이 아는 것은 프로젝트이지 로컬 환경 이름이 아니다.
-        /// </summary>
-        static async UniTask PullRolesAsync(SupaRunSettings settings, bool silent)
-        {
-            var cur = settings.Current;
-            var id = SupaRunSettings.ProjectIdOf(cur.supabaseUrl);
-            var curToken = SupaRunSettings.AccessTokenOf(cur);
-            if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(curToken)) return;
-
-            var r = await SupabaseManagementApi.RunQuery(id, curToken,
-                "SELECT value::text AS v FROM suparun_meta WHERE key = 'env_roles';");
-            if (!r.Ok) return;   // 아직 정한 적이 없으면 그냥 넘어간다
-
-            JObject roles;
-            try
-            {
-                var rows = JArray.Parse(r.Value);
-                if (rows.Count == 0) return;
-                var raw = (string)((JObject)rows[0])["v"];
-                if (string.IsNullOrWhiteSpace(raw)) return;
-                roles = JObject.Parse(raw);
-            }
-            catch { return; }
-
-            var changed = false;
-            foreach (var kv in roles)
-            {
-                var env = FindByRef(settings, kv.Key);
-                if (env == null) continue;   // 로컬에 접속 정보가 없는 프로젝트 — 여기서 만들 수 없다
-
-                var name = (string)kv.Value?["name"];
-                if (!string.IsNullOrWhiteSpace(name) && env.name != name)
-                {
-                    // 이름이 바뀌면 편집/빌드 지정이 옛 이름을 가리킨 채 남는다. 같이 옮긴다.
-                    if (settings.EditorEnvironment == env.name) settings.EditorEnvironment = name;
-                    if (settings.BuildEnvironment == env.name) settings.BuildEnvironment = name;
-                    env.name = name;
-                    changed = true;
-                }
-
-                if ((bool?)kv.Value?["editor"] == true && settings.EditorEnvironment != env.name)
-                { settings.EditorEnvironment = env.name; changed = true; }
-
-                if ((bool?)kv.Value?["build"] == true && settings.BuildEnvironment != env.name)
-                { settings.BuildEnvironment = env.name; changed = true; }
-            }
-
-            if (!changed) return;
-            settings.Save();
-            if (!silent)
-                Debug.Log($"[SupaRun:Env] 어드민에서 정한 환경 역할을 반영했습니다 " +
-                          $"(편집={settings.EditorEnvironment}, 빌드={settings.BuildEnvironment}).");
-        }
-
-        static SupaRunSettings.EnvironmentData FindByRef(SupaRunSettings settings, string projectRef)
-        {
-            foreach (var e in settings.Environments)
-                if (SupaRunSettings.ProjectIdOf(e.supabaseUrl) == projectRef) return e;
-            return null;
-        }
-
-        /// <summary>
         /// 환경 하나. **어느 단계가 실패해도 나머지는 채운다** — 정지된 프로젝트는 메트릭이 안 나오지만
         /// 이름·리전·상태는 보여줄 수 있어야 하고, 그게 정확히 사람이 알고 싶은 상황이다.
         /// </summary>
@@ -151,10 +80,11 @@ namespace Tjdtjq5.SupaRun.Editor
             {
                 ["name"] = env.name,
                 ["supabase_url"] = env.supabaseUrl,
-                ["cloud_run_url"] = env.cloudRunUrl,
-                ["service_name"] = env.gcpServiceName,
+                // 배포 결과·서비스명은 그 환경의 `suparun_env` 에 있다(파일에 없다).
+                ["cloud_run_url"] = await SupaRunSettings.EnvValueOf(env, "cloud_run_url"),
+                ["service_name"] = await SupaRunSettings.EnvValueOf(env, "gcp_service_name"),
                 ["is_editor"] = settings.EditorEnvironment == env.name,
-                ["is_build"] = settings.BuildEnvironment == env.name,
+                // is_build 는 없다 — 빌드 = 편집 환경(빌드 환경 포인터 삭제).
                 ["collected_at"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             };
 

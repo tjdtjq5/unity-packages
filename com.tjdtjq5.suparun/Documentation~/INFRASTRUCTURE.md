@@ -401,7 +401,7 @@ Unity에서 호출: `POST /rest/v1/rpc/add_currency`
 |------|------|
 | Config 직접 조회 | SupabaseRestClient를 통한 Supabase REST 직접 쿼리 (부분 구현) |
 | 응답 압축 | Gzip Response Compression 적용 |
-| Status 탭 | 대시보드에 서버 상태, DB 자동 감지 표시 |
+| 환경 화면 | 어드민에 서버 상태, DB 자동 감지 표시 |
 | 스케일링 자동 설정 | max_connections → Pool Size / Max Instances 자동 계산 |
 
 ### 남은 항목 — 필요 시 수정
