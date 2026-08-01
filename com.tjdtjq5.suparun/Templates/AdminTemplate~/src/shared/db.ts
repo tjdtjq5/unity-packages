@@ -56,6 +56,17 @@ export async function selectAll<T>(table: string, opts: SelectOptions = {}): Pro
   return data ?? []
 }
 
+/** 조건 조회 — 플레이어 상세(#37)가 [UserData] 표를 본인 행(user_id)으로 필터해 읽는다. */
+export async function selectBy<T>(table: string, column: string, value: string, limit = 50): Promise<T[]> {
+  if (isPreview()) {
+    const rows = (await window.__previewApi!(`/${table}`)) as Record<string, unknown>[]
+    return rows.filter((r) => r[column] === value).slice(0, limit) as T[]
+  }
+  const { data, error } = await client().from(table).select<T[]>('*').eq(column, value).limit(limit)
+  if (error) throw new Error(describe(error))
+  return data ?? []
+}
+
 /** 새 행. 서버가 채운 값(기본값·트리거)을 되돌려 받는다. */
 export async function insertRow<T>(table: string, row: unknown): Promise<T> {
   if (isPreview()) return (await window.__previewApi!(`/${table}`, 'POST', row)) as T

@@ -7,6 +7,8 @@ import { EnvSettingsPage } from '../environment/EnvSettingsPage'
 import { EnvironmentPage } from '../environment/EnvironmentPage'
 import { LogsPage } from '../logs/LogsPage'
 import { OpsPage } from '../ops/OpsPage'
+import { PlayerDetailPage } from '../players/PlayerDetailPage'
+import { PlayersPage } from '../players/PlayersPage'
 import { RolesPage } from '../roles/RolesPage'
 import { SetupProjectPage } from '../setup/SetupProjectPage'
 import { ComparePage } from '../versions/ComparePage'
@@ -216,6 +218,18 @@ export function Shell({
                     Game 안의 세부 그룹([PERKS] 등)과 TABLES 는 Sidebar 가 그린다. */}
                 <div className="tree-section">[GAME]</div>
                 <div className="tree-list">
+                  {/* 플레이어 (#36·#37, Metaplay Game>Players 동형) — 열람은 전 롤(RPC 가드). */}
+                  <a
+                    className={`tree-item${route.kind === 'players' || route.kind === 'player' ? ' active' : ''}`}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate({ kind: 'players' })
+                    }}
+                  >
+                    <span className="branch">├─</span>
+                    <span className="label">players</span>
+                  </a>
                   <Sidebar
                     types={data.types}
                     tableTypes={data.tableTypes}
@@ -499,6 +513,10 @@ function describeRoute(
       return shell('Compare Game Configs', 'GAME_CONFIGS.SH', '~/game_configs/compare')
     case 'releases':
       return shell('Manage Releases', 'RELEASES.SH', '~/releases')
+    case 'players':
+      return shell('Manage Players', 'PLAYERS.SH', '~/players')
+    case 'player':
+      return shell('Manage Player', 'PLAYERS.SH', `~/players/${route.id.slice(0, 8)}`)
     case 'home':
       return shell('Overview', 'DASHBOARD.SH', '~/admin')
   }
@@ -577,6 +595,11 @@ function ScreenContent({
       return <ComparePage base={route.base} next={route.next} />
     case 'releases':
       return <ReleasesPage />
+    case 'players':
+      return <PlayersPage />
+    case 'player':
+      // key — 다른 플레이어로 이동하면 상태(카드·열람 기록 플래그)를 새로 시작한다
+      return <PlayerDetailPage key={route.id} id={route.id} />
     case 'home': {
       // 타입 메타가 오기 전에 "선택하세요"를 띄우면 사이드바가 비어 있는 이유를 오해하게 된다.
       if (!data.ready) return <LoadingBlock label="Config 목록 불러오는 중" />

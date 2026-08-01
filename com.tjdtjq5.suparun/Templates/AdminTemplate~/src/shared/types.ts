@@ -181,6 +181,9 @@ export interface TableField {
 export interface TableType {
   name: string
   tableName: string
+  group?: string
+  /** 플레이어 귀속 컬럼(소문자 실컬럼명, 예: userid·playerid) — 상세(#37)가 이걸로 필터한다. */
+  playerColumn?: string
   fields: TableField[]
 }
 

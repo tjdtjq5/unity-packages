@@ -41,6 +41,14 @@
 - 어드민 설정에 **게임 로그인**(`platform_auth`) 토글. SettingsView 에만 있던 UI다
 - `POST /auth/claim-admin` — 로그인 신원을 GoTrue 에 되물어 확정하고 `admin_user` 등록 +
   **game-admin 롤 부여**(`SupaRunAdminClaim`). 빈 표의 RLS 매듭을 PAT 가 끊는 자리다
+- **플레이어 검색·목록 + 상세** (#36·#37, ③ 트랙 — Metaplay Manage Players 동형) —
+  `suparun_player_search`/`suparun_player_get` RPC(SECURITY DEFINER, 롤 가드 — auth.users 로
+  가는 유일한 창), `suparun_ban`·`suparun_developer` 시스템 표(쓰기 정책 없음 — 쓰기는 서버
+  CS 액션 경로뿐), 어드민 Players/PlayerDetail 화면(검색 디바운스·최근 로그인 순·밴/dev 배지,
+  상세=계정 카드+[UserData] 카드+열람 감사+없는 ID 안내). table_types 메타에 `playerColumn`
+  (플레이어 귀속 컬럼의 소문자 실컬럼명 — userId/playerId 관례 둘 다 수용). 열람 감사 RPC 는
+  action 허용 목록(viewed·gdpr_export)으로 확장 — ⚠ 시그니처가 바뀌면 옛 함수를 DROP 할 것
+  (CREATE OR REPLACE 는 인자가 다르면 오버로드를 하나 더 만들어 호출을 가로챈다)
 - **어드민 호스팅 부활 + 릴리스 계층** (#48~#51, ADR-0009 결정 1·2 + ADR-0010 결정 5~8) —
   Cloud Run 이 어드민 dist 를 정적 서빙(`/admin` — 어드민 API 는 부활하지 않음, 접속값은
   배포 시점 치환, `__SUPARUN_BRIDGE` 부재=호스팅본 판별로 ops/브리지 화면 미렌더).

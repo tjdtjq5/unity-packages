@@ -33,6 +33,10 @@ export type Route =
   | { kind: 'compare'; base?: string; next?: string }
   // 릴리스 매니페스트 (#51). 릴리스가 환경 안의 표라 환경 안이다.
   | { kind: 'releases' }
+  // 플레이어 검색·목록 (#36, Metaplay Manage Players 동형).
+  | { kind: 'players' }
+  // 플레이어 상세 (#37). URL 로 직접 접근 가능해야 해서 id 가 해시에 실린다.
+  | { kind: 'player'; id: string }
   // 설정도 환경 안이다. 이름·로그인·배포·위험 영역 전부 **이 프로젝트**의 값이라,
   // 앱 레벨에 두면 "환경을 고르기 전인데 어느 환경을 고치는가" 가 어긋난다(실제로 어긋나 있었다).
   | { kind: 'envSettings' }
@@ -83,6 +87,10 @@ export function routeToHash(r: Route): string | null {
       return 'game_configs/compare'
     case 'releases':
       return 'releases'
+    case 'players':
+      return 'players'
+    case 'player':
+      return 'players/' + r.id
     // home 은 해시를 남긴다 — 안 그러면 빈 해시가 되어 다시 환경 선택으로 돌아간다.
     case 'home':
       return 'home'
@@ -120,6 +128,8 @@ export function hashToRoute(
   if (h === 'game_configs/compare') return { kind: 'compare' }
   if (h === 'game_configs') return { kind: 'versions' }
   if (h === 'releases') return { kind: 'releases' }
+  if (h.startsWith('players/')) return { kind: 'player', id: h.slice(8) }
+  if (h === 'players') return { kind: 'players' }
   if (h === 'home') return { kind: 'home' }
 
   // 해시 없이 들어오면 **환경 선택**부터다. 어느 환경을 보고 있는지 모른 채

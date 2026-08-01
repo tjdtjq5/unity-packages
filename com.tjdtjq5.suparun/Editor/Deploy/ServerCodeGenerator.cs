@@ -34,6 +34,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 GenerateSnapshotMigration(),
                 GenerateVersionMigration(),
                 GenerateReleaseMigration(),
+                GeneratePlayersMigration(),
                 GenerateConfigMetaMigration(specTypes),
                 GenerateTypeCatalogMigration(specTypes),
                 GenerateAdminUserMigration(),
@@ -73,6 +74,7 @@ namespace Tjdtjq5.SupaRun.Editor
             files.Add(GenerateSnapshotMigration());
             files.Add(GenerateVersionMigration());
             files.Add(GenerateReleaseMigration());
+            files.Add(GeneratePlayersMigration());
             files.Add(GenerateConfigMetaMigration(specTypes));
             files.Add(GenerateTypeCatalogMigration(specTypes));
             files.Add(GenerateTableMetaMigration(tableTypes));
@@ -2182,6 +2184,107 @@ CREATE TRIGGER audit_suparun_release
         }
 
         /// <summary>
+        /// 플레이어 운영 계층 (③ 트랙, #36~#40) — 밴·개발자 표 + 플레이어 검색 RPC.
+        /// auth.users 는 PostgREST 로 닿을 수 없어(스키마 밖) SECURITY DEFINER RPC 가 유일한 창이다 —
+        /// 문은 suparun_is_operator() 로 잠근다. 밴·개발자 표의 쓰기 정책은 없다: 쓰기는 서버
+        /// (직접 Postgres 연결, RLS 미적용)의 CS 액션 경로뿐이라 브라우저 표면을 열 이유가 없다.
+        /// </summary>
+        static GeneratedFile GeneratePlayersMigration()
+        {
+            return new GeneratedFile("Generated/Migrations/_suparun_players.sql",
+@"-- ══ 플레이어 운영 계층 (자동 생성, ③ 트랙) ═══════════════════════════
+-- 밴·개발자 지정은 게임 데이터가 아니라 **운영 상태**라 [UserData] 가 아닌 시스템 표다.
+
+CREATE TABLE IF NOT EXISTS suparun_ban (
+    user_id      TEXT PRIMARY KEY,
+    reason       TEXT,
+    banned_until BIGINT NOT NULL DEFAULT 0,  -- 0 = 영구
+    created_at   BIGINT NOT NULL,
+    created_by   TEXT
+);
+ALTER TABLE suparun_ban ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS operator_read ON suparun_ban;
+CREATE POLICY operator_read ON suparun_ban FOR SELECT USING (suparun_is_operator());
+DROP TRIGGER IF EXISTS audit_suparun_ban ON suparun_ban;
+CREATE TRIGGER audit_suparun_ban
+  AFTER INSERT OR UPDATE OR DELETE ON suparun_ban
+  FOR EACH ROW EXECUTE FUNCTION suparun_audit('user_id');
+
+CREATE TABLE IF NOT EXISTS suparun_developer (
+    user_id    TEXT PRIMARY KEY,
+    note       TEXT,
+    created_at BIGINT NOT NULL,
+    created_by TEXT
+);
+ALTER TABLE suparun_developer ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS operator_read ON suparun_developer;
+CREATE POLICY operator_read ON suparun_developer FOR SELECT USING (suparun_is_operator());
+DROP TRIGGER IF EXISTS audit_suparun_developer ON suparun_developer;
+CREATE TRIGGER audit_suparun_developer
+  AFTER INSERT OR UPDATE OR DELETE ON suparun_developer
+  FOR EACH ROW EXECUTE FUNCTION suparun_audit('user_id');
+
+-- ── 플레이어 검색 (#36) ──
+-- 빈 질의 = 최근 로그인 순(Recently Active). 질의는 id 정확/접두 + email·이름 부분 일치.
+DROP FUNCTION IF EXISTS suparun_player_search(text, int);
+CREATE FUNCTION suparun_player_search(p_query text DEFAULT NULL, p_limit int DEFAULT 50)
+RETURNS TABLE(id text, email text, name text, created_at bigint, last_sign_in_at bigint,
+              banned boolean, ban_reason text, banned_until bigint, is_developer boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+    IF NOT suparun_is_operator() THEN
+        RAISE EXCEPTION '롤 보유자만 조회할 수 있습니다';
+    END IF;
+    RETURN QUERY
+    SELECT u.id::text, u.email::text,
+           COALESCE(u.raw_user_meta_data->>'name', '')::text,
+           (extract(epoch from u.created_at) * 1000)::bigint,
+           (extract(epoch from u.last_sign_in_at) * 1000)::bigint,
+           (b.user_id IS NOT NULL AND (b.banned_until = 0
+             OR b.banned_until > (extract(epoch from now()) * 1000)::bigint)),
+           b.reason, b.banned_until,
+           (d.user_id IS NOT NULL)
+      FROM auth.users u
+      LEFT JOIN suparun_ban b ON b.user_id = u.id::text
+      LEFT JOIN suparun_developer d ON d.user_id = u.id::text
+     WHERE p_query IS NULL OR p_query = ''
+        OR u.id::text ILIKE p_query || '%'
+        OR u.email ILIKE '%' || p_query || '%'
+        OR (u.raw_user_meta_data->>'name') ILIKE '%' || p_query || '%'
+     ORDER BY u.last_sign_in_at DESC NULLS LAST
+     LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 200);
+END $$;
+
+-- ── 플레이어 단건 (#37 상세) ── 없는 ID 는 0행 — 화면이 그 사실로 안내를 그린다.
+DROP FUNCTION IF EXISTS suparun_player_get(text);
+CREATE FUNCTION suparun_player_get(p_id text)
+RETURNS TABLE(id text, email text, name text, created_at bigint, last_sign_in_at bigint,
+              banned boolean, ban_reason text, banned_until bigint, is_developer boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+    IF NOT suparun_is_operator() THEN
+        RAISE EXCEPTION '롤 보유자만 조회할 수 있습니다';
+    END IF;
+    RETURN QUERY
+    SELECT u.id::text, u.email::text,
+           COALESCE(u.raw_user_meta_data->>'name', '')::text,
+           (extract(epoch from u.created_at) * 1000)::bigint,
+           (extract(epoch from u.last_sign_in_at) * 1000)::bigint,
+           (b.user_id IS NOT NULL AND (b.banned_until = 0
+             OR b.banned_until > (extract(epoch from now()) * 1000)::bigint)),
+           b.reason, b.banned_until,
+           (d.user_id IS NOT NULL)
+      FROM auth.users u
+      LEFT JOIN suparun_ban b ON b.user_id = u.id::text
+      LEFT JOIN suparun_developer d ON d.user_id = u.id::text
+     WHERE u.id::text = p_id;
+END $$;
+");
+        }
+
+        /// <summary>
         /// 타입 메타데이터를 suparun_meta 에 밀어 넣는다 (ADR-0004 결정 6·7).
         ///
         /// 마이그레이션 파일로 두는 이유: 서버 배포 시에도 최신 메타가 반영된다.
@@ -2305,7 +2408,12 @@ END $$;
 -- SELECT 는 트리거가 없어 열람은 화면이 스스로 기록해야 한다. 쓰기 정책을 여는 대신
 -- action='viewed' 만 허용하는 좁은 문(RPC)을 둔다 — 임의 감사행 위조(사람이 고칠 수
 -- 있으면 감사가 아니다)는 여전히 불가능하다. 행위자는 인자가 아니라 auth.uid() 다.
-CREATE OR REPLACE FUNCTION suparun_audit_viewed(p_config_type text, p_row_id text DEFAULT NULL)
+-- action 은 좁은 허용 목록이다 — 'viewed' 에 'gdpr_export'(#41: 민감 정보 접근도 열람의
+-- 일종)만 더한다. 임의 action 을 열면 감사행 위조 문이 된다.
+-- 시그니처가 바뀌므로 옛 2-인자 함수를 지운다 — CREATE OR REPLACE 는 인자가 다르면
+-- **오버로드를 하나 더 만들 뿐**이라, 안 지우면 옛 함수가 조용히 남아 호출을 가로챈다.
+DROP FUNCTION IF EXISTS suparun_audit_viewed(text, text);
+CREATE OR REPLACE FUNCTION suparun_audit_viewed(p_config_type text, p_row_id text DEFAULT NULL, p_action text DEFAULT 'viewed')
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -2313,10 +2421,13 @@ BEGIN
     IF NOT suparun_is_operator() THEN
         RAISE EXCEPTION '롤 보유자만 기록할 수 있습니다';
     END IF;
+    IF p_action NOT IN ('viewed', 'gdpr_export') THEN
+        RAISE EXCEPTION '허용되지 않는 action 입니다: %', p_action;
+    END IF;
     INSERT INTO admin_audit_log
         (id, admin_id, config_type, row_id, action, before_json, after_json, created_at)
     VALUES
-        (gen_random_uuid()::text, auth.uid()::text, p_config_type, p_row_id, 'viewed',
+        (gen_random_uuid()::text, auth.uid()::text, p_config_type, p_row_id, p_action,
          NULL, NULL, (extract(epoch from now()) * 1000)::bigint);
 END $$;
 ");}
@@ -2948,8 +3059,14 @@ CREATE TRIGGER audit_admin_user_role
                 var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
                 var group = type.GetCustomAttribute<UserDataAttribute>()?.Group;
                 var groupPart = group != null ? $"\"group\":\"{group}\"," : "";
-                var hasUserId = fields.Any(f => f.Name == "userId" || f.Name == "user_id");
-                var userIdPart = hasUserId ? "\"hasUserId\":true," : "";
+                // 플레이어 귀속 컬럼 — 상세 화면(#37)이 이 컬럼으로 본인 행을 필터한다.
+                // 관례 두 갈래(userId/playerId)를 모두 받고, **소문자화된 실컬럼명**을 내보낸다
+                // (컬럼은 f.Name.ToLower() 로 만들어진다) — 화면이 규약을 추측하지 않게.
+                var playerField = fields.FirstOrDefault(f =>
+                    f.Name == "userId" || f.Name == "user_id" ||
+                    f.Name == "playerId" || f.Name == "player_id");
+                var userIdPart = playerField != null
+                    ? $"\"playerColumn\":\"{playerField.Name.ToLower()}\"," : "";
                 var item = "{" +
                     $"\"name\":\"{type.Name}\"," +
                     $"\"tableName\":\"{ToSnakeCase(type.Name)}\"," +

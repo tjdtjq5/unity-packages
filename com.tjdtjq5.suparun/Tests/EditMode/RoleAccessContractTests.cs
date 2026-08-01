@@ -200,6 +200,29 @@ namespace Tjdtjq5.SupaRun.Tests
             StringAssert.Contains("관리자", r.body, "거부 사유가 권한이어야 한다(없는 버전 검사보다 앞)");
         }
 
+        [Test]
+        public async Task Player_Search_Requires_Role()
+        {
+            var c = await Init();
+
+            // anon — RPC 자체가 예외로 거부돼야 한다 (#36: auth.users 로 가는 유일한 창).
+            var anon = await Send(HttpMethod.Post, $"{c.Url}/rest/v1/rpc/suparun_player_search",
+                c.Anon, null, "{\"p_query\":null,\"p_limit\":1}");
+            Assert.IsTrue(anon.status >= 400, $"anon 의 플레이어 검색은 거부돼야 한다 — HTTP {anon.status}");
+
+            // viewer — 열람은 롤 보유자 전체다. 자기 계정 하나는 반드시 찾는다.
+            var viewer = await Send(HttpMethod.Post, $"{c.Url}/rest/v1/rpc/suparun_player_search",
+                c.Anon, c.ViewerToken, $"{{\"p_query\":\"{ViewerEmail}\",\"p_limit\":5}}");
+            Assert.AreEqual(200, viewer.status, $"viewer 의 플레이어 검색은 통과해야 한다 — {viewer.body}");
+            StringAssert.Contains(c.ViewerUid, viewer.body, "이메일 검색이 본인 계정을 찾아야 한다");
+
+            // 없는 ID 는 0행 — 상세 화면(#37)의 명시적 안내가 이 계약 위에 서 있다.
+            var none = await Send(HttpMethod.Post, $"{c.Url}/rest/v1/rpc/suparun_player_get",
+                c.Anon, c.ViewerToken, "{\"p_id\":\"00000000-0000-4000-8000-999999999999\"}");
+            Assert.AreEqual(200, none.status);
+            Assert.AreEqual("[]", none.body.Trim(), "없는 플레이어는 0행이어야 한다");
+        }
+
         // ── game-admin ──
 
         [Test]
