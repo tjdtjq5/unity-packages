@@ -262,7 +262,12 @@ namespace Tjdtjq5.SupaRun.Editor
         /// </summary>
         static Type[] ScanTypes<T>() where T : Attribute
             => TypeCache.GetTypesWithAttribute<T>()
-                .Where(t => !(t.Assembly.GetName().Name ?? "").Contains(".Tests"))
+                .Where(t =>
+                {
+                    // Contains(".Tests") 는 Game.Testsuite 류를 오탐한다 — 끝이거나 세그먼트일 때만.
+                    var asm = t.Assembly.GetName().Name ?? "";
+                    return !asm.EndsWith(".Tests") && !asm.Contains(".Tests.");
+                })
                 .OrderBy(t => t.FullName, StringComparer.Ordinal)
                 .ToArray();
 

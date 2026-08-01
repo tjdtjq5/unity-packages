@@ -306,7 +306,8 @@ namespace Tjdtjq5.SupaRun
                 {
                     // 세션 캐시 (#35, Metaplay OTA 시맨틱) — 게시가 세션 중에 일어나도 이 세션의
                     // 조회는 안 바뀐다. 새 값은 새 세션(Login/RefreshConfigSessionAsync)부터다.
-                    // 사본을 돌려준다 — 호출자가 목록을 고쳐도 캐시가 오염되지 않게.
+                    // **목록만** 사본이다 — 행 객체는 공유 참조라, 받은 행의 필드를 고치면
+                    // 캐시가 같이 바뀐다. config 는 읽기 전용 데이터라는 관례가 전제다.
                     if (_configCache.TryGetValue(typeof(T), out var cached))
                         return new ServerResponse<List<T>>
                         {
@@ -353,7 +354,13 @@ namespace Tjdtjq5.SupaRun
                     "[SupaRun] Auth 미초기화 — SupaRunSettings.json의 supabaseUrl/supabaseAnonKey를 확인하세요.");
                 return;
             }
-            if (_auth.IsLoggedIn) return;       // 이미 로그인됨
+            if (_auth.IsLoggedIn)
+            {
+                // 저장소에서 복원된 세션으로 이미 로그인돼 있어도 협상은 한 번은 있어야 한다 —
+                // 안 그러면 ConfigSession 이 영영 null 이다.
+                if (ConfigSession == null) await RefreshConfigSessionAsync();
+                return;
+            }
             await _auth.EnsureLoggedIn();        // SupaRunAuth 자체에서 동시 호출 dedup
 
             // 세션 협상 (#35) — 활성 config 버전 스탬프 + logic version 게이트.
@@ -377,6 +384,10 @@ namespace Tjdtjq5.SupaRun
                 try
                 {
                     var r = await _restClient.GetMeta("active_config_version", "logic_version_range");
+                    if (!r.success)
+                        // fail-open 이다(스탬프 없음·게이트 통과) — 강제 업데이트 게이트가 필요한
+                        // 게임은 이 경고와 ConfigSession.ActiveVersionHash==null 을 신호로 삼아야 한다.
+                        UnityEngine.Debug.LogWarning($"[SupaRun] config 세션 협상 실패(HTTP) — 스탬프 없이 계속합니다: {r.error}");
                     if (r.success && r.data != null)
                     {
                         foreach (var row in r.data)

@@ -75,11 +75,17 @@ namespace Tjdtjq5.SupaRun.Editor
                 // Management API 에는 로그인 사용자가 없다. 대상에 game-admin 이 없으면 여기서 걸리며,
                 // 그건 실제로 업로드하면 안 되는 상태다.
                 EditorUtility.DisplayProgressBar("SupaRun 업로드", $"'{to.name}' 에 버전 생성 중…", 0.8f);
-                // 페이로드는 is_local=false — 옛 승격의 검증된 관용구다(트랜잭션 경계에 기대지 않는다).
+                // set_config 의 is_local 이 서로 다른 이유: claims 는 true(신원 대여를 트랜잭션
+                // 밖으로 안 흘리는 쪽이 안전 — 단일 트랜잭션 배치임은 옛 승격에서 실증됨),
+                // payload 는 false(비밀이 아니라서 남아도 무해하고, 경계에 안 기대는 보험).
+                // 달러 인용 태그는 **랜덤**이다: 고정 태그($upload$)는 config 문자열 값에 같은
+                // 문자열이 오는 순간 인용이 조기 종료된다 — 어드민 편집 권한이 PAT SQL 로
+                // 승격되는 통로가 될 수 있는 자리라 충돌 자체를 불가능하게 만든다.
+                var tag = "u" + Guid.NewGuid().ToString("N");
                 var sql =
                     "SELECT set_config('request.jwt.claims', json_build_object('sub', " +
                     "(SELECT user_id FROM admin_user_role WHERE role = 'game-admin' LIMIT 1))::text, true); " +
-                    $"SELECT set_config('suparun.upload_payload', $upload${payload}$upload$, false); " +
+                    $"SELECT set_config('suparun.upload_payload', ${tag}${payload}${tag}$, false); " +
                     $"SELECT suparun_version_upload('{Escape(from.name)}', '{Escape(hash)}', '{Escape(gitSha)}') AS ver;";
 
                 var r = await SupabaseManagementApi.RunQuery(toId, toToken, sql);

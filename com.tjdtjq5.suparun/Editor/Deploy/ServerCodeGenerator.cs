@@ -1882,7 +1882,8 @@ ALTER TABLE suparun_snapshot ADD COLUMN IF NOT EXISTS published_by TEXT;
 -- ── 업로드 ──
 -- 페이로드는 세션 변수(suparun.upload_payload)로 받는다 — 인자로 받으면 SQL 크기가 두 배가 된다.
 -- 테이블 구조의 기준은 **대상(public)** 이다: jsonb_populate_recordset 이 public 타입으로 펼치므로
--- 원본에만 있는 컬럼은 무시되고 대상에만 있는 컬럼은 기본값이 된다(승격기와 같은 원리).
+-- 원본에만 있는 컬럼은 무시되고 대상에만 있는 컬럼은 **NULL** 이 된다(LIKE 는 DEFAULT 를
+-- 안 옮기고 populate 는 명시 NULL 을 넣는다 — NOT NULL 신설 컬럼이면 업로드가 죽는 게 정직하다).
 CREATE OR REPLACE FUNCTION suparun_version_upload(
     p_label text, p_content_hash text, p_git_sha text DEFAULT NULL)
 RETURNS text
@@ -1942,10 +1943,12 @@ BEGIN
          coalesce(auth.uid()::text, 'server'), (extract(epoch from now()) * 1000)::bigint,
          false, true, true, p_content_hash, nullif(trim(p_git_sha), ''));
 
+    -- 행위자는 'server' 고정 — 업로드는 에디터(PAT) 경로뿐이고, RLS 통과용으로 빌린
+    -- 관리자 신원(set_config claims)이 감사에 남으면 그 사람이 한 일처럼 보인다.
     INSERT INTO admin_audit_log
         (id, admin_id, config_type, row_id, action, before_json, after_json, created_at)
     VALUES
-        (gen_random_uuid()::text, coalesce(auth.uid()::text, 'server'),
+        (gen_random_uuid()::text, 'server',
          'suparun_config_version', v_schema, 'upload', NULL, p_content_hash,
          (extract(epoch from now()) * 1000)::bigint);
 
