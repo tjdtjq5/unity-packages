@@ -12,7 +12,11 @@ export type Route =
   | { kind: 'home' }
   | { kind: 'config'; tableName: string }
   | { kind: 'table'; tableName: string }
-  | { kind: 'audit' }
+  // presetType: 감사 카드(#28)의 "전체 보기" 가 대상 타입 필터를 미리 걸어 보낸다.
+  // 해시에는 싣지 않는다 — 새로고침하면 전체 목록이며 그걸로 충분하다.
+  | { kind: 'audit'; presetType?: string }
+  // 감사 이벤트 상세 (#26). URL 로 직접 접근 가능해야 해서 id 가 해시에 실린다.
+  | { kind: 'auditDetail'; id: string }
   | { kind: 'snapshots' }
   // 비밀은 **이 환경의 데이터**다(`suparun_secret` 은 각 프로젝트 안의 표).
   // 설정과 화면을 나누는 이유는 따로다 — 드나드는 빈도가 다르고, 나중에 권한을 쪼갤 자리이기도 하다.
@@ -49,6 +53,8 @@ export function routeToHash(r: Route): string | null {
       return 'table/' + r.tableName
     case 'audit':
       return 'audit_log'
+    case 'auditDetail':
+      return 'audit_log/' + r.id
     case 'snapshots':
       return 'snapshots'
     case 'environments':
@@ -90,6 +96,7 @@ export function hashToRoute(
     return isKnownTable(tn) ? { kind: 'table', tableName: tn } : { kind: 'home' }
   }
   if (h.startsWith('setup/')) return { kind: 'setup', projectRef: h.slice(6) }
+  if (h.startsWith('audit_log/')) return { kind: 'auditDetail', id: h.slice(10) }
   if (h === 'audit_log') return { kind: 'audit' }
   if (h === 'snapshots') return { kind: 'snapshots' }
   if (h === 'environments') return { kind: 'environments' }

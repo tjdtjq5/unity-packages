@@ -27,9 +27,11 @@ export interface AdminUserRole {
   granted_by?: string | null
 }
 
-/** 변경 이력 1건. action 값은 서버가 자유롭게 늘릴 수 있어 string 으로 둔다. */
+/** 감사 이벤트 1건. action 값은 쓰는 쪽이 자유롭게 늘릴 수 있어 string 으로 둔다. */
 export interface AuditLog {
-  created_at: string
+  id: string
+  /** epoch ms (BIGINT). */
+  created_at: number
   action: string
   config_type?: string | null
   row_id?: string | null

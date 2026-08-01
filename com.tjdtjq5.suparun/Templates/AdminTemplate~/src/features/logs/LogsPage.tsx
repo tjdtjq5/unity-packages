@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { LoadingBlock, Spinner } from '../../shared/Spinner'
 import { sb } from '../../shared/supabase'
 import { toast } from '../../shared/toast'
+import { recordViewed } from '../audit/viewed'
 
 /**
  * 서버 로그 — 옛 Unity 대시보드 Monitor 탭.
@@ -33,6 +34,9 @@ type Level = 'all' | 'error' | 'warn'
 const PAGE = 50
 
 export function LogsPage() {
+  // 민감 화면(플레이어 ID·request body 노출) — 진입을 감사에 자기기록한다 (#27).
+  useEffect(() => recordViewed('server_log'), [])
+
   const [logs, setLogs] = useState<LogEntry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [missing, setMissing] = useState(false)

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { AuditCard } from '../audit/AuditCard'
 import { Modal } from '../../shared/Modal'
 import { LoadingBlock } from '../../shared/Spinner'
 import { enableColResize } from '../../shared/colResize'
@@ -111,7 +112,13 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
 
   // 정책 배지는 **데이터가 없을 때도** 보여야 한다 —
   // 정책이 잘못돼 아무것도 못 읽는 상황이 정확히 그 경우다.
-  const badge = <PolicyBadge tableName={configType.tableName} />
+  // 감사 카드(#28)도 같다: 행이 다 지워진 표일수록 "누가 지웠나" 가 필요하다.
+  const badge = (
+    <>
+      <PolicyBadge tableName={configType.tableName} />
+      <AuditCard configType={configType.tableName} />
+    </>
+  )
 
   if (!rows) {
     return (

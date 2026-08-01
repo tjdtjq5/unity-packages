@@ -41,7 +41,9 @@ AdminTemplate~/
 │       ├── logs/       서버 로그(`server_log`) — LogsPage
 │       ├── secrets/    이 환경의 비밀 — SecretsPage (값은 절대 표시하지 않는다)
 │       ├── roles/      User Roles — 롤 부여/회수 (#24). game-admin 전용
-│       └── …           auth / audit / table / config
+│       ├── audit/      감사 — 목록(필터 3종·Load More)/상세(diff)/공용 카드/열람 자기기록
+│       │               AuditPage / AuditDetailPage / AuditCard / useAuditLogs / actors / viewed / format
+│       └── …           auth / table / config
 │
 ├── node_modules/       (gitignore)
 └── dist/               ← 빌드 산출물. **커밋한다** (소비 프로젝트는 Node 불필요)
@@ -138,6 +140,19 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다. �
 > 더하지 않는다")는 원격 접근자(CS 롤)가 생기면 무너지고, 감사의 "누가"도 행위자 식별 없이는
 > 무의미하다. jwt_secret 직접 서명안은 여전히 기각 — 비대칭 서명키 전환과 무관한 정식 발급
 > 창구(Auth)에 줄을 선다.
+
+### 감사 (#25~#28 — Metaplay Audit Logs 클론: 200/201-audit-*.png)
+
+- **목록**: 설명 → 검색(대상 타입·행위자·기간 — 서버 필터) → Latest 표 → [LOAD MORE].
+  행위자 uid 는 `admin_user`(operator_read)로 이메일 변환. 행 클릭 = 상세
+- **상세**(`#audit_log/<id>` — URL 직접 접근): 행위 타이틀 + By 누가 언제 → Event Data
+  키-값(대상 타입은 해당 화면 링크) → **before→after 터미널 diff**(변경 키만, 나머지 접힘.
+  Metaplay 는 raw 나열이지만 diff 가 더 정직한 정보 구조다) → RAW 접이식
+- **열람 자기기록**(#27): 민감 화면(server_log·secrets) 진입 시 `suparun_audit_viewed` RPC.
+  중복 정책: **페이지 로드당 화면별 1회** — 탭 전환 노이즈 억제, 새로고침은 다시 기록.
+  목록에서 viewed 는 무채색 뱃지 — 색 자체가 "데이터가 바뀌었는가" 를 말한다
+- **공용 카드**(#28, `AuditCard`): 접힌 줄 = 최신 1건 요약, 펼치면 N건 + 전체 보기(타입
+  필터 프리셋). 첫 적용은 ConfigPage 상단 — 표가 비어 있을수록 "누가 지웠나" 가 필요하다
 
 ### 서버 로그 (`[SYSTEM] > server_log`)
 

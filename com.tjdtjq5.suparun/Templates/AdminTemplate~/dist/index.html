@@ -1451,6 +1451,37 @@ tbody tr { animation: rowStagger 0.2s linear both; }
   letter-spacing: 0.06em;
 }
 
+/* ── 감사 (#25~#28) ──
+   diff 는 코드 리뷰의 문법을 빌린다 — 삭제선(-)은 붉게, 추가선(+)은 초록으로.
+   모노스페이스 + 배경 틴트만으로 충분하다: 여기서 화려하면 데이터가 안 읽힌다. */
+.audit-diff {
+  font-family: var(--mono); font-size: 12px; line-height: 1.7;
+  background: rgba(0,0,0,0.18); border: 1px solid var(--line);
+  border-radius: 4px; padding: 10px 12px; margin: 0;
+  white-space: pre-wrap; word-break: break-all;
+}
+.audit-diff .d-del { color: #e05661; background: rgba(224,86,97,0.08); }
+.audit-diff .d-add { color: #2fb344; background: rgba(47,179,68,0.08); }
+.audit-raw {
+  font-family: var(--mono); font-size: 11px;
+  background: rgba(0,0,0,0.18); border: 1px solid var(--line);
+  border-radius: 4px; padding: 10px 12px;
+  max-height: 420px; overflow: auto;
+}
+/* 표 상단에 접혀 있는 미니 감사 카드 — 접힌 줄이 곧 최신 1건 요약이다 */
+.audit-mini > summary {
+  cursor: pointer; font-family: var(--mono); font-size: 11px;
+  color: var(--dim); list-style: none; user-select: none;
+}
+.audit-mini > summary::before { content: '▸ '; }
+.audit-mini[open] > summary::before { content: '▾ '; }
+.audit-mini-list {
+  list-style: none; margin: 4px 0 0; padding: 6px 0 2px 14px;
+  border-left: 1px dashed var(--line);
+  font-size: 12px;
+}
+.audit-mini-list li { padding: 2px 0; }
+
 /* ── 페이지 진입/전환 ── */
 #admin-page { display: none !important; }
 #admin-page.active { display: flex !important; animation: pageEnter 0.3s linear; }

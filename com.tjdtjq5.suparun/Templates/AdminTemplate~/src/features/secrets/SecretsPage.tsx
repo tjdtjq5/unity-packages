@@ -11,6 +11,7 @@ import { env } from '../../shared/env'
 import { LoadingBlock, Spinner } from '../../shared/Spinner'
 import { sb } from '../../shared/supabase'
 import { toast } from '../../shared/toast'
+import { recordViewed } from '../audit/viewed'
 
 /**
  * 공유 비밀.
@@ -22,6 +23,9 @@ import { toast } from '../../shared/toast'
  * 값은 표시하지 않는다 — 표에 SELECT 정책이 없어서 **읽어 올 수도 없다**(shared/secrets.ts).
  */
 export function SecretsPage() {
+  // 민감 화면(비밀 목록 — 값은 안 보여도 무엇이 있는지가 정보다) — 진입을 자기기록한다 (#27).
+  useEffect(() => recordViewed('suparun_secret'), [])
+
   const [meta, setMeta] = useState<SecretMeta[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState<Record<string, string>>({})

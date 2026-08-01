@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AuditDetailPage } from '../audit/AuditDetailPage'
 import { AuditPage } from '../audit/AuditPage'
 import { ConfigPage } from '../config/ConfigPage'
 import { DashboardPage } from '../dashboard/DashboardPage'
@@ -232,7 +233,7 @@ export function Shell({
                   {/* 조작(Manage) 화면들은 game-admin 만 본다 (#24) — 숨김은 UI 겹이고
                       진짜 거부는 RLS·RPC 가드가 한다. 열람 화면(audit·server_log)은 전 롤. */}
                   <a
-                    className={`tree-item${route.kind === 'audit' ? ' active' : ''}`}
+                    className={`tree-item${route.kind === 'audit' || route.kind === 'auditDetail' ? ' active' : ''}`}
                     href="#"
                     onClick={(e) => {
                       e.preventDefault()
@@ -442,6 +443,8 @@ function describeRoute(
     }
     case 'audit':
       return shell('View Audit Logs', 'AUDIT_LOG.SH', '~/audit_log')
+    case 'auditDetail':
+      return shell('View Audit Event', 'AUDIT_LOG.SH', `~/audit_log/${route.id.slice(0, 8)}`)
     case 'snapshots':
       return shell('Manage Snapshots', 'SNAPSHOTS.SH', '~/snapshots')
     case 'environments':
@@ -499,7 +502,9 @@ function ScreenContent({
       return t ? <TablePage key={t.tableName} tableType={t} /> : null
     }
     case 'audit':
-      return <AuditPage />
+      return <AuditPage presetType={route.presetType} />
+    case 'auditDetail':
+      return <AuditDetailPage id={route.id} />
     case 'snapshots':
       return <SnapshotPage />
     case 'environments':

@@ -1972,6 +1972,25 @@ DO $$ BEGIN
     CREATE POLICY operator_read ON admin_audit_log FOR SELECT USING (suparun_is_operator());
   END IF;
 END $$;
+
+-- ── 열람 자기기록 (#27, ADR-0008: 변경=트리거, 열람=자기기록) ──
+-- SELECT 는 트리거가 없어 열람은 화면이 스스로 기록해야 한다. 쓰기 정책을 여는 대신
+-- action='viewed' 만 허용하는 좁은 문(RPC)을 둔다 — 임의 감사행 위조(사람이 고칠 수
+-- 있으면 감사가 아니다)는 여전히 불가능하다. 행위자는 인자가 아니라 auth.uid() 다.
+CREATE OR REPLACE FUNCTION suparun_audit_viewed(p_config_type text, p_row_id text DEFAULT NULL)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+    IF NOT suparun_is_operator() THEN
+        RAISE EXCEPTION '롤 보유자만 기록할 수 있습니다';
+    END IF;
+    INSERT INTO admin_audit_log
+        (id, admin_id, config_type, row_id, action, before_json, after_json, created_at)
+    VALUES
+        (gen_random_uuid()::text, auth.uid()::text, p_config_type, p_row_id, 'viewed',
+         NULL, NULL, (extract(epoch from now()) * 1000)::bigint);
+END $$;
 ");}
 
         // ── AdminUser 모델 ──
@@ -2046,6 +2065,14 @@ ALTER TABLE admin_user ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_user' AND policyname = 'admin_all') THEN
     CREATE POLICY admin_all ON admin_user FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+  END IF;
+END $$;
+
+-- 읽기는 롤 보유자 전체 (#25) — 감사 로그의 행위자(uid)를 이메일로 읽으려면 명단이 필요하다.
+-- 행위자 식별 없는 감사는 무의미하고, 감사를 열람할 수 있는 사람에게 명단 이메일은 비밀이 아니다.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_user' AND policyname = 'operator_read') THEN
+    CREATE POLICY operator_read ON admin_user FOR SELECT USING (suparun_is_operator());
   END IF;
 END $$;
 

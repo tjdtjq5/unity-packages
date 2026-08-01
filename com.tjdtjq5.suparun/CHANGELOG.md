@@ -41,6 +41,11 @@
 - 어드민 설정에 **게임 로그인**(`platform_auth`) 토글. SettingsView 에만 있던 UI다
 - `POST /auth/claim-admin` — 로그인 신원을 GoTrue 에 되물어 확정하고 `admin_user` 등록 +
   **game-admin 롤 부여**(`SupaRunAdminClaim`). 빈 표의 RLS 매듭을 PAT 가 끊는 자리다
+- **감사 화면 트랙** (#25~#28, Metaplay Audit Logs 클론) — 목록(타입·행위자·기간 서버
+  필터 + Load More + 행위자 이메일 표시), 상세(`#audit_log/<id>` 직접 접근, before→after
+  터미널 diff), 열람 자기기록(`suparun_audit_viewed` RPC — action='viewed' 만 여는 좁은 문,
+  페이지 로드당 화면별 1회, server_log·secrets 적용), 공용 `AuditCard`(ConfigPage 상단).
+  `admin_user` 에 operator_read 추가(행위자 식별은 감사의 본질)
 - **빌트인 4롤 + 롤 게이트** (#24, ADR-0009 결정 4·5) — `admin_user_role` 매핑(복수 롤,
   합집합)으로 game-admin / game-viewer / cs-senior / cs-agent 도입. 단일 `admin_user.role`
   컬럼은 매핑으로 마이그레이션 후 **삭제**. `is_admin()` = game-admin 보유로 재정의돼

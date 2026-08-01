@@ -1,37 +1,90 @@
-import { useCallback, useEffect, useState } from 'react'
-import { selectAll } from '../../shared/db'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { isPreview } from '../../shared/env'
+import { sb } from '../../shared/supabase'
 import type { AuditLog } from '../../shared/types'
 
-const LIMIT = 100
+const PAGE = 50
+
+/** 3종 필터 (#26). 빈 문자열 = 전체. from/to 는 date input 값(YYYY-MM-DD)이다. */
+export interface AuditFilter {
+  configType: string
+  adminId: string
+  from: string
+  to: string
+}
+
+export const EMPTY_FILTER: AuditFilter = { configType: '', adminId: '', from: '', to: '' }
 
 /**
- * 변경 이력 목록. 서버 `/_audit` 대신 admin_audit_log 를 직접 읽는다 (ADR-0004).
+ * 감사 이벤트 목록 — 필터는 서버(PostgREST)가 하고, 페이지는 [더 불러오기]로 붙인다
+ * (#25·#26, Metaplay Load More 동형). 필터가 바뀌면 처음부터 다시 쌓는다.
  *
- * `admin_read` 정책(is_admin)이 걸려 있어 관리자만 보인다. 쓰기 정책은 없다 —
- * 기록은 suparun_audit() 트리거(SECURITY DEFINER)만 하고, 사람이 고칠 수 있으면 감사가 아니다.
+ * `operator_read` 정책이라 롤 보유자면 읽힌다. 쓰기 정책은 없다 — 기록은 트리거와
+ * viewed RPC 만 하고, 사람이 고칠 수 있으면 감사가 아니다.
  */
-export function useAuditLogs() {
+export function useAuditLogs(filter: AuditFilter) {
   const [logs, setLogs] = useState<AuditLog[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const [loading, setLoading] = useState(false)
+  /** 필터 변경과 늦게 도착한 이전 요청의 경합 방지 — 요청 세대 번호. */
+  const gen = useRef(0)
 
-  const reload = useCallback(async () => {
-    try {
-      setError(null)
-      setLogs(
-        await selectAll<AuditLog>('admin_audit_log', {
-          orderBy: 'created_at',
-          ascending: false,
-          limit: LIMIT,
-        }),
-      )
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }, [])
+  const fetchPage = useCallback(
+    async (offset: number): Promise<AuditLog[]> => {
+      if (isPreview()) {
+        // 프리뷰 mock 은 필터·페이지가 없다 — 첫 페이지만 그대로 보여준다.
+        return offset === 0 ? ((await window.__previewApi!('/admin_audit_log')) as AuditLog[]) : []
+      }
+      if (!sb) throw new Error('Supabase 연결이 설정되지 않았습니다.')
 
+      let q = sb.from('admin_audit_log').select<AuditLog[]>('*')
+      if (filter.configType) q = q.eq('config_type', filter.configType)
+      if (filter.adminId) q = q.eq('admin_id', filter.adminId)
+      if (filter.from) q = q.gte('created_at', Date.parse(filter.from))
+      // to 는 그 날의 끝까지 — 같은 날짜를 넣으면 하루가 통째로 잡혀야 한다.
+      if (filter.to) q = q.lte('created_at', Date.parse(filter.to) + 86_399_999)
+
+      const r = await q.order('created_at', { ascending: false }).range(offset, offset + PAGE - 1)
+      if (r.error) throw new Error(r.error.message)
+      return r.data ?? []
+    },
+    [filter.configType, filter.adminId, filter.from, filter.to],
+  )
+
+  // 필터가 바뀌면 처음부터.
   useEffect(() => {
-    void reload()
-  }, [reload])
+    const g = ++gen.current
+    setLogs(null)
+    setError(null)
+    void (async () => {
+      try {
+        const page = await fetchPage(0)
+        if (g !== gen.current) return
+        setLogs(page)
+        setHasMore(page.length === PAGE)
+      } catch (e) {
+        if (g !== gen.current) return
+        setError(e instanceof Error ? e.message : String(e))
+      }
+    })()
+  }, [fetchPage])
 
-  return { logs, error, reload }
+  const loadMore = useCallback(async () => {
+    if (loading || !logs) return
+    const g = gen.current
+    setLoading(true)
+    try {
+      const page = await fetchPage(logs.length)
+      if (g !== gen.current) return
+      setLogs([...logs, ...page])
+      setHasMore(page.length === PAGE)
+    } catch (e) {
+      if (g === gen.current) setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [fetchPage, loading, logs])
+
+  return { logs, error, hasMore, loading, loadMore }
 }
