@@ -58,13 +58,13 @@ export function LoginPage() {
     try {
       const { data, error } = await sb.auth.signUp({ email: email.trim(), password })
       if (error) return fail(error.message)
-      // autoconfirm(셋업 시 켜짐)이면 세션이 바로 와서 이 메시지는 스치듯 보인다.
-      // 세션이 없다면 확인 메일 경로로 빠진 것 — 이 프로젝트는 autoconfirm 이 꺼져 있다.
+      // autoconfirm(셋업 시 켜짐)이면 세션이 바로 와서 App 이 곧장 화면을 바꾼다.
+      // 세션이 없다면 이 프로젝트는 autoconfirm 이 꺼져 확인 메일 경로로 빠진 것이다.
       setMsg({
         kind: 'success',
         text: data.session
           ? '회원가입 완료!'
-          : '회원가입 완료! 같은 이메일과 비밀번호로 로그인하세요.',
+          : '회원가입 완료! 확인 메일을 승인한 뒤 로그인하세요.',
       })
     } catch (e) {
       fail('회원가입 실패: ' + (e instanceof Error ? e.message : String(e)))
@@ -142,7 +142,7 @@ export function LoginPage() {
                 {busy === 'signup' ? (
                   <>
                     <Spinner size={12} />
-                    [SENDING...]
+                    [SIGNUP...]
                   </>
                 ) : (
                   '[REGISTER]'

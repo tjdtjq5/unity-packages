@@ -22,25 +22,8 @@ declare global {
   }
 }
 
-// ── 권한/세션 만료 알림 ────────────────────────────────────────
-// 값이 아니라 구독자 집합이다 — 어느 화면에서 API 를 부르든 App 하나가 로그인 복귀를 처리한다.
-
-export interface UnauthorizedInfo {
-  /** 401 = 세션 만료, 403 = 관리자 권한 없음. 안내 제목이 갈린다. */
-  status: 401 | 403
-  message: string
-}
-
-type UnauthorizedListener = (info: UnauthorizedInfo) => void
-const unauthorizedListeners = new Set<UnauthorizedListener>()
-
-/** 401/403 을 만나면 알림을 받는다. 반환값은 구독 해제 함수. */
-export function onUnauthorized(f: UnauthorizedListener): () => void {
-  unauthorizedListeners.add(f)
-  return () => {
-    unauthorizedListeners.delete(f)
-  }
-}
+// 401/403 구독 채널(onUnauthorized)은 없다 — 세션 만료는 useSession(SIGNED_OUT)이
+// 로그인 화면으로 떨어뜨린다(#23). 아래 메시지는 던지는 에러 본문으로만 쓰인다.
 
 const MSG_401 = '로그인 세션이 만료되었습니다. 다시 로그인하세요.'
 const MSG_403 =
@@ -63,10 +46,7 @@ async function request<T>(
   const res = await fetch(`${base}${path}`, init)
 
   if (opts.handleAuth && (res.status === 401 || res.status === 403)) {
-    const status = res.status as 401 | 403
-    const message = status === 401 ? MSG_401 : MSG_403
-    unauthorizedListeners.forEach((f) => f({ status, message }))
-    throw new Error(message)
+    throw new Error(res.status === 401 ? MSG_401 : MSG_403)
   }
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string }

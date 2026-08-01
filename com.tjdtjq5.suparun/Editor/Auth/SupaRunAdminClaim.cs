@@ -36,19 +36,26 @@ namespace Tjdtjq5.SupaRun.Editor
             var (userId, email) = user.Value;
 
             // ⚠ admin_user.user_id 유니크는 부분 인덱스(WHERE user_id IS NOT NULL)라 ON CONFLICT
-            // 를 못 쓴다 — UPDATE 후 없으면 INSERT 로 멱등을 만든다. 달러 인용은 값에 따옴표가
-            // 있어도 SQL 이 깨지지 않게 하는 것.
+            // 를 못 쓴다 — UPDATE 후 없으면 INSERT 로 멱등을 만든다.
+            var e = Quote(email);
+            var u = Quote(userId);
             var r = await SupabaseManagementApi.RunQuery(pid, pat,
-                $"UPDATE admin_user SET role = 'admin', email = $e${email}$e$, provider = 'email' " +
-                $"WHERE user_id = $u${userId}$u$; " +
+                $"UPDATE admin_user SET role = 'admin', email = {e}, provider = 'email' " +
+                $"WHERE user_id = {u}; " +
                 "INSERT INTO admin_user (id, user_id, email, role, provider, created_at, created_by) " +
-                $"SELECT $u${userId}$u$, $u${userId}$u$, $e${email}$e$, 'admin', 'email', " +
+                $"SELECT {u}, {u}, {e}, 'admin', 'email', " +
                 "(extract(epoch from now()) * 1000)::bigint, 'local-bridge' " +
-                $"WHERE NOT EXISTS (SELECT 1 FROM admin_user WHERE user_id = $u${userId}$u$);");
+                $"WHERE NOT EXISTS (SELECT 1 FROM admin_user WHERE user_id = {u});");
             if (!r.Ok) return r.CarryFailure<(string, string)>();
 
             return SupabaseResult<(string, string)>.Success((userId, email));
         }
+
+        /// <summary>
+        /// SQL 문자열 리터럴. GoTrue 가 준 값이라도 이스케이프한다 — 이메일 local part 에는
+        /// `'` 도 `$` 도 올 수 있어서 달러 인용($tag$)은 태그 충돌 여지가 있다.
+        /// </summary>
+        static string Quote(string s) => "'" + (s ?? "").Replace("'", "''") + "'";
 
         /// <summary>토큰의 주인을 GoTrue 에 묻는다. 무효 토큰 등 실패는 null.</summary>
         static async UniTask<(string id, string email)?> GetUser(string url, string anon, string accessToken)

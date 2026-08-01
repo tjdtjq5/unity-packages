@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { auth as bridgeAuth, bridgeAvailable, needsSetup, setup, type SetupState } from './shared/bridge'
 import { isPreview } from './shared/env'
 import { FullScreenLoader } from './shared/Spinner'
@@ -41,18 +41,29 @@ export function App() {
 
   // 관리자인가. 세션이 바뀔 때마다 다시 판정한다 — 로그인 직후 갱신돼야 한다.
   const [role, setRole] = useState<'boot' | 'admin' | 'pending'>('boot')
+  // claim 을 이미 마친 uid. 토큰은 ~1시간마다 갱신되는데(TOKEN_REFRESHED),
+  // 그때마다 등록 SQL 을 다시 쏘지 않기 위한 가드다 — 실패 시에는 남겨서 다음에 재시도한다.
+  const claimedUid = useRef<string | null>(null)
   useEffect(() => {
     if (preview || !token) return
     let alive = true
     setRole('boot')
     void (async () => {
+      const uid = session?.user?.id ?? ''
+
       // 로컬이면 판정 전에 등록부터 — 첫 관리자 매듭은 브리지의 PAT 가 끊는다.
       // 실패해도 계속 간다(이미 등록된 관리자는 아래 판정이 그대로 통과한다).
       // 대기 화면이 떴다면 원인은 이 경고와 Unity Console 에 있다.
-      if (bridgeAvailable())
-        await bridgeAuth.claimAdmin(token).catch((e) => console.warn('claim-admin 실패:', e))
-
-      const uid = session?.user?.id ?? ''
+      if (bridgeAvailable() && claimedUid.current !== uid) {
+        const ok = await bridgeAuth.claimAdmin(token).then(
+          () => true,
+          (e) => {
+            console.warn('claim-admin 실패:', e)
+            return false
+          },
+        )
+        if (ok) claimedUid.current = uid
+      }
       const rows = sb
         ? await sb.from('admin_user').select<{ role: string }[]>('role').eq('user_id', uid)
         : null
