@@ -2059,11 +2059,12 @@ END $$;
 -- 본인 행 등록 — 로그인한 사람이 자기 신원을 대기 명단에 올린다(App 이 로그인 직후 수행).
 -- 이 행이 있어야 User Roles 화면에 대기자가 보인다. 롤은 admin_user_role 에만 있으므로
 -- 이 정책으로 self-grant 는 불가능하다.
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_user' AND policyname = 'self_insert') THEN
-    CREATE POLICY self_insert ON admin_user FOR INSERT WITH CHECK (user_id = auth.uid()::text);
-  END IF;
-END $$;
+-- email 도 JWT 의 것과 같아야 한다 — 가입이 열려 있어 아무 계정이나 남의 이메일로 행을
+-- 위조하면, game-admin 이 User Roles 에서 **이메일을 보고** 롤을 주는 순간 뚫린다.
+-- DROP 후 CREATE: 조건이 바뀌어도 기존 DB 에 반영되게 한다(정책 교체는 순간이라 무해).
+DROP POLICY IF EXISTS self_insert ON admin_user;
+CREATE POLICY self_insert ON admin_user FOR INSERT
+  WITH CHECK (user_id = auth.uid()::text AND email = (auth.jwt() ->> 'email'));
 
 -- admin_user_role: 읽기 = 롤 보유자 + 본인(무롤이어도 자기 상태는 본다), 쓰기 = game-admin.
 ALTER TABLE admin_user_role ENABLE ROW LEVEL SECURITY;

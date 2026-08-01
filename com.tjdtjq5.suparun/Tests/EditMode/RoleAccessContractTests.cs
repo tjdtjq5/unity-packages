@@ -153,6 +153,39 @@ namespace Tjdtjq5.SupaRun.Tests
             Assert.AreEqual(403, env.status, "viewer 의 관리 표 INSERT 는 RLS 가 거부해야 한다");
         }
 
+        [Test]
+        public async Task Viewer_Cannot_Update_Config_Table()
+        {
+            var c = await Init();
+
+            // 프로젝트가 등록한 config 표 하나를 suparun_meta(public_read)에서 집는다.
+            var meta = await Send(HttpMethod.Get,
+                $"{c.Url}/rest/v1/suparun_meta?key=eq.config_types&select=value", c.Anon, null);
+            var table = Regex.Match(meta.body, "\"tableName\"\\s*:\\s*\"([a-z0-9_]+)\"");
+            if (!table.Success) return;   // config 가 없는 프로젝트 — 검증할 표가 없다
+
+            var tbl = table.Groups[1].Value;
+            var row = await Send(HttpMethod.Get, $"{c.Url}/rest/v1/{tbl}?select=id,sort_order&limit=1", c.Anon, null);
+            var id = Regex.Match(row.body, "\"id\"\\s*:\\s*\"([^\"]+)\"");
+            var so = Regex.Match(row.body, "\"sort_order\"\\s*:\\s*(-?[0-9]+)");
+            if (!id.Success || !so.Success) return;   // 빈 표 — 대상 행이 없다
+
+            // **같은 값으로** PATCH 한다 — 정책이 뚫려 있어도 데이터는 안 바뀌는 안전한 탐침.
+            // RLS(admin_write=is_admin)가 작동하면 대상 행이 필터돼 갱신 0건([])이 온다.
+            // HttpMethod.Patch 는 이 런타임 프로파일에 없을 수 있다 — 문자열 생성이 안전하다.
+            using var req = new HttpRequestMessage(new HttpMethod("PATCH"),
+                $"{c.Url}/rest/v1/{tbl}?id=eq.{Uri.EscapeDataString(id.Groups[1].Value)}");
+            req.Headers.TryAddWithoutValidation("apikey", c.Anon);
+            req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + c.ViewerToken);
+            req.Headers.TryAddWithoutValidation("Prefer", "return=representation");
+            req.Content = new StringContent(
+                $"{{\"sort_order\":{so.Groups[1].Value}}}", Encoding.UTF8, "application/json");
+            using var res = await Http.SendAsync(req);
+            var body = (await res.Content.ReadAsStringAsync()).Trim();
+
+            Assert.AreEqual("[]", body, $"viewer 의 config({tbl}) UPDATE 는 0건이어야 한다 (RLS 필터)");
+        }
+
         // ── game-admin ──
 
         [Test]
