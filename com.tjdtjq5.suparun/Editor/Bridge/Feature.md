@@ -30,10 +30,10 @@ Unity 가 없으면 이 페이지도 없다.
 예전처럼 DB(`suparun_meta`)에 실어 보내면 그 표가 `public_read` 라 **anon key 만으로 토큰이 샌다** —
 게임 빌드에서 뽑히는 키다. 그 경로(`PublishEndpointAsync`)는 삭제했다.
 
-**세션도 같은 자리에서 준다** — `window.__SUPARUN_SESSION`. 사람 로그인이 없다:
-브리지가 머신마다 기계 계정(`{OS계정}.{머신명}@suparun.local`)을 만들어 대신 로그인하고
-(`SupaRunMachineAccount` — 가입·autoconfirm·비밀번호 복구·admin_user 등록까지 스스로),
-어드민은 `setSession` 으로 싣기만 한다. 접근 통제는 Supabase 조직 멤버십(각자 PAT)이다.
+**세션은 꽂지 않는다** — 사람 로그인(이메일+비밀번호)이 신원이다 (ADR-0009, #23).
+한때 기계 계정 세션(`__SUPARUN_SESSION`)을 여기서 만들어 줬는데, 그 논거("로컬 전용이라
+로그인이 보안을 더하지 않는다")는 원격 접근자가 생기면 무너지고, 감사의 "누가"도 행위자
+식별 없이는 무의미하다. 첫 관리자 등록만 `/auth/claim-admin` 으로 브리지가 돕는다(아래).
 
 ## 구조
 
@@ -78,9 +78,12 @@ PAT 대행으로 무엇이든 할 수 있다. 그래서 개별 라우트에서 �
 | `POST /setup/project` | `{ref, env?}` — anon key 를 PAT 로 받아 채운다. `env` 를 주면 그 슬롯에 |
 | `POST /setup/init` | 스키마 반영. 물어보지 않고 부른다 — 안 하면 아무것도 안 되므로 |
 
-> claim-admin·reset-password·auth-config 라우트는 없다 — 사람 로그인이 사라지면서 첫 관리자
-> 등록·비밀번호 복구는 `SupaRunMachineAccount` 가 서빙 시점에 스스로 한다(PAT 로 RLS 매듭을
-> 끊는 것은 동일). pgcrypto 복구 SQL 은 그쪽으로 옮겨 갔다 — `extensions.crypt(...)` 스키마 명시 포함.
+> **`POST /auth/claim-admin`** — 로그인 직후 어드민이 부른다. access token 을 GoTrue 에
+> 되물어 신원을 확정하고(`SupaRunAdminClaim`), 그 사람을 `admin_user` 에 admin 으로 등록한다.
+> 표가 비어 있으면 아무도 자기를 등록할 수 없는 RLS 매듭을 PAT 가 끊는 자리 — 여기까지 온
+> 사람은 이미 PAT 전권이라 승인을 따로 묻지 않는다(원격 접근자는 이 경로 자체가 없다).
+> reset-password·auth-config 라우트는 없다 — 어드민 로그인은 이메일 전용이고, 비밀번호를
+> 잊으면 [REGISTER] 로 새 계정을 만들거나 PAT 로 직접 복구한다.
 
 ### `/deploy/*` — 배포 준비 (BridgeDeployRoutes)
 

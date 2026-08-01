@@ -289,8 +289,8 @@ export function EnvSettingsPage() {
       <DeployBlock />
 
       {/* ── 게임 로그인 ──
-          어드민 로그인(웹 프로바이더) 블록은 없다 — 어드민은 기계 계정 자동 로그인으로
-          바뀌어 사람용 웹 OAuth 를 켜고 끌 자리가 사라졌다. 여기 남은 것은 플레이어 쪽뿐이다. */}
+          어드민 로그인(웹 프로바이더) 블록은 없다 — 어드민은 이메일+비밀번호 전용이라
+          (ADR-0009 — 매직링크·OAuth 기각) 켜고 끌 프로바이더가 없다. 여기 남은 것은 플레이어 쪽뿐이다. */}
       <section className="appset-block">
         <h3 className="appset-title">게임 로그인</h3>
 

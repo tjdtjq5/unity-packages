@@ -184,7 +184,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 }
                 if (raw.StartsWith("/admin/"))
                 {
-                    await ServeAdmin(res, raw.Substring("/admin/".Length));
+                    ServeAdmin(res, raw.Substring("/admin/".Length));
                     return;
                 }
 
@@ -341,8 +341,28 @@ namespace Tjdtjq5.SupaRun.Editor
                 return;
             }
 
-            // 웹 로그인 프로바이더 라우트(/auth-config)는 없다 — 어드민 로그인이 기계 계정
-            // 자동 로그인으로 바뀌면서 사람용 웹 OAuth 를 켜고 끌 자리가 사라졌다.
+            // ── 사람 로그인 보조 (ADR-0009, #23) ──
+
+            // 로그인한 신원을 이 환경의 admin_user 에 admin 으로 등록한다.
+            // 여기까지 온 사람은 이미 PAT 대행 전권을 쥐고 있어 승인을 따로 묻지 않는다 —
+            // 빈 표(첫 관리자)의 매듭을 PAT 가 끊는 자리다. 신원은 토큰을 GoTrue 에 되물어 확정한다.
+            if (path == "/auth/claim-admin" && m == "POST")
+            {
+                var access = (string)ReadBody(req)["access_token"];
+                if (string.IsNullOrEmpty(access)) { Write(res, 400, Err("access_token 이 필요합니다.")); return; }
+
+                var claim = await SupaRunAdminClaim.ClaimAsync(env, access);
+                if (!claim.Ok) { Fail(res, claim); return; }
+                Write(res, 200, new JObject
+                {
+                    ["userId"] = claim.Value.userId,
+                    ["email"] = claim.Value.email,
+                });
+                return;
+            }
+
+            // 웹 로그인 프로바이더 라우트(/auth-config)는 없다 — 어드민 로그인은 이메일+비밀번호
+            // 전용이라(ADR-0009 — 매직링크·OAuth 기각) 웹 OAuth 를 켜고 끌 자리가 없다.
 
             Write(res, 404, Err($"알 수 없는 경로: {path}"));
         }
@@ -412,7 +432,7 @@ namespace Tjdtjq5.SupaRun.Editor
         /// **왜 Cloud Run 이 아닌가**: 어드민에서 배포 설정을 입력하려는데 그 어드민이 배포돼야 열리는
         /// 순환이 생긴다. 로컬은 배포와 무관하게 열려 그 고리를 끊는다.
         /// </summary>
-        static async UniTask ServeAdmin(HttpListenerResponse res, string rel)
+        static void ServeAdmin(HttpListenerResponse res, string rel)
         {
             var root = AdminDistRoot();
             if (root == null)
@@ -434,7 +454,7 @@ namespace Tjdtjq5.SupaRun.Editor
             }
 
             if (Path.GetFileName(full).Equals("index.html", StringComparison.OrdinalIgnoreCase))
-                WriteHtml(res, await InjectEnvAsync(File.ReadAllText(full)));
+                WriteHtml(res, InjectEnv(File.ReadAllText(full)));
             else
                 WriteFile(res, full);
         }
@@ -455,7 +475,7 @@ namespace Tjdtjq5.SupaRun.Editor
         /// 접속 정보를 **런타임에** 꽂는다. 배포할 때 치환하던 것을 여기로 옮기면
         /// 환경을 바꿔도 다시 빌드할 일이 없다 — 새로고침이면 된다.
         /// </summary>
-        static async UniTask<string> InjectEnvAsync(string html)
+        static string InjectEnv(string html)
         {
             var s = SupaRunSettings.Instance;
 
@@ -464,32 +484,14 @@ namespace Tjdtjq5.SupaRun.Editor
             // `public_read` 라 anon key 만 있으면 토큰이 그대로 읽혔다. anon key 는 게임 빌드에서
             // 뽑히므로 사실상 공개다 — 아래 PAT 대행 라우트가 붙은 지금 그건 곧 계정 전권이다.
             // 같은 출처로 내려주면 그 경로 자체가 사라진다.
+            //
+            // 세션은 꽂지 않는다 — 사람 로그인(이메일+비밀번호)이 신원이다 (ADR-0009, #23).
+            // 한때 기계 계정 세션(`__SUPARUN_SESSION`)을 여기서 만들어 줬는데, 그 논거("로컬
+            // 전용이라 로그인이 보안을 더하지 않는다")는 원격 접근자가 생기면 무너진다.
             var bridge = "<script>window.__SUPARUN_BRIDGE={port:" + Port + ",token:\"" + Token + "\"};</script>";
 
-            // 기계 계정 세션도 같은 방식으로 꽂는다 — 사람 로그인은 없다. 실패하면 안 꽂고,
-            // 화면이 "브리지가 세션을 주지 못했다" 를 안내한다(원인은 Unity Console 에 있다).
-            var session = "";
-            try
-            {
-                var t = await SupaRunMachineAccount.EnsureSessionAsync(s.Current);
-                if (t != null)
-                {
-                    var j = new JObject
-                    {
-                        ["access_token"] = t.Value.access,
-                        ["refresh_token"] = t.Value.refresh,
-                    };
-                    session = "<script>window.__SUPARUN_SESSION=" +
-                              j.ToString(Newtonsoft.Json.Formatting.None) + ";</script>";
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[SupaRun:Auth] 세션 주입 실패 — {ex.Message}");
-            }
-
             return html
-                .Replace("</head>", bridge + session + "</head>")
+                .Replace("</head>", bridge + "</head>")
                 .Replace("{{SUPABASE_URL}}", s.supabaseUrl ?? "")
                 .Replace("{{SUPABASE_ANON_KEY}}", s.SupabaseAnonKey ?? "");
         }

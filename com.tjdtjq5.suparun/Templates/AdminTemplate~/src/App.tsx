@@ -1,39 +1,33 @@
 import { useEffect, useState } from 'react'
-import { onUnauthorized, type UnauthorizedInfo } from './shared/api'
-import { needsSetup, setup, type SetupState } from './shared/bridge'
+import { auth as bridgeAuth, bridgeAvailable, needsSetup, setup, type SetupState } from './shared/bridge'
 import { isPreview } from './shared/env'
 import { FullScreenLoader } from './shared/Spinner'
-import { sb, supabaseError } from './shared/supabase'
+import { sb } from './shared/supabase'
+import { LoginPage } from './features/auth/LoginPage'
+import { useSession } from './features/auth/useSession'
 import { OnboardingPage } from './features/setup/OnboardingPage'
 import { Shell } from './features/shell/Shell'
 
 /**
- * 앱 루트 — **사람 로그인이 없다.**
+ * 앱 루트 — **사람 로그인이 신원이다** (ADR-0009, #23).
  *
- * 이 페이지는 로컬 브리지 전용이고, 여기까지 온 사람은 이미 브리지 토큰(=PAT 대행 전권)을
- * 쥐고 있다. 로그인 화면은 전권자에게 또 세운 문이었다 — 접근 통제는 Supabase 조직
- * 멤버십(각자 PAT)이 맡고, RLS 가 요구하는 세션은 브리지가 **기계 계정**으로 만들어
- * `window.__SUPARUN_SESSION` 에 꽂아 준다(SupaRunMachineAccount).
+ * 기계 계정 자동 로그인을 걷어냈다. 그 논거("로컬 전용이라 로그인이 보안을 더하지 않는다")는
+ * 원격 접근자가 생기는 순간 무너지고, 감사 로그의 "누가" 도 행위자 식별 없이는 무의미하다.
+ * 감사 트리거(suparun_audit)는 auth.uid() 를 남기므로, 로그인만 복원하면 행위자는 저절로
+ * 로그인 계정이 된다.
  *
- * 화면은 셋으로 갈린다:
- *   셋업 구간(PAT·프로젝트·스키마 빈칸) → 온보딩
- *   세션 주입 성공                      → 어드민
- *   세션 없음/실패                      → 원인 안내 (원인은 Unity Console 에 있다)
+ * 화면은 이렇게 갈린다:
+ *   셋업 구간(PAT·프로젝트·스키마 빈칸) → 온보딩 (세션 무관 — 브리지+PAT 의 일이고,
+ *                                        프로젝트가 없으면 로그인할 곳도 없다)
+ *   세션 없음                          → 로그인
+ *   세션 있음 + 관리자                  → 어드민
+ *   세션 있음 + 관리자 아님             → 승인 대기 안내
+ *
+ * 관리자 판정은 `admin_user` 의 자기 행(self_read RLS)이다. 로컬(브리지)에서는 판정 전에
+ * `/auth/claim-admin` 이 등록까지 해 주므로 대기 화면을 볼 일이 사실상 없다.
  */
-
-declare global {
-  interface Window {
-    /** 브리지가 서빙할 때 꽂는 기계 계정 세션. 없으면 로그인 실패다. */
-    __SUPARUN_SESSION?: { access_token: string; refresh_token: string }
-  }
-}
-
 export function App() {
   const preview = isPreview()
-
-  /** 401/403 으로 쫓겨난 상태. 기계 세션은 자동 갱신되므로 드문 일 — 새로고침을 안내한다. */
-  const [kickedOut, setKickedOut] = useState<UnauthorizedInfo | null>(null)
-  useEffect(() => onUnauthorized(setKickedOut), [])
 
   // 셋업이 어디까지 됐는가. 세션보다 먼저 본다 — 프로젝트가 없으면 세션도 없다.
   const [setupState, setSetupState] = useState<SetupState | null | undefined>(undefined)
@@ -42,36 +36,34 @@ export function App() {
     void setup.state().then(setSetupState).catch(() => setSetupState(null))
   }, [preview])
 
-  // 주입된 세션을 supabase-js 에 싣는다. 이후 갱신(refresh)은 클라이언트가 알아서 한다.
-  const [auth, setAuth] = useState<'boot' | 'ready' | 'failed'>('boot')
-  const [email, setEmail] = useState('')
+  const { session, ready } = useSession()
+  const token = session?.access_token
+
+  // 관리자인가. 세션이 바뀔 때마다 다시 판정한다 — 로그인 직후 갱신돼야 한다.
+  const [role, setRole] = useState<'boot' | 'admin' | 'pending'>('boot')
   useEffect(() => {
-    if (preview) return
-    const injected = window.__SUPARUN_SESSION
-    const client = sb
-    if (!client || !injected) {
-      setAuth('failed')
-      return
-    }
+    if (preview || !token) return
     let alive = true
-    void client.auth
-      .setSession(injected)
-      .then(async ({ error }) => {
-        if (!alive) return
-        if (error) {
-          setAuth('failed')
-          return
-        }
-        const { data } = await client.auth.getSession()
-        if (!alive) return
-        setEmail(data.session?.user?.email ?? '')
-        setAuth('ready')
-      })
-      .catch(() => alive && setAuth('failed'))
+    setRole('boot')
+    void (async () => {
+      // 로컬이면 판정 전에 등록부터 — 첫 관리자 매듭은 브리지의 PAT 가 끊는다.
+      // 실패해도 계속 간다(이미 등록된 관리자는 아래 판정이 그대로 통과한다).
+      // 대기 화면이 떴다면 원인은 이 경고와 Unity Console 에 있다.
+      if (bridgeAvailable())
+        await bridgeAuth.claimAdmin(token).catch((e) => console.warn('claim-admin 실패:', e))
+
+      const uid = session?.user?.id ?? ''
+      const rows = sb
+        ? await sb.from('admin_user').select<{ role: string }[]>('role').eq('user_id', uid)
+        : null
+      if (!alive) return
+      setRole(rows?.data?.some((r) => r.role === 'admin') ? 'admin' : 'pending')
+    })()
     return () => {
       alive = false
     }
-  }, [preview])
+    // session 은 token 과 같이 움직인다 — 의존성은 token 하나로 충분하다.
+  }, [preview, token])
 
   if (preview) {
     return (
@@ -99,17 +91,25 @@ export function App() {
   // 중단했다 돌아와도 그 지점에서 이어진다.
   if (needsSetup(setupState)) return <OnboardingPage />
 
-  if (auth === 'boot') return <FullScreenLoader label="세션 준비 중" />
+  if (!ready) return <FullScreenLoader label="세션 확인 중" />
 
-  if (auth === 'failed' || kickedOut) {
+  if (!session) return <LoginPage />
+
+  if (role === 'boot') return <FullScreenLoader label="권한 확인 중" />
+
+  // 로그인은 됐는데 관리자가 아니다. 로그인 화면으로 돌리면 눌러도 같은 자리로
+  // 돌아와 원인을 알 수 없다 — 대기임을 말하고 로그아웃만 준다.
+  if (role === 'pending') {
     return (
-      <Notice tone="danger">
-        <b>{kickedOut ? '세션이 거부되었습니다.' : '기계 계정 세션을 받지 못했습니다.'}</b>
+      <Notice tone="warning">
+        <b>승인 대기 중입니다.</b>
         <br />
-        {kickedOut?.message ?? supabaseError ?? 'Unity Console 의 [SupaRun:Auth] 로그를 확인하세요.'}
+        {session.user?.email ?? '이 계정'} 으로 로그인했지만 아직 관리자로 승인되지 않았습니다.
+        <br />
+        기존 관리자에게 승인을 요청하세요.
         <div className="action-line" style={{ marginTop: 12 }}>
-          <button className="btn-terminal" onClick={() => window.location.reload()}>
-            [새로고침]
+          <button className="btn-terminal" onClick={() => void sb?.auth.signOut()}>
+            [LOGOUT]
           </button>
         </div>
       </Notice>
@@ -118,7 +118,7 @@ export function App() {
 
   return (
     <div id="admin-page" className="page active">
-      <Shell email={email} />
+      <Shell email={session.user?.email ?? ''} onLogout={() => void sb?.auth.signOut()} />
     </div>
   )
 }

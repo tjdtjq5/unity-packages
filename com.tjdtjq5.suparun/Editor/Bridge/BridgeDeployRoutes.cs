@@ -48,8 +48,8 @@ namespace Tjdtjq5.SupaRun.Editor
                     var hasProject = !string.IsNullOrEmpty(projectRef) &&
                                      !string.IsNullOrEmpty(env.supabaseAnonKey);
 
-                    // 관리자 수(unclaimed)는 더 묻지 않는다 — 첫 관리자 매듭은 기계 계정이
-                    // 서빙 시점에 스스로 등록하면서 풀린다. "첫 로그인 버튼" 이 사라졌다.
+                    // 관리자 수(unclaimed)는 더 묻지 않는다 — 첫 관리자 매듭은 로그인 직후
+                    // `/auth/claim-admin` 이 풀므로 셋업 상태에 관리자 단계가 없다.
                     BridgeIo.Write(res, 200, new JObject
                     {
                         ["hasPat"] = hasPat,
@@ -136,9 +136,8 @@ namespace Tjdtjq5.SupaRun.Editor
                     return;
                 }
 
-                // claim-admin·reset-password 라우트는 없다 — 사람 로그인이 사라지면서
-                // 첫 관리자 등록은 기계 계정(SupaRunMachineAccount)이 서빙 시점에 스스로 하고,
-                // 비밀번호 복구도 그 안의 PAT 리셋이 대신한다.
+                // 첫 관리자 등록은 여기 없다 — 로그인 직후 어드민이 부르는
+                // `/auth/claim-admin`(SupaRunBridge → SupaRunAdminClaim)이 PAT 로 매듭을 끊는다.
 
                 case "/deploy/status" when m == "GET":
                     BridgeIo.Write(res, 200, BuildStatus(s));

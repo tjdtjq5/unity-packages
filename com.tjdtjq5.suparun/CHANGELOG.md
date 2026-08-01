@@ -14,9 +14,12 @@
   - 메뉴 `Tjdtjq/SupaRun/Dashboard`(`Ctrl+Shift+Q`) 제거. `Admin`(`Ctrl+Shift+D`)만 남는다
 - **`UserSettings/SupaRunUserSettings.json` 제거.** 마지막까지 남아 있던 `serverLogToConsole` ·
   `setupCompleted` 의 유일한 사용처가 대시보드였다. 개인 값은 전부 EditorPrefs 로 간다.
-- **어드민 로그인이 이메일 + 비밀번호로 바뀌었다.** 매직링크는 Supabase 기본 메일이
-  **시간당 2통**이라 재로그인이 대기열을 탔다. 비밀번호는 메일을 아예 안 보낸다.
-  가입은 관리자가 0명일 때만 열린다.
+- **어드민 로그인이 이메일 + 비밀번호로 바뀌었다** (ADR-0009, #23). 매직링크는 Supabase
+  기본 메일이 **시간당 2통**이라 재로그인이 대기열을 탔다. 비밀번호는 메일을 아예 안 보낸다.
+  첫 관리자 매듭은 로그인 직후 `POST /auth/claim-admin` 이 푼다 — 로컬 브리지(=PAT 전권)가
+  로그인 신원을 `admin_user` 에 admin 으로 등록한다. 그 외 계정은 기존 관리자의 승인을
+  기다린다(승인 대기 화면). 감사 트리거가 남기는 `auth.uid()` 가 곧 로그인 계정이다.
+  (같은 릴리스 안에서 기계 계정 자동 로그인을 시도했다 폐기했다 — 근거는 ADR-0009.)
 
 ### Security
 - **`server_log` 에 RLS 를 켰다** (`admin_read` = `is_admin()`). 이 표는 RLS 가 꺼져 있어
@@ -36,8 +39,8 @@
 - 어드민 환경 슬롯(`EnvSlots`) — 추가·삭제·편집/빌드 환경 지정·**Supabase 프로젝트 연결**.
   `POST /setup/project` 가 `env` 를 받게 되어, 새 슬롯을 편집 환경으로 옮기지 않고도 붙일 수 있다
 - 어드민 설정에 **게임 로그인**(`platform_auth`) 토글. SettingsView 에만 있던 UI다
-- `POST /setup/reset-password` — 메일 없이 비밀번호를 바꾼다.
-  ⚠ pgcrypto 는 `extensions` 스키마에 있어 `extensions.crypt(...)` 로 명시해야 한다
+- `POST /auth/claim-admin` — 로그인 신원을 GoTrue 에 되물어 확정하고 `admin_user` 에
+  admin 으로 등록한다(`SupaRunAdminClaim`). 빈 표의 RLS 매듭을 PAT 가 끊는 자리다
 
 ## [1.0.0] - 2026-07-24
 

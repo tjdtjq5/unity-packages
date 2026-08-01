@@ -78,7 +78,8 @@ namespace Tjdtjq5.SupaRun.Editor
             if (baseCheck.HasValue) return baseCheck.Value.CarryFailure<int>();
 
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var by = SupaRunMachineAccount.Email;
+            // PAT(Management API) 경로라 로그인 세션이 없다 — 행위자는 이 머신의 조작자다.
+            var by = $"{Environment.UserName}@{Environment.MachineName}";
 
             var values = new List<string>();
             foreach (var e in Entries)

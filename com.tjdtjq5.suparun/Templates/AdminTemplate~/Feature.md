@@ -5,9 +5,9 @@
 
 ## 의존성
 
-- **로컬 브리지 전용** — `SupaRunBridge.ServeAdmin` 이 유일한 서빙 경로다. 배포(서버 `/admin`)는
-  없다: 공개 URL 에선 로그인이 유일한 문인데 그 로그인을 기계 계정 자동화로 없앴기 때문.
-  접근 통제는 Supabase 조직 멤버십(각자 PAT)이 맡는다
+- **로컬 브리지 전용** — `SupaRunBridge.ServeAdmin` 이 유일한 서빙 경로다. 호스팅(Cloud Run
+  정적 서빙)은 ADR-0009 로 부활이 결정됐고 #48 에서 온다. 접근 통제는 사람 로그인
+  (이메일+비밀번호) + `admin_user` 다
 - 외부 CDN: Tabler CSS/JS, Bootstrap 5, Supabase JS v2, Chart.js, Sortable
 - 빌드: vite 8 + React 19 + TypeScript 7 (`@xyflow/react` 는 노드 그래프용, ADR-0002)
 
@@ -33,14 +33,14 @@ AdminTemplate~/
 │       │               NodeGraphModal / GraphNode / graphIO / validate / nodegraph.css
 │       ├── snapshot/   [SpecData] 시점 저장·복원 — SnapshotPage / RestoreModal / useSnapshots
 │       ├── environment/ 환경 현황 카드 · 이 환경 설정(환경 안)
-│       │               EnvironmentPage / EnvSettingsPage / AuthProvidersBlock
+│       │               EnvironmentPage / EnvSettingsPage
 │       ├── setup/      첫 셋업(온보딩)과 미연결 프로젝트 셋업
 │       │               OnboardingPage / SetupProjectPage
 │       ├── deploy/     배포 대상 체크리스트 — DeployBlock
 │       ├── ops/        **Unity 를 시키는 화면** — 스키마 반영·Id 상수·배포·승격. OpsPage
 │       ├── logs/       서버 로그(`server_log`) — LogsPage
 │       ├── secrets/    이 환경의 비밀 — SecretsPage (값은 절대 표시하지 않는다)
-│       └── …           audit / table / config  (auth·admins 폴더는 없다 — 아래 인증 참조)
+│       └── …           auth / audit / table / config  (admins 폴더는 롤 게이트 #24 에서)
 │
 ├── node_modules/       (gitignore)
 └── dist/               ← 빌드 산출물. **커밋한다** (소비 프로젝트는 Node 불필요)
@@ -84,8 +84,8 @@ AdminTemplate~/
 30줄로 충분하다. 바닐라와 동일하게 `replaceState` — 뒤로가기로 화면을 되짚지 않는다.
 
 **인증 토큰**: 전역 변수로 들고 있지 않고 API 호출마다 `sb.auth.getSession()` 에서 읽는다.
-supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다(바닐라는 `onAuthStateChange` 에서 수동 갱신했다).
-401/403 은 `shared/api.ts` 의 `onUnauthorized` 구독으로 `App` 에 전달되어 로그인 화면으로 돌린다.
+supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다. 세션 만료는 `useSession` 의
+`onAuthStateChange`(SIGNED_OUT)가 받아 로그인 화면으로 떨어뜨린다.
 
 > ⚠ **`position: fixed` 인 오버레이는 반드시 `document.body` 로 portal 한다.**
 > 바닐라가 `document.body.appendChild()` 로 붙이던 것을 React 이관 때 셀 안에 그대로 렌더하면
@@ -96,9 +96,8 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다(바
 
 ## 플레이스홀더 변수
 
-브리지가 서빙할 때 실제 값으로 치환합니다(`SupaRunBridge.InjectEnvAsync` — 런타임 주입이라
-환경을 바꿔도 재빌드가 없다). 같은 자리에서 `__SUPARUN_BRIDGE`(포트·토큰)와
-`__SUPARUN_SESSION`(기계 계정 세션)도 함께 꽂힌다.
+브리지가 서빙할 때 실제 값으로 치환합니다(`SupaRunBridge.InjectEnv` — 런타임 주입이라
+환경을 바꿔도 재빌드가 없다). 같은 자리에서 `__SUPARUN_BRIDGE`(포트·토큰)도 함께 꽂힌다.
 
 | 플레이스홀더 | 타입 | 설명 |
 |-------------|------|------|
@@ -107,21 +106,24 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다(바
 
 ## 주요 기능
 
-### 인증 — **사람 로그인이 없다** (기계 계정 자동 로그인)
+### 인증 — **사람 로그인(이메일+비밀번호)** (ADR-0009, #23)
 
-- 이 페이지는 로컬 브리지 전용이고, 연 사람은 이미 브리지 토큰(=PAT 대행 전권)을 쥐고 있다.
-  로그인 화면은 전권자에게 또 세운 문이었다 — **접근 통제는 Supabase 조직 멤버십(각자 PAT)**
-- RLS 가 요구하는 세션은 브리지가 **기계 계정**(`{OS계정}.{머신명}@suparun.local`)으로 만들어
-  `window.__SUPARUN_SESSION` 으로 꽂아 준다 — Unity 쪽 `SupaRunMachineAccount` 참조.
-  App 이 `setSession` 으로 싣고, 이후 갱신은 supabase-js 가 refresh_token 으로 알아서 한다
-- 첫 관리자 매듭(`admin_user` 가 비면 아무도 못 씀)도 브리지가 PAT 로 스스로 푼다 —
-  버튼도 가입도 없다. 감사로그(updated_by)에는 기계 계정 이메일이 남아 사람이 읽힌다
-- 401/403 이나 세션 주입 실패는 안내 화면 하나로 수렴한다(원인은 Unity Console)
+- 비로그인 상태로는 어떤 화면에도 못 들어간다 — 게이트는 `App.tsx` 하나다
+  (셋업 온보딩만 예외: 브리지+PAT 의 일이고, 프로젝트가 없으면 로그인할 곳도 없다)
+- 세션은 supabase-js 가 localStorage 에 보존·갱신한다 — 새로고침해도 로그인 유지,
+  만료는 `useSession`(SIGNED_OUT)이 로그인 화면으로 떨어뜨린다
+- 첫 관리자 매듭(`admin_user` 가 비면 아무도 못 씀)은 로그인 직후 App 이 부르는
+  `/auth/claim-admin` 이 푼다 — 로컬 브리지(=PAT 전권)가 로그인 신원을 admin 으로 등록.
+  원격 접근자(#48 호스팅)는 이 경로가 없어 기존 관리자의 승인을 기다린다(승인 대기 화면)
+- 감사 트리거(`suparun_audit`)는 `auth.uid()` 를 남기므로 **행위자 = 로그인 계정**이다.
+  `admin_user.email` 은 claim 이 채워 uid 를 사람이 읽게 한다
 
-> 로그인 방식은 네 번 바뀌었다. OAuth 만(프로바이더 앱 등록 ~10분) → 매직링크(기본 메일
-> **시간당 2통**) → 이메일+비밀번호(메일 미사용) → **기계 계정 자동 로그인**(사람 로그인 소멸,
-> 2026-08-01). jwt_secret 직접 서명안은 기각 — Supabase 신규 프로젝트가 비대칭 서명키로
-> 넘어가면 서명 비밀 자체를 못 얻는다. 정식 발급 창구(Auth)에 줄서는 쪽이 체계와 무관하다.
+> 로그인 방식은 다섯 번 바뀌었다. OAuth 만(프로바이더 앱 등록 ~10분) → 매직링크(기본 메일
+> **시간당 2통**) → 이메일+비밀번호(메일 미사용) → 기계 계정 자동 로그인(2026-08-01 오전) →
+> **이메일+비밀번호 복원**(같은 날, ADR-0009). 기계 계정의 논거("로컬 전용이라 로그인이 보안을
+> 더하지 않는다")는 원격 접근자(CS 롤)가 생기면 무너지고, 감사의 "누가"도 행위자 식별 없이는
+> 무의미하다. jwt_secret 직접 서명안은 여전히 기각 — 비대칭 서명키 전환과 무관한 정식 발급
+> 창구(Auth)에 줄을 선다.
 
 ### 서버 로그 (`[SYSTEM] > server_log`)
 
@@ -254,7 +256,8 @@ dev / prod 각각을 카드 하나로. 왼쪽은 신원(무엇인가), 오른쪽
 
 미연결 카드로 들어와 이름을 정하면 멈추지 않고 끝까지 간다:
 슬롯 생성 → 연결(키 수신) → **편집 환경 전환(자동 — prod 이름이어도 묻지 않는다)** → 스키마 반영
-시작 → 리로드. 리로드 뒤는 온보딩이 이어받아 반영 진행과 첫 관리자 등록을 처리한다.
+시작 → 리로드. 리로드 뒤는 온보딩이 반영 진행을 이어받고, 첫 관리자 등록은 로그인 직후
+`/auth/claim-admin` 이 한다.
 빈 슬롯(이름만 미리 만들기) 흐름은 사라졌다 — 이름 짓기가 여기로 왔기 때문이다.
 
 ### 스냅샷 / 복원 (`[SYSTEM] > snapshots`)

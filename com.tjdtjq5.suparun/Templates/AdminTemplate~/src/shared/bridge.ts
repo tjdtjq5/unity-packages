@@ -111,5 +111,17 @@ export function needsSetup(s: SetupState): boolean {
   return !s.hasPat || !s.hasProject || !s.schemaReady
 }
 
-// whoAmI 는 없다 — 신원 판정이 통째로 사라졌다. 세션은 브리지가 기계 계정으로 만들어
-// 주입하고(App 참조), 그 계정의 admin_user 등록도 브리지가 스스로 한다.
+export const auth = {
+  /**
+   * 로그인한 신원을 이 환경의 `admin_user` 에 admin 으로 등록한다 (ADR-0009, #23).
+   *
+   * 표가 비어 있으면 아무도 자기를 등록할 수 없는 매듭(등록에도 is_admin 이 필요)을
+   * 브리지의 PAT 가 끊는다. 로컬 브리지를 연 사람은 이미 PAT 전권을 쥐고 있어 승인을
+   * 따로 묻지 않는다 — 원격 접근자는 이 경로 자체가 없다(브리지는 로컬 전용).
+   * 신원은 브리지가 토큰을 GoTrue 에 되물어 확정하므로 여기서 주장하는 값이 아니다.
+   */
+  claimAdmin: (accessToken: string) =>
+    bridge.post<{ userId: string; email: string }>('/auth/claim-admin', {
+      access_token: accessToken,
+    }),
+}

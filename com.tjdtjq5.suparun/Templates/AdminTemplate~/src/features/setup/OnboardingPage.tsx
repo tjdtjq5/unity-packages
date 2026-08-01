@@ -12,8 +12,8 @@ import { Spinner } from '../../shared/Spinner'
  * **진입·이탈은 상태가 정한다.** '첫 실행' 플래그를 두지 않는다 — PAT 만료, 새 환경, 팀원 클론처럼
  * 빈칸은 나중에도 생기고, 그때 플래그는 사실과 어긋난다.
  *
- * 관리자 단계는 없다 — 스키마가 준비되면 새로고침되고, 브리지가 기계 계정 세션을
- * 만들어 주입하면서 첫 관리자 등록까지 스스로 한다(SupaRunMachineAccount).
+ * 관리자 단계는 없다 — 스키마가 준비되면 새로고침되어 로그인 화면으로 넘어가고,
+ * 첫 관리자 등록은 로그인 직후 `/auth/claim-admin` 이 한다(App.tsx 참조).
  */
 export function OnboardingPage() {
   const [st, setSt] = useState<SetupState | null>(null)
