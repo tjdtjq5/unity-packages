@@ -131,7 +131,7 @@ namespace Tjdtjq5.SupaRun.Editor
         {
             var sql =
                 "SELECT set_config('request.jwt.claims', json_build_object('sub', " +
-                "(SELECT user_id FROM admin_user WHERE role = 'admin' LIMIT 1))::text, true); " +
+                "(SELECT user_id FROM admin_user_role WHERE role = 'game-admin' LIMIT 1))::text, true); " +
                 $"SELECT suparun_snapshot_create('promote', '{Escape(fromName)} 승격 직전 자동 저장', true);";
 
             var r = await SupabaseManagementApi.RunQuery(projectId, token, sql);
@@ -140,8 +140,8 @@ namespace Tjdtjq5.SupaRun.Editor
             EditorUtility.ClearProgressBar();
             r.ShowErrorDialog("대상 환경 스냅샷");
             Debug.LogError(
-                "[SupaRun:Promote] 대상 환경에 관리자 계정이 없으면 이 단계에서 막힙니다. " +
-                "그 환경의 어드민 페이지에 한 번 가입해 관리자를 만든 뒤 다시 시도하세요.");
+                "[SupaRun:Promote] 대상 환경에 game-admin 롤 보유자가 없으면 이 단계에서 막힙니다. " +
+                "그 환경의 어드민에 로그인해 관리자를 만든 뒤 다시 시도하세요.");
             return false;
         }
 

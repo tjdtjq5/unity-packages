@@ -4,7 +4,8 @@ using Newtonsoft.Json.Linq;
 namespace Tjdtjq5.SupaRun.Editor
 {
     /// <summary>
-    /// **첫 관리자 매듭 끊기** — 로컬 어드민에서 로그인한 사람을 `admin_user` 에 등록한다 (ADR-0009).
+    /// **첫 관리자 매듭 끊기** — 로컬 어드민에서 로그인한 사람을 `admin_user` 에 등록하고
+    /// game-admin 롤을 부여한다 (ADR-0009, #23·#24).
     ///
     /// `is_admin()` RLS 는 admin_user 행을 근거로 열리는데, 표가 비어 있으면 아무도 자기를
     /// 등록할 수 없다(등록에도 is_admin 이 필요하다). 그 매듭을 PAT 가 끊는다 — 로컬 브리지를
@@ -36,16 +37,20 @@ namespace Tjdtjq5.SupaRun.Editor
             var (userId, email) = user.Value;
 
             // ⚠ admin_user.user_id 유니크는 부분 인덱스(WHERE user_id IS NOT NULL)라 ON CONFLICT
-            // 를 못 쓴다 — UPDATE 후 없으면 INSERT 로 멱등을 만든다.
+            // 를 못 쓴다 — UPDATE 후 없으면 INSERT 로 멱등을 만든다. 롤은 매핑 테이블이고
+            // 그쪽은 일반 복합 PK 라 ON CONFLICT 가 된다 (#24).
             var e = Quote(email);
             var u = Quote(userId);
             var r = await SupabaseManagementApi.RunQuery(pid, pat,
-                $"UPDATE admin_user SET role = 'admin', email = {e}, provider = 'email' " +
+                $"UPDATE admin_user SET email = {e}, provider = 'email' " +
                 $"WHERE user_id = {u}; " +
-                "INSERT INTO admin_user (id, user_id, email, role, provider, created_at, created_by) " +
-                $"SELECT {u}, {u}, {e}, 'admin', 'email', " +
+                "INSERT INTO admin_user (id, user_id, email, provider, created_at, created_by) " +
+                $"SELECT {u}, {u}, {e}, 'email', " +
                 "(extract(epoch from now()) * 1000)::bigint, 'local-bridge' " +
-                $"WHERE NOT EXISTS (SELECT 1 FROM admin_user WHERE user_id = {u});");
+                $"WHERE NOT EXISTS (SELECT 1 FROM admin_user WHERE user_id = {u}); " +
+                "INSERT INTO admin_user_role (user_id, role, granted_at, granted_by) " +
+                $"VALUES ({u}, 'game-admin', (extract(epoch from now()) * 1000)::bigint, 'local-bridge') " +
+                "ON CONFLICT (user_id, role) DO NOTHING;");
             if (!r.Ok) return r.CarryFailure<(string, string)>();
 
             return SupabaseResult<(string, string)>.Success((userId, email));

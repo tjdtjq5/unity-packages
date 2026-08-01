@@ -6,6 +6,7 @@ import { EnvSettingsPage } from '../environment/EnvSettingsPage'
 import { EnvironmentPage } from '../environment/EnvironmentPage'
 import { LogsPage } from '../logs/LogsPage'
 import { OpsPage } from '../ops/OpsPage'
+import { RolesPage } from '../roles/RolesPage'
 import { SetupProjectPage } from '../setup/SetupProjectPage'
 import { LoadingBlock } from '../../shared/Spinner'
 import { SecretsPage } from '../secrets/SecretsPage'
@@ -32,8 +33,20 @@ const CONTENT_ID = 'table-container'
  * email 은 로그인한 사람 계정이다 (ADR-0009, #23 — 이메일+비밀번호).
  * 사이드바는 Metaplay IA(ADR-0008)를 따라 Game / LiveOps / Technical 3그룹이고,
  * 하단의 log out 이 세션을 끊는다 — 프리뷰처럼 세션이 없는 곳은 onLogout 을 안 넘긴다.
+ *
+ * roles 는 이 사람의 롤 목록(#24). game-admin 이 없으면 조작(Manage) 화면·쓰기 UI 를
+ * 걷어낸다 — UI 겹일 뿐, 진짜 거부는 RLS 가 한다. 프리뷰는 전체 UI 를 봐야 하므로 기본값이
+ * game-admin 이다.
  */
-export function Shell({ email, onLogout }: { email: string; onLogout?: () => void }) {
+export function Shell({
+  email,
+  roles = ['game-admin'],
+  onLogout,
+}: {
+  email: string
+  roles?: string[]
+  onLogout?: () => void
+}) {
   const data = useAdminData()
   const [route, setRoute] = useState<Route>({ kind: 'home' })
   const [restored, setRestored] = useState(false)
@@ -82,6 +95,8 @@ export function Shell({ email, onLogout }: { email: string; onLogout?: () => voi
 
   useKeymap({ scrollTargetId: CONTENT_ID, onCycleConfig, onToggleHelp })
 
+  const canWrite = roles.includes('game-admin')
+
   const ctx = useMemo<AdminContextValue>(
     () => ({
       types: data.types,
@@ -89,11 +104,12 @@ export function Shell({ email, onLogout }: { email: string; onLogout?: () => voi
       fkSources: data.fkSources,
       rewardSources: data.rewardSources,
       typeCatalog: data.typeCatalog,
+      canWrite,
       setPageSubtitle: setSubtitle,
       navigate,
       setToolbarActions: setActions,
     }),
-    [data.types, data.tableTypes, data.fkSources, data.rewardSources, data.typeCatalog, navigate],
+    [data.types, data.tableTypes, data.fkSources, data.rewardSources, data.typeCatalog, canWrite, navigate],
   )
 
   const view = describeRoute(route, data.types, data.tableTypes)
@@ -213,6 +229,8 @@ export function Shell({ email, onLogout }: { email: string; onLogout?: () => voi
 
                 <div className="tree-section">[TECHNICAL]</div>
                 <div className="tree-list">
+                  {/* 조작(Manage) 화면들은 game-admin 만 본다 (#24) — 숨김은 UI 겹이고
+                      진짜 거부는 RLS·RPC 가드가 한다. 열람 화면(audit·server_log)은 전 롤. */}
                   <a
                     className={`tree-item${route.kind === 'audit' ? ' active' : ''}`}
                     href="#"
@@ -224,29 +242,33 @@ export function Shell({ email, onLogout }: { email: string; onLogout?: () => voi
                     <span className="branch">├─</span>
                     <span className="label">audit_log</span>
                   </a>
-                  <a
-                    className={`tree-item${route.kind === 'snapshots' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'snapshots' })
-                    }}
-                  >
-                    <span className="branch">├─</span>
-                    <span className="label">snapshots</span>
-                  </a>
+                  {canWrite && (
+                    <a
+                      className={`tree-item${route.kind === 'snapshots' ? ' active' : ''}`}
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        navigate({ kind: 'snapshots' })
+                      }}
+                    >
+                      <span className="branch">├─</span>
+                      <span className="label">snapshots</span>
+                    </a>
+                  )}
                   {/* 비밀은 이 환경의 데이터다 — `suparun_secret` 은 각 Supabase 프로젝트 안의 표다. */}
-                  <a
-                    className={`tree-item${route.kind === 'secrets' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'secrets' })
-                    }}
-                  >
-                    <span className="branch">├─</span>
-                    <span className="label">secrets</span>
-                  </a>
+                  {canWrite && (
+                    <a
+                      className={`tree-item${route.kind === 'secrets' ? ' active' : ''}`}
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        navigate({ kind: 'secrets' })
+                      }}
+                    >
+                      <span className="branch">├─</span>
+                      <span className="label">secrets</span>
+                    </a>
+                  )}
                   <a
                     className={`tree-item${route.kind === 'logs' ? ' active' : ''}`}
                     href="#"
@@ -255,33 +277,51 @@ export function Shell({ email, onLogout }: { email: string; onLogout?: () => voi
                       navigate({ kind: 'logs' })
                     }}
                   >
-                    <span className="branch">├─</span>
+                    <span className="branch">{canWrite ? '├─' : '└─'}</span>
                     <span className="label">server_log</span>
                   </a>
+                  {/* 사람과 롤 (#24). 명단·부여/회수 전부 game-admin 전용이다. */}
+                  {canWrite && (
+                    <a
+                      className={`tree-item${route.kind === 'roles' ? ' active' : ''}`}
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        navigate({ kind: 'roles' })
+                      }}
+                    >
+                      <span className="branch">├─</span>
+                      <span className="label">user_roles</span>
+                    </a>
+                  )}
                   {/* 운영·설정은 맨 아래다 — 되돌리기 어려운 일들이라 지나가다 누르는 자리가 아니다. */}
-                  <a
-                    className={`tree-item${route.kind === 'ops' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'ops' })
-                    }}
-                  >
-                    <span className="branch">├─</span>
-                    <span className="label">ops</span>
-                  </a>
+                  {canWrite && (
+                    <a
+                      className={`tree-item${route.kind === 'ops' ? ' active' : ''}`}
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        navigate({ kind: 'ops' })
+                      }}
+                    >
+                      <span className="branch">├─</span>
+                      <span className="label">ops</span>
+                    </a>
+                  )}
                   {/* 이 환경의 설정. 앱 레벨이 아니다 — 내용물이 전부 이 프로젝트의 값이다. */}
-                  <a
-                    className={`tree-item${route.kind === 'envSettings' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'envSettings' })
-                    }}
-                  >
-                    <span className="branch">└─</span>
-                    <span className="label">settings</span>
-                  </a>
+                  {canWrite && (
+                    <a
+                      className={`tree-item${route.kind === 'envSettings' ? ' active' : ''}`}
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        navigate({ kind: 'envSettings' })
+                      }}
+                    >
+                      <span className="branch">└─</span>
+                      <span className="label">settings</span>
+                    </a>
+                  )}
                 </div>
 
               </>
@@ -351,7 +391,7 @@ export function Shell({ email, onLogout }: { email: string; onLogout?: () => voi
           <div className="container-xl page-fade">
             <div className="card shadow-sm">
               <div id={CONTENT_ID} className="table-responsive">
-                <ScreenContent route={route} data={data} search={search} />
+                <ScreenContent route={route} data={data} search={search} canWrite={canWrite} />
               </div>
             </div>
           </div>
@@ -416,6 +456,8 @@ function describeRoute(
       return shell('View Server Logs', 'SERVER_LOG.SH', '~/server_log')
     case 'ops':
       return shell('Manage Operations', 'OPS.SH', '~/ops')
+    case 'roles':
+      return shell('Manage User Roles', 'USER_ROLES.SH', '~/user_roles')
     case 'home':
       return shell('Overview', 'DASHBOARD.SH', '~/admin')
   }
@@ -425,11 +467,26 @@ function ScreenContent({
   route,
   data,
   search,
+  canWrite,
 }: {
   route: Route
   data: ReturnType<typeof useAdminData>
   search: string
+  canWrite: boolean
 }) {
+  // 사이드바에서 숨겨도 해시 직접 입력으로 올 수 있다 — 화면 자체도 막는다 (#24).
+  // 이것도 UI 겹이다: 진짜 거부는 RLS·RPC 가드·브리지가 한다.
+  const adminOnly: Route['kind'][] = ['snapshots', 'secrets', 'ops', 'envSettings', 'roles']
+  if (!canWrite && adminOnly.includes(route.kind)) {
+    return (
+      <div className="empty-state">
+        <i className="ti ti-lock" />
+        <h3>game-admin 전용 화면입니다</h3>
+        <p>현재 롤로는 조작 화면에 들어갈 수 없습니다.</p>
+      </div>
+    )
+  }
+
   switch (route.kind) {
     case 'config': {
       const t = data.types.find((x) => x.tableName === route.tableName)
@@ -457,6 +514,8 @@ function ScreenContent({
       return <LogsPage />
     case 'ops':
       return <OpsPage />
+    case 'roles':
+      return <RolesPage />
     case 'home': {
       // 타입 메타가 오기 전에 "선택하세요"를 띄우면 사이드바가 비어 있는 이유를 오해하게 된다.
       if (!data.ready) return <LoadingBlock label="Config 목록 불러오는 중" />

@@ -39,15 +39,16 @@ export function App() {
   const { session, ready } = useSession()
   const token = session?.access_token
 
-  // 관리자인가. 세션이 바뀔 때마다 다시 판정한다 — 로그인 직후 갱신돼야 한다.
-  const [role, setRole] = useState<'boot' | 'admin' | 'pending'>('boot')
+  // 어떤 롤을 가졌는가 (#24 — 빌트인 4롤, 합집합). 무롤 = 승인 대기.
+  // 세션이 바뀔 때마다 다시 판정한다 — 로그인 직후 갱신돼야 한다.
+  const [roles, setRoles] = useState<string[] | 'boot'>('boot')
   // claim 을 이미 마친 uid. 토큰은 ~1시간마다 갱신되는데(TOKEN_REFRESHED),
   // 그때마다 등록 SQL 을 다시 쏘지 않기 위한 가드다 — 실패 시에는 남겨서 다음에 재시도한다.
   const claimedUid = useRef<string | null>(null)
   useEffect(() => {
     if (preview || !token) return
     let alive = true
-    setRole('boot')
+    setRoles('boot')
     void (async () => {
       const uid = session?.user?.id ?? ''
 
@@ -64,11 +65,30 @@ export function App() {
         )
         if (ok) claimedUid.current = uid
       }
-      const rows = sb
-        ? await sb.from('admin_user').select<{ role: string }[]>('role').eq('user_id', uid)
-        : null
+
+      if (!sb) {
+        if (alive) setRoles([])
+        return
+      }
+
+      // 자기 신원을 명단(admin_user)에 올린다 — 이 행이 있어야 User Roles 화면(#24)에
+      // 대기자로 보인다. self_insert RLS 라 자기 행만 가능하고, 롤은 매핑 테이블이라
+      // 여기서 self-grant 는 안 된다. claim(로컬)이 이미 만들었으면 건너뛴다.
+      const me = await sb.from('admin_user').select<{ id: string }[]>('id').eq('user_id', uid)
+      if (!me.error && (me.data?.length ?? 0) === 0) {
+        await sb.from('admin_user').insert({
+          id: uid,
+          user_id: uid,
+          email: session?.user?.email ?? '',
+          provider: 'email',
+          created_at: Date.now(),
+          created_by: 'self',
+        })
+      }
+
+      const r = await sb.from('admin_user_role').select<{ role: string }[]>('role').eq('user_id', uid)
       if (!alive) return
-      setRole(rows?.data?.some((r) => r.role === 'admin') ? 'admin' : 'pending')
+      setRoles((r.data ?? []).map((x) => x.role))
     })()
     return () => {
       alive = false
@@ -106,18 +126,18 @@ export function App() {
 
   if (!session) return <LoginPage />
 
-  if (role === 'boot') return <FullScreenLoader label="권한 확인 중" />
+  if (roles === 'boot') return <FullScreenLoader label="권한 확인 중" />
 
-  // 로그인은 됐는데 관리자가 아니다. 로그인 화면으로 돌리면 눌러도 같은 자리로
-  // 돌아와 원인을 알 수 없다 — 대기임을 말하고 로그아웃만 준다.
-  if (role === 'pending') {
+  // 로그인은 됐는데 롤이 하나도 없다(승인 대기). 로그인 화면으로 돌리면 눌러도 같은
+  // 자리로 돌아와 원인을 알 수 없다 — 대기임을 말하고 로그아웃만 준다.
+  if (roles.length === 0) {
     return (
       <Notice tone="warning">
         <b>승인 대기 중입니다.</b>
         <br />
-        {session.user?.email ?? '이 계정'} 으로 로그인했지만 아직 관리자로 승인되지 않았습니다.
+        {session.user?.email ?? '이 계정'} 으로 로그인했지만 아직 롤이 부여되지 않았습니다.
         <br />
-        기존 관리자에게 승인을 요청하세요.
+        game-admin 에게 User Roles 화면에서 롤 부여를 요청하세요.
         <div className="action-line" style={{ marginTop: 12 }}>
           <button className="btn-terminal" onClick={() => void sb?.auth.signOut()}>
             [LOGOUT]
@@ -129,7 +149,11 @@ export function App() {
 
   return (
     <div id="admin-page" className="page active">
-      <Shell email={session.user?.email ?? ''} onLogout={() => void sb?.auth.signOut()} />
+      <Shell
+        email={session.user?.email ?? ''}
+        roles={roles}
+        onLogout={() => void sb?.auth.signOut()}
+      />
     </div>
   )
 }

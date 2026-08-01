@@ -27,21 +27,23 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
     reorder,
     exportData,
   } = useConfigRows(configType)
-  const { setToolbarActions } = useAdmin()
+  const { setToolbarActions, canWrite } = useAdmin()
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const hostRef = useRef<HTMLDivElement>(null)
   const tbodyRef = useRef<HTMLTableSectionElement>(null)
 
   const fields = configType.fields
   const visible = fields.filter((f) => !f.isHidden)
-  // 검색 중에는 드래그 정렬을 막는다 (표시 순서 ≠ 실제 순서이므로) — 바닐라와 동일
-  const sortable = !filter && fields.some((f) => f.isSortOrder)
+  // 검색 중에는 드래그 정렬을 막는다 (표시 순서 ≠ 실제 순서이므로) — 바닐라와 동일.
+  // 정렬도 쓰기라 game-viewer 는 못 끈다 (#24).
+  const sortable = canWrite && !filter && fields.some((f) => f.isSortOrder)
 
   // 툴바 버튼(추가·내보내기·가져오기)은 껍데기(PageHeader)에 있으므로 동작만 올려보낸다.
+  // addRow 를 안 올리면 추가 버튼이 안 그려진다 — game-viewer 의 쓰기 UI 거부 (#24).
   useEffect(() => {
-    setToolbarActions({ addRow, exportData })
+    setToolbarActions({ addRow: canWrite ? addRow : undefined, exportData })
     return () => setToolbarActions(null)
-  }, [addRow, exportData, setToolbarActions])
+  }, [addRow, exportData, canWrite, setToolbarActions])
 
   // Ctrl+Z — 입력 중에는 무시한다 (바닐라와 동일 정책)
   useEffect(() => {
@@ -199,22 +201,24 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
                   />
                 ))}
                 <td>
-                  <div className="btn-list flex-nowrap">
-                    <button
-                      className="btn btn-ghost-primary btn-icon btn-sm"
-                      title="복사"
-                      onClick={() => void copyRow(rowId)}
-                    >
-                      <i className="ti ti-copy" />
-                    </button>
-                    <button
-                      className="btn btn-ghost-danger btn-icon btn-sm"
-                      title="삭제"
-                      onClick={() => setPendingDelete(rowId)}
-                    >
-                      <i className="ti ti-trash" />
-                    </button>
-                  </div>
+                  {canWrite && (
+                    <div className="btn-list flex-nowrap">
+                      <button
+                        className="btn btn-ghost-primary btn-icon btn-sm"
+                        title="복사"
+                        onClick={() => void copyRow(rowId)}
+                      >
+                        <i className="ti ti-copy" />
+                      </button>
+                      <button
+                        className="btn btn-ghost-danger btn-icon btn-sm"
+                        title="삭제"
+                        onClick={() => setPendingDelete(rowId)}
+                      >
+                        <i className="ti ti-trash" />
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             )

@@ -11,15 +11,21 @@ import type { Route } from './route'
 /**
  * Config 화면이 마운트되어 있는 동안 툴바 버튼이 호출할 액션.
  * 가져오기는 없다 — ADR-0004 결정 9 로 제거했다(스냅샷으로 대체 예정).
+ * addRow 가 없으면 추가 버튼 자체가 안 그려진다 — game-viewer 의 쓰기 UI 거부 (#24).
  */
 export interface ToolbarActions {
-  addRow(): Promise<void>
+  addRow?: () => Promise<void>
   exportData(): Promise<void>
 }
 
 export interface AdminContextValue {
   types: ConfigType[]
   tableTypes: TableType[]
+  /**
+   * 쓰기 조작을 그릴 것인가 = game-admin 롤 보유 (#24).
+   * UI 겹일 뿐이다 — 진짜 거부는 RLS(is_admin)가 한다. UI 만 뚫어도 저장은 조용히 실패한다.
+   */
+  canWrite: boolean
   /** `[ForeignKey]` 드롭다운 옵션 (참조 대상 Config 이름 → 행 목록). */
   fkSources: Record<string, FkOption[]>
   /** Rewards 모달용 재화/아이템 목록 (`currency_def`, `inventory_item_def`). */

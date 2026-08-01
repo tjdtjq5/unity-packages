@@ -40,7 +40,8 @@ AdminTemplate~/
 │       ├── ops/        **Unity 를 시키는 화면** — 스키마 반영·Id 상수·배포·승격. OpsPage
 │       ├── logs/       서버 로그(`server_log`) — LogsPage
 │       ├── secrets/    이 환경의 비밀 — SecretsPage (값은 절대 표시하지 않는다)
-│       └── …           auth / audit / table / config  (admins 폴더는 롤 게이트 #24 에서)
+│       ├── roles/      User Roles — 롤 부여/회수 (#24). game-admin 전용
+│       └── …           auth / audit / table / config
 │
 ├── node_modules/       (gitignore)
 └── dist/               ← 빌드 산출물. **커밋한다** (소비 프로젝트는 Node 불필요)
@@ -117,6 +118,19 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다. �
   원격 접근자(#48 호스팅)는 이 경로가 없어 기존 관리자의 승인을 기다린다(승인 대기 화면)
 - 감사 트리거(`suparun_audit`)는 `auth.uid()` 를 남기므로 **행위자 = 로그인 계정**이다.
   `admin_user.email` 은 claim 이 채워 uid 를 사람이 읽게 한다
+
+### 롤 게이트 — 빌트인 4롤 (#24, ADR-0009 결정 4·5)
+
+- **game-admin / game-viewer / cs-senior / cs-agent.** 매핑은 `admin_user_role`(복수 롤,
+  권한은 합집합). 무롤 로그인 = 승인 대기 화면. 부여/회수는 Technical > `user_roles`
+  (RolesPage — game-admin 전용, 자기 자신의 game-admin 회수는 UI 가 막는다)
+- **집행은 두 겹이다.** UI 겹: 사이드바에서 Manage 화면(snapshots·secrets·ops·settings·
+  user_roles)을 숨기고, Config 셀·추가·삭제·정렬을 읽기 표시로 바꾼다(`canWrite` —
+  AdminContext). 해시 직접 진입도 ScreenContent 가 막는다. RLS 겹: `is_admin()` =
+  game-admin 보유로 재정의돼 **UI 를 뚫어도 쓰기는 DB 가 거부한다**
+- 열람(audit·server_log·환경 카드·스냅샷 목록·UserData 조회)은 `operator_read`
+  (롤 하나라도 보유) — 계약은 `Tests/EditMode/RoleAccessContractTests.cs` 가
+  anon/viewer/admin 3종으로 검증한다(편집 환경 설정 없으면 Ignore)
 
 > 로그인 방식은 다섯 번 바뀌었다. OAuth 만(프로바이더 앱 등록 ~10분) → 매직링크(기본 메일
 > **시간당 2통**) → 이메일+비밀번호(메일 미사용) → 기계 계정 자동 로그인(2026-08-01 오전) →

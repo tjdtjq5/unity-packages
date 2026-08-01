@@ -39,8 +39,16 @@
 - 어드민 환경 슬롯(`EnvSlots`) — 추가·삭제·편집/빌드 환경 지정·**Supabase 프로젝트 연결**.
   `POST /setup/project` 가 `env` 를 받게 되어, 새 슬롯을 편집 환경으로 옮기지 않고도 붙일 수 있다
 - 어드민 설정에 **게임 로그인**(`platform_auth`) 토글. SettingsView 에만 있던 UI다
-- `POST /auth/claim-admin` — 로그인 신원을 GoTrue 에 되물어 확정하고 `admin_user` 에
-  admin 으로 등록한다(`SupaRunAdminClaim`). 빈 표의 RLS 매듭을 PAT 가 끊는 자리다
+- `POST /auth/claim-admin` — 로그인 신원을 GoTrue 에 되물어 확정하고 `admin_user` 등록 +
+  **game-admin 롤 부여**(`SupaRunAdminClaim`). 빈 표의 RLS 매듭을 PAT 가 끊는 자리다
+- **빌트인 4롤 + 롤 게이트** (#24, ADR-0009 결정 4·5) — `admin_user_role` 매핑(복수 롤,
+  합집합)으로 game-admin / game-viewer / cs-senior / cs-agent 도입. 단일 `admin_user.role`
+  컬럼은 매핑으로 마이그레이션 후 **삭제**. `is_admin()` = game-admin 보유로 재정의돼
+  기존 쓰기 정책 전부가 자동으로 game-admin 전용이 되고, 열람은 `suparun_is_operator()`
+  (`operator_read` 정책 — server_log·audit·env·snapshot·UserData 조회). 어드민에
+  User Roles 화면(부여/회수, 감사 트리거 포함) + viewer 쓰기 UI 제거. 계약 테스트
+  `RoleAccessContractTests`(anon/viewer/admin 매트릭스, 편집 환경 필요 시에만).
+  죽은 `/admin/api` 인증 미들웨어(서버 템플릿)는 role 컬럼과 함께 제거
 
 ## [1.0.0] - 2026-07-24
 

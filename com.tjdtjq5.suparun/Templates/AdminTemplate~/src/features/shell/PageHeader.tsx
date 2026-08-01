@@ -76,10 +76,13 @@ export function PageHeader({
                   <i className="ti ti-download me-1" />
                   내보내기
                 </button>
-                <button className="btn btn-primary" onClick={() => void actions.addRow()}>
-                  <i className="ti ti-plus me-1" />
-                  추가
-                </button>
+                {/* addRow 가 없으면 쓰기 권한이 없는 것이다 (#24 — game-viewer). */}
+                {actions.addRow && (
+                  <button className="btn btn-primary" onClick={() => void actions.addRow!()}>
+                    <i className="ti ti-plus me-1" />
+                    추가
+                  </button>
+                )}
               </div>
             </div>
           )}

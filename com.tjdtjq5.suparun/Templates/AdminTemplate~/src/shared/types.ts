@@ -1,17 +1,30 @@
 /** 어드민 서버 응답 타입. 바닐라 쪽과 계약이 같아야 한다. */
 
+/** 어드민 명단 한 줄 — 신원만 있다. 롤은 `AdminUserRole` 매핑(합집합)이다 (ADR-0009, #24). */
 export interface AdminUser {
   id: string
-  email: string
-  /** 'admin' = 승인됨, 'pending' = 가입했으나 승인 대기 */
-  role: 'admin' | 'pending'
+  user_id: string | null
+  email: string | null
   /**
    * 어느 프로바이더로 들어온 계정인가.
    * 같은 이메일이라도 프로바이더가 다르면 Supabase 에서 **다른 사용자**라 승인도 따로 받는다.
    * 옛 행은 비어 있을 수 있다(그 계정이 다시 로그인하면 채워진다).
    */
   provider?: string | null
-  created_at: string
+  created_at: number
+  created_by?: string | null
+}
+
+/** 빌트인 4롤 (ADR-0008 결정 7 — Metaplay 등가). */
+export const BUILTIN_ROLES = ['game-admin', 'game-viewer', 'cs-senior', 'cs-agent'] as const
+export type BuiltinRole = (typeof BUILTIN_ROLES)[number]
+
+/** user↔role 매핑 한 줄. */
+export interface AdminUserRole {
+  user_id: string
+  role: string
+  granted_at: number
+  granted_by?: string | null
 }
 
 /** 변경 이력 1건. action 값은 서버가 자유롭게 늘릴 수 있어 string 으로 둔다. */

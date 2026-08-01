@@ -79,7 +79,8 @@ PAT 대행으로 무엇이든 할 수 있다. 그래서 개별 라우트에서 �
 | `POST /setup/init` | 스키마 반영. 물어보지 않고 부른다 — 안 하면 아무것도 안 되므로 |
 
 > **`POST /auth/claim-admin`** — 로그인 직후 어드민이 부른다. access token 을 GoTrue 에
-> 되물어 신원을 확정하고(`SupaRunAdminClaim`), 그 사람을 `admin_user` 에 admin 으로 등록한다.
+> 되물어 신원을 확정하고(`SupaRunAdminClaim`), 그 사람을 `admin_user` 에 등록한 뒤
+> **game-admin 롤을 부여한다**(#24 — `admin_user_role` 매핑).
 > 표가 비어 있으면 아무도 자기를 등록할 수 없는 RLS 매듭을 PAT 가 끊는 자리 — 여기까지 온
 > 사람은 이미 PAT 전권이라 승인을 따로 묻지 않는다(원격 접근자는 이 경로 자체가 없다).
 > reset-password·auth-config 라우트는 없다 — 어드민 로그인은 이메일 전용이고, 비밀번호를

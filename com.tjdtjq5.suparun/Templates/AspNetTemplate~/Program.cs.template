@@ -102,98 +102,10 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
-// 어드민 정적 서빙은 없다 — 어드민은 **로컬 브리지 전용**이다(공개 URL 에 두면
-// 로그인이 유일한 문이 되는데, 그 로그인을 기계 계정 자동화로 없앴다).
-// 접근 통제는 Supabase 조직 멤버십(각자 PAT)이 맡는다.
-
-// Admin API 인증 미들웨어 (admin_users 테이블 기반)
-app.Use(async (context, next) =>
-{
-    if (context.Request.Path.StartsWithSegments("/admin/api"))
-    {
-        var userId = context.User?.FindFirst("sub")?.Value;
-        var email = context.User?.FindFirst("email")?.Value;
-
-        if (string.IsNullOrEmpty(userId))
-        {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsync("{\"error\":\"Not authenticated\"}");
-            return;
-        }
-
-        var isAdmin = false;
-        try
-        {
-            var db = context.RequestServices.GetRequiredService<IGameDB>();
-            var admins = await db.GetAll<AdminUser>();
-
-            // 기존 유저 찾기 (UUID 또는 이메일)
-            var me = admins.FirstOrDefault(a => a.user_id == userId)
-                  ?? admins.FirstOrDefault(a =>
-                      string.Equals(a.email, email, StringComparison.OrdinalIgnoreCase));
-
-            if (me != null)
-            {
-                // UUID 미등록이면 채움
-                if (string.IsNullOrEmpty(me.user_id)) { me.user_id = userId; await db.Save(me); }
-                // role이 admin이면 통과
-                isAdmin = me.role == "admin";
-            }
-            else
-            {
-                // 미등록 유저 → 자동 등록
-                var isFirst = admins.Count == 0;
-                try
-                {
-                    await db.Save(new AdminUser
-                    {
-                        id = Guid.NewGuid().ToString(),
-                        user_id = userId,
-                        email = email,
-                        role = isFirst ? "admin" : "pending",
-                        memo = isFirst ? "first admin" : "",
-                        created_at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                        created_by = isFirst ? "auto" : ""
-                    });
-                    isAdmin = isFirst;
-                    Console.WriteLine($"[Admin] 자동 등록: {email ?? userId} → {(isFirst ? "admin" : "pending")}");
-                }
-                catch (Exception regEx)
-                {
-                    Console.WriteLine($"[Admin] 자동 등록 실패: {regEx.Message}");
-                }
-            }
-        }
-        catch (Exception adminEx)
-        {
-            // Exception.ToString()은 message + type + full stack trace 포함 — 정확한 발생 라인 추적용
-            Console.WriteLine($"[Admin] 인증 체크 실패: {adminEx}");
-
-            // Fallback: Dapper reflection 우회 — admin_user에 본인 row + role=admin이면 통과
-            // (DapperGameDB.GetAll/Save가 어떤 이유로 throw해도 admin 사용자는 막히지 않게 안전망)
-            try
-            {
-                using var conn = new Npgsql.NpgsqlConnection(connectionString);
-                await conn.OpenAsync();
-                using var cmd = new Npgsql.NpgsqlCommand(
-                    "SELECT role FROM admin_user WHERE user_id = @uid LIMIT 1", conn);
-                cmd.Parameters.AddWithValue("uid", userId);
-                var role = await cmd.ExecuteScalarAsync() as string;
-                isAdmin = role == "admin";
-                if (isAdmin) Console.WriteLine($"[Admin] Fallback 통과: {userId}");
-            }
-            catch (Exception fbEx) { Console.WriteLine($"[Admin] Fallback 실패: {fbEx.Message}"); }
-        }
-
-        if (!isAdmin)
-        {
-            context.Response.StatusCode = 403;
-            await context.Response.WriteAsync("{\"error\":\"Pending approval\"}");
-            return;
-        }
-    }
-    await next();
-});
+// 어드민 정적 서빙은 아직 없다 — 부활(정적 파일만)은 #48 에서 온다 (ADR-0009).
+// 어드민 전용 API(/admin/api)와 그 인증 미들웨어도 없다 — 어드민 데이터 접근은
+// PostgREST + RLS 롤 함수 계열(is_admin/suparun_is_operator)이 맡는다 (ADR-0004 유지).
+// CS 액션의 서버 측 롤 검증([Service] 경유)은 #38 에서 온다.
 
 app.MapControllers();
 app.MapGet("/health", () => "OK");

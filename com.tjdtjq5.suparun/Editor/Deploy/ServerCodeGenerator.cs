@@ -809,6 +809,14 @@ DO $$ BEGIN
     CREATE POLICY admin_read ON server_log FOR SELECT USING (is_admin());
   END IF;
 END $$;
+
+-- 열람은 롤 보유자 전체에 연다 (#24 — game-viewer 도 로그를 본다). admin_read 는
+-- game-admin 의 중복 통로로 남는다 — 정책은 OR 결합이라 해가 없다.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'server_log' AND policyname = 'operator_read') THEN
+    CREATE POLICY operator_read ON server_log FOR SELECT USING (suparun_is_operator());
+  END IF;
+END $$;
 ";
         }
 
@@ -919,6 +927,8 @@ END $$;
                 sb.AppendLine();
                 sb.AppendLine($"ALTER TABLE {tableName} ENABLE ROW LEVEL SECURITY;");
                 AppendPolicy(sb, tableName, "admin_all", "FOR ALL", "is_admin()", "is_admin()");
+                // 조회(View 화면)는 롤 보유자 전체 — 쓰기는 위 admin_all(=game-admin)만 (#24)
+                AppendPolicy(sb, tableName, "operator_read", "FOR SELECT", "suparun_is_operator()");
             }
 
             return new GeneratedFile($"Generated/Migrations/{tableName}.sql", sb.ToString());
@@ -1269,18 +1279,41 @@ DO $$ BEGIN
 END $$;
 -- 쓰기 정책은 없다. Unity 가 Management API(service_role)로만 갱신한다.
 
--- ── 관리자 판별 ──
--- 모든 RLS 정책이 이 함수를 쓴다.
--- SECURITY DEFINER 가 필수다 — admin_user 자신에도 RLS 가 걸려 있어서, 없으면
--- 함수가 자기 참조에서 막혀 **항상 false** 가 되고 관리자가 아무것도 못 하게 된다.
--- search_path 고정: 없으면 호출자가 스키마를 바꿔치기해 가짜 admin_user 로 우회할 수 있다.
-CREATE OR REPLACE FUNCTION is_admin() RETURNS boolean
+-- ── 관리자 판별 — 빌트인 4롤 (ADR-0009, #24) ──
+-- game-admin / game-viewer / cs-senior / cs-agent. 한 유저가 복수 롤을 갖고 권한은 합집합.
+-- 매핑은 admin_user_role 표다(admin_users.sql — 이 파일보다 뒤에 실행되지만 plpgsql 이라
+-- 생성 시점엔 안 걸린다).
+-- SECURITY DEFINER 필수 — admin_user_role 자신에도 RLS 가 걸려 있어서, 없으면
+-- 함수가 자기 참조에서 막혀 **항상 false** 가 된다.
+-- search_path 고정: 없으면 호출자가 스키마를 바꿔치기해 가짜 표로 우회할 수 있다.
+CREATE OR REPLACE FUNCTION suparun_has_role(p_role text) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
 AS $$
 BEGIN
     RETURN EXISTS (
-        SELECT 1 FROM admin_user
-        WHERE user_id = auth.uid()::text AND role = 'admin'
+        SELECT 1 FROM admin_user_role
+        WHERE user_id = auth.uid()::text AND role = p_role
+    );
+END $$;
+
+-- **쓰기 게이트.** 기존 정책 전부가 이 이름을 참조하므로 정의 교체만으로 모든 쓰기가
+-- game-admin 전용이 된다 — 정책은 함수를 OID 로 참조해서 본문 교체가 즉시 전파된다.
+-- game-viewer 의 쓰기는 여기서 거부된다 (#24 게이트의 RLS 겹).
+CREATE OR REPLACE FUNCTION is_admin() RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+BEGIN
+    RETURN suparun_has_role('game-admin');
+END $$;
+
+-- **열람 게이트.** 롤이 하나라도 있으면 어드민 화면(감사·서버 로그·환경 현황·테이블 조회)을
+-- 읽을 수 있다. 롤이 없는 로그인(승인 대기)은 여기서도 걸린다.
+CREATE OR REPLACE FUNCTION suparun_is_operator() RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 FROM admin_user_role WHERE user_id = auth.uid()::text
     );
 END $$;
 
@@ -1367,11 +1400,13 @@ BEGIN
         v_unsafe := coalesce(v_unsafe, false);
 
         -- 이름 조합으로 프리셋을 되짚는다. 조건식까지 우리 것과 같아야 하므로 unsafe 면 custom 이다.
+        -- 'admin' 은 두 형태를 인정한다 — operator_read(#24) 가 스키마 반영으로 추가되기
+        -- 전의 표([admin_all]만)가 잠깐 custom 으로 보이면 화면이 거짓 경고를 띄운다.
         IF v_unsafe THEN
             v_preset := 'custom';
         ELSIF v_names = ARRAY['admin_write', 'public_read'] THEN
             v_preset := 'public';
-        ELSIF v_names = ARRAY['admin_all'] THEN
+        ELSIF v_names = ARRAY['admin_all'] OR v_names = ARRAY['admin_all', 'operator_read'] THEN
             v_preset := 'admin';
         ELSIF array_length(v_names, 1) IS NULL THEN
             v_preset := 'locked';
@@ -1398,10 +1433,11 @@ BEGIN
     END IF;
 
     -- SupaRun 이 만든 이름만 걷어낸다. 손으로 추가한 특수 정책은 남긴다.
-    EXECUTE format('DROP POLICY IF EXISTS public_read ON %I', p_table);
-    EXECUTE format('DROP POLICY IF EXISTS admin_write ON %I', p_table);
-    EXECUTE format('DROP POLICY IF EXISTS owner_read  ON %I', p_table);
-    EXECUTE format('DROP POLICY IF EXISTS admin_all   ON %I', p_table);
+    EXECUTE format('DROP POLICY IF EXISTS public_read   ON %I', p_table);
+    EXECUTE format('DROP POLICY IF EXISTS admin_write   ON %I', p_table);
+    EXECUTE format('DROP POLICY IF EXISTS owner_read    ON %I', p_table);
+    EXECUTE format('DROP POLICY IF EXISTS admin_all     ON %I', p_table);
+    EXECUTE format('DROP POLICY IF EXISTS operator_read ON %I', p_table);
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', p_table);
 
     IF p_preset = 'public' THEN
@@ -1410,6 +1446,8 @@ BEGIN
 
     ELSIF p_preset = 'admin' THEN
         EXECUTE format('CREATE POLICY admin_all ON %I FOR ALL USING (is_admin()) WITH CHECK (is_admin())', p_table);
+        -- 조회는 롤 보유자 전체, 쓰기는 game-admin (#24)
+        EXECUTE format('CREATE POLICY operator_read ON %I FOR SELECT USING (suparun_is_operator())', p_table);
 
     ELSIF p_preset = 'locked' THEN
         NULL;   -- 정책 없음 = 서버(service_role)만 접근
@@ -1540,6 +1578,13 @@ DO $$ BEGIN
     CREATE POLICY admin_all ON suparun_env FOR ALL USING (is_admin()) WITH CHECK (is_admin());
   END IF;
 END $$;
+
+-- 환경 카드(현황)는 롤 보유자 전체가 본다 (#24) — 쓰기는 위 admin_all(=game-admin)만.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_env' AND policyname = 'operator_read') THEN
+    CREATE POLICY operator_read ON suparun_env FOR SELECT USING (suparun_is_operator());
+  END IF;
+END $$;
 ");}
 
         static GeneratedFile GenerateSnapshotMigration()
@@ -1570,6 +1615,13 @@ ALTER TABLE suparun_snapshot ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_snapshot' AND policyname = 'admin_all') THEN
     CREATE POLICY admin_all ON suparun_snapshot FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+  END IF;
+END $$;
+
+-- 스냅샷 목록은 롤 보유자 전체가 본다 (#24) — 저장·복원 RPC 는 is_admin(=game-admin) 가드.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_snapshot' AND policyname = 'operator_read') THEN
+    CREATE POLICY operator_read ON suparun_snapshot FOR SELECT USING (suparun_is_operator());
   END IF;
 END $$;
 
@@ -1913,6 +1965,13 @@ DO $$ BEGIN
     CREATE POLICY admin_read ON admin_audit_log FOR SELECT USING (is_admin());
   END IF;
 END $$;
+
+-- 열람은 롤 보유자 전체 (#24 — game-viewer 도 이력을 본다). 쓰기 정책은 여전히 없다.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_audit_log' AND policyname = 'operator_read') THEN
+    CREATE POLICY operator_read ON admin_audit_log FOR SELECT USING (suparun_is_operator());
+  END IF;
+END $$;
 ");}
 
         // ── AdminUser 모델 ──
@@ -1925,10 +1984,10 @@ END $$;
     public string id;           // row ID (GUID)
     public string user_id;      // Supabase Auth UUID
     public string email;
-    public string role;         // ""admin"" = 접근 가능, ""pending"" = 승인 대기
     public string memo;
     public long created_at;
     public string created_by;
+    // 롤은 여기 없다 — admin_user_role 매핑 테이블(복수 롤, 합집합)이다 (ADR-0009, #24)
 }");
         }
 
@@ -1941,13 +2000,10 @@ END $$;
     id TEXT PRIMARY KEY,
     user_id TEXT,
     email TEXT,
-    role TEXT NOT NULL DEFAULT 'pending',
     memo TEXT,
     created_at BIGINT NOT NULL,
     created_by TEXT
 );
-
-ALTER TABLE admin_user ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'pending';
 
 -- 어느 프로바이더로 들어온 계정인가. 같은 이메일이라도 프로바이더가 다르면 Supabase 에서
 -- **다른 사용자**이고 승인도 따로 받아야 한다. 이 값이 없으면 목록에 같은 이메일이 두 줄
@@ -1960,8 +2016,32 @@ ALTER TABLE admin_user ADD COLUMN IF NOT EXISTS provider TEXT;
 DROP INDEX IF EXISTS idx_admin_user_email;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_user_uid ON admin_user (user_id) WHERE user_id IS NOT NULL;
 
--- admin_user 자체: 관리자만 접근. 단 미등록 유저의 자동 등록(첫 가입자=admin)은
--- 서버가 service_role 로 하므로 RLS 를 우회한다 — 여기서 막아도 그 흐름은 그대로 동작한다.
+-- ── 롤 매핑 (ADR-0009 결정 4, #24) ──
+-- 빌트인 4롤: game-admin / game-viewer / cs-senior / cs-agent. 한 유저가 복수 롤을
+-- 가질 수 있고 권한은 합집합이다. 판정은 suparun_has_role() 계열(_suparun_core.sql).
+-- 일반 복합 PK 라 admin_user.user_id(부분 유니크 인덱스)와 달리 ON CONFLICT 를 쓸 수 있다.
+CREATE TABLE IF NOT EXISTS admin_user_role (
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    granted_at BIGINT NOT NULL,
+    granted_by TEXT,
+    PRIMARY KEY (user_id, role)
+);
+
+-- 단일 role 컬럼 → 매핑 마이그레이션. 'admin' 은 game-admin 이 되고 'pending' 은
+-- 무롤(=승인 대기)이 된다. 컬럼이 남아 있을 때 한 번만 돌고, 지운 뒤에는 통째로 건너뛴다.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'admin_user' AND column_name = 'role') THEN
+    INSERT INTO admin_user_role (user_id, role, granted_at, granted_by)
+    SELECT user_id, 'game-admin', (extract(epoch from now()) * 1000)::bigint, 'migration'
+      FROM admin_user WHERE role = 'admin' AND user_id IS NOT NULL
+    ON CONFLICT (user_id, role) DO NOTHING;
+    ALTER TABLE admin_user DROP COLUMN role;
+  END IF;
+END $$;
+
+-- admin_user: 명단 관리는 game-admin(is_admin) 전용. User Roles 화면(#24)이 이 표를 그린다.
 ALTER TABLE admin_user ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_user' AND policyname = 'admin_all') THEN
@@ -1975,6 +2055,35 @@ DO $$ BEGIN
     CREATE POLICY self_read ON admin_user FOR SELECT USING (user_id = auth.uid()::text);
   END IF;
 END $$;
+
+-- 본인 행 등록 — 로그인한 사람이 자기 신원을 대기 명단에 올린다(App 이 로그인 직후 수행).
+-- 이 행이 있어야 User Roles 화면에 대기자가 보인다. 롤은 admin_user_role 에만 있으므로
+-- 이 정책으로 self-grant 는 불가능하다.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_user' AND policyname = 'self_insert') THEN
+    CREATE POLICY self_insert ON admin_user FOR INSERT WITH CHECK (user_id = auth.uid()::text);
+  END IF;
+END $$;
+
+-- admin_user_role: 읽기 = 롤 보유자 + 본인(무롤이어도 자기 상태는 본다), 쓰기 = game-admin.
+ALTER TABLE admin_user_role ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_user_role' AND policyname = 'operator_read') THEN
+    CREATE POLICY operator_read ON admin_user_role FOR SELECT
+      USING (suparun_is_operator() OR user_id = auth.uid()::text);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'admin_user_role' AND policyname = 'admin_write') THEN
+    CREATE POLICY admin_write ON admin_user_role FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+  END IF;
+END $$;
+
+-- 롤 부여/회수도 감사에 남긴다 — 권한 변경이야말로 ""누가"" 가 중요한 이력이다.
+DROP TRIGGER IF EXISTS audit_admin_user_role ON admin_user_role;
+CREATE TRIGGER audit_admin_user_role
+  AFTER INSERT OR UPDATE OR DELETE ON admin_user_role
+  FOR EACH ROW EXECUTE FUNCTION suparun_audit('user_id');
 ");}
 
         // ── 공통 필드 메타데이터 생성 ──

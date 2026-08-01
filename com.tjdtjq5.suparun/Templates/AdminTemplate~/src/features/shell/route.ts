@@ -21,6 +21,8 @@ export type Route =
   | { kind: 'logs' }
   // Unity 를 시키는 화면(스키마 반영·배포·승격). 대상이 이 환경이므로 역시 환경 안이다.
   | { kind: 'ops' }
+  // 롤 부여/회수 (#24). 명단(admin_user)이 환경(프로젝트)별 표라 환경 안이다.
+  | { kind: 'roles' }
   // 설정도 환경 안이다. 이름·로그인·배포·위험 영역 전부 **이 프로젝트**의 값이라,
   // 앱 레벨에 두면 "환경을 고르기 전인데 어느 환경을 고치는가" 가 어긋난다(실제로 어긋나 있었다).
   | { kind: 'envSettings' }
@@ -61,6 +63,8 @@ export function routeToHash(r: Route): string | null {
       return 'logs'
     case 'ops':
       return 'ops'
+    case 'roles':
+      return 'user_roles'
     // home 은 해시를 남긴다 — 안 그러면 빈 해시가 되어 다시 환경 선택으로 돌아간다.
     case 'home':
       return 'home'
@@ -93,6 +97,7 @@ export function hashToRoute(
   if (h === 'secrets') return { kind: 'secrets' }
   if (h === 'logs') return { kind: 'logs' }
   if (h === 'ops') return { kind: 'ops' }
+  if (h === 'user_roles') return { kind: 'roles' }
   if (h === 'home') return { kind: 'home' }
 
   // 해시 없이 들어오면 **환경 선택**부터다. 어느 환경을 보고 있는지 모른 채
