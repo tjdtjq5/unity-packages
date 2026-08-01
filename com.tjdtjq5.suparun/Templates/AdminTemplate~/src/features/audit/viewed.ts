@@ -14,6 +14,20 @@ import { sb } from '../../shared/supabase'
 
 const recorded = new Set<string>()
 
+/**
+ * GDPR 내보내기 감사 (#41) — viewed 와 달리 **실패가 내보내기를 중단해야** 해서 던진다.
+ * 민감 정보 접근인데 기록이 안 남는 채로 진행되면 감사가 아니다.
+ */
+export async function recordGdprExport(playerId: string): Promise<void> {
+  if (isPreview() || !sb) return
+  const r = await sb.rpc('suparun_audit_viewed', {
+    p_config_type: 'player',
+    p_row_id: playerId,
+    p_action: 'gdpr_export',
+  })
+  if (r.error) throw new Error(`감사 기록 실패 — 내보내기를 중단합니다: ${r.error.message}`)
+}
+
 export function recordViewed(
   configType: string,
   rowId?: string,

@@ -6,7 +6,7 @@ import type { Player } from '../../shared/players'
 import { Spinner } from '../../shared/Spinner'
 import { toast } from '../../shared/toast'
 import type { TableRow, TableType } from '../../shared/types'
-import { recordViewed } from '../audit/viewed'
+import { recordGdprExport } from '../audit/viewed'
 import { useAdmin } from '../shell/AdminContext'
 
 /**
@@ -111,7 +111,9 @@ function CsActionModal({
   async function run() {
     setBusy(true)
     try {
-      await runCsAction(action, values)
+      // 2단계 확인은 서버 표면이기도 하다 — 재입력값을 그대로 보내 서버가 대조한다(#42).
+      const payload = action.dangerous ? { ...values, confirmPlayerId: typed.trim() } : values
+      await runCsAction(action, payload)
       toast(`${action.label} 완료`)
       onDone()
     } catch (e) {
@@ -202,6 +204,9 @@ function GdprExportButton({ player, tableTypes }: { player: Player; tableTypes: 
   async function build() {
     setBusy(true)
     try {
+      // 감사가 먼저다 — 기록이 안 남으면 접근도 없다(실패 시 여기서 던져 중단).
+      await recordGdprExport(player.id)
+
       const userTables = tableTypes.filter((t) => t.playerColumn)
       const data: Record<string, unknown> = {
         account: {
@@ -212,15 +217,22 @@ function GdprExportButton({ player, tableTypes }: { player: Player; tableTypes: 
           last_sign_in_at: player.last_sign_in_at,
         },
       }
+      // GDPR 이동권은 완전성이 요건이다 — 한도에 걸리면 조용히 자르지 않고 파일에 명시한다.
+      const LIMIT = 10000
+      const truncated: string[] = []
       for (const t of userTables) {
-        const rows = await selectBy<TableRow>(t.tableName, t.playerColumn!, player.id, 1000)
+        const rows = await selectBy<TableRow>(t.tableName, t.playerColumn!, player.id, LIMIT)
+        if (rows.length === LIMIT) truncated.push(t.tableName)
         // 내부 전용(isHidden) 컬럼 제외 — 미리보기에서 빠졌음이 눈으로 확인된다.
         const hidden = new Set(t.fields.filter((f) => f.isHidden).map((f) => f.name.toLowerCase()))
         data[t.tableName] = rows.map((r) =>
           Object.fromEntries(Object.entries(r).filter(([k]) => !hidden.has(k.toLowerCase()))),
         )
       }
-      recordViewed('player', player.id, 'gdpr_export')
+      if (truncated.length > 0) {
+        data._truncated = truncated
+        toast(`${truncated.join(', ')} 가 ${LIMIT}행에서 잘렸습니다 — 전체 추출은 별도 경로가 필요합니다.`, 'error')
+      }
       setPreview(data)
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')

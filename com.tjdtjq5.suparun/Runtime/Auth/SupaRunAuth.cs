@@ -179,6 +179,22 @@ namespace Tjdtjq5.SupaRun
             return result != null;
         }
 
+        /// <summary>
+        /// 표시 이름 — auth 메타(user_metadata.name)를 서버에서 읽는다. CS 이름 변경(③ #39)이
+        /// 다음 조회에 반영된다. 없거나 실패하면 null — 대체 이름은 호출부가 정한다.
+        /// </summary>
+        public async UniTask<string?> GetDisplayName()
+        {
+            if (Session == null || string.IsNullOrEmpty(Session.accessToken)) return null;
+            var body = await _authApi.GetAuthenticatedAsync("/auth/v1/user", Session.accessToken);
+            if (string.IsNullOrEmpty(body)) return null;
+            var name = UnityEngine.JsonUtility.FromJson<UserMetaEnvelope>(body!)?.user_metadata?.name;
+            return string.IsNullOrEmpty(name) ? null : name;
+        }
+
+        [Serializable] class UserMetaEnvelope { public UserMeta? user_metadata; }
+        [Serializable] class UserMeta { public string? name; }
+
         /// <summary>현재 세션의 토큰을 갱신. 성공 시 새 세션 반환 + OnSessionChanged 발행.
         /// 동시 호출(여러 401 동시 발생)은 dedup되어 refresh POST는 1회만 나간다.</summary>
         public UniTask<AuthSession?> TryRefreshToken() => _refreshFlight.Run(DoRefreshToken);

@@ -39,6 +39,9 @@ export type Route =
   | { kind: 'player'; id: string }
   // 개발자 플레이어 목록 (#40, Metaplay Technical>Developer Players 동형).
   | { kind: 'developers' }
+  // 세그먼트 (#44, Metaplay LiveOps>Player Segments 동형). 라이브옵스의 첫 실기능.
+  | { kind: 'segments' }
+  | { kind: 'segment'; id: string }
   // 설정도 환경 안이다. 이름·로그인·배포·위험 영역 전부 **이 프로젝트**의 값이라,
   // 앱 레벨에 두면 "환경을 고르기 전인데 어느 환경을 고치는가" 가 어긋난다(실제로 어긋나 있었다).
   | { kind: 'envSettings' }
@@ -95,6 +98,10 @@ export function routeToHash(r: Route): string | null {
       return 'players/' + r.id
     case 'developers':
       return 'developer_players'
+    case 'segments':
+      return 'segments'
+    case 'segment':
+      return 'segments/' + r.id
     // home 은 해시를 남긴다 — 안 그러면 빈 해시가 되어 다시 환경 선택으로 돌아간다.
     case 'home':
       return 'home'
@@ -135,6 +142,8 @@ export function hashToRoute(
   if (h.startsWith('players/')) return { kind: 'player', id: h.slice(8) }
   if (h === 'players') return { kind: 'players' }
   if (h === 'developer_players') return { kind: 'developers' }
+  if (h.startsWith('segments/')) return { kind: 'segment', id: h.slice(9) }
+  if (h === 'segments') return { kind: 'segments' }
   if (h === 'home') return { kind: 'home' }
 
   // 해시 없이 들어오면 **환경 선택**부터다. 어느 환경을 보고 있는지 모른 채

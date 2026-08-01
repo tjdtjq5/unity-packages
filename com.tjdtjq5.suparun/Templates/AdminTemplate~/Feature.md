@@ -184,6 +184,15 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다. �
 - **개발자 플레이어**(`#developer_players`, #40): `suparun_developer` 열람 + 프로필 조인.
   지정/해제는 상세의 CS 액션이 한다
 
+### 세그먼트 (`[LIVEOPS] > segments`, #43~#45 — Metaplay Player Segments 클론: 100/101-*.png)
+
+- **정의**: `suparun_segment` CRUD (RLS: 열람=롤, 쓰기=game-admin, 감사 트리거).
+  조건 폼의 어휘는 ADR-0011 — account(가입/최근 로그인)·system(밴/개발자)·table(playerColumn
+  있는 [UserData] 표 + agg 4종). 표 후보는 메타에서 오므로 표가 늘면 폼도 는다
+- **평가**: DB 함수 3종(`suparun_segment_match/count/segments_of`)이 유일한 구현 —
+  어드민과 게임 서버가 같은 것을 부른다. 대상 수는 상세에서만 센다(전수 평가).
+  플레이어 상세에 소속 칩 — 저장된 멤버십이 아니라 매번 평가된 결과다
+
 ### 서버 로그 (`[SYSTEM] > server_log`)
 
 레벨 필터(전체/error/warn) · 50개 페이징 · 행을 눌러 스택트레이스와 request body 를 편다.

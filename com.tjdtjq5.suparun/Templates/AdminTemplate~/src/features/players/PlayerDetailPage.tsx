@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AdminTools } from './AdminTools'
 import { selectBy } from '../../shared/db'
+import { segmentsOf } from '../../shared/segments'
 import { getPlayer, type Player } from '../../shared/players'
 import { LoadingBlock } from '../../shared/Spinner'
 import type { TableRow, TableType } from '../../shared/types'
@@ -20,6 +21,8 @@ export function PlayerDetailPage({ id }: { id: string }) {
   const [player, setPlayer] = useState<Player | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [rows, setRows] = useState<Record<string, TableRow[]>>({})
+  // 소속 세그먼트 (#45) — 저장된 멤버십이 아니라 매번 평가된 결과다.
+  const [segments, setSegments] = useState<{ segment_id: string; name: string }[]>([])
   // CS 액션 실행 후 재조회 트리거 — 잔액·밴 상태가 카드에 바로 반영돼야 한다.
   const [generation, setGeneration] = useState(0)
 
@@ -32,6 +35,7 @@ export function PlayerDetailPage({ id }: { id: string }) {
         setPlayer(p)
         // 존재하는 플레이어를 실제로 열람했을 때만 감사에 남긴다 — 오타 진입은 열람이 아니다.
         if (p && generation === 0) recordViewed('player', p.id)
+        if (p) void segmentsOf(p.id).then(setSegments).catch(() => setSegments([]))
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [id, generation])
@@ -115,6 +119,19 @@ export function PlayerDetailPage({ id }: { id: string }) {
                 <span className="text-muted ms-2">
                   {player.banned_until === 0 ? '영구' : `${fmtDateTime(player.banned_until ?? 0)} 까지`}
                 </span>
+              </td>
+            </tr>
+          )}
+          {segments.length > 0 && (
+            <tr>
+              <td className="text-muted">세그먼트</td>
+              <td>
+                {segments.map((s) => (
+                  <a key={s.segment_id} className="badge me-1" href="#"
+                    onClick={(e) => { e.preventDefault(); navigate({ kind: 'segment', id: s.segment_id }) }}>
+                    {s.name}
+                  </a>
+                ))}
               </td>
             </tr>
           )}

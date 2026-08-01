@@ -41,6 +41,19 @@
 - 어드민 설정에 **게임 로그인**(`platform_auth`) 토글. SettingsView 에만 있던 UI다
 - `POST /auth/claim-admin` — 로그인 신원을 GoTrue 에 되물어 확정하고 `admin_user` 등록 +
   **game-admin 롤 부여**(`SupaRunAdminClaim`). 빈 표의 RLS 매듭을 PAT 가 끊는 자리다
+- **세그먼트** (#43~#45, ADR-0011) — 조건으로 정의되는 플레이어 부분집합. 조건 = 술어
+  목록+any/all(중첩 없음), 어휘는 데이터(account/system/table + agg 4종) — 도메인 무지 유지.
+  평가는 **DB 함수 3종이 유일한 구현**(match/count/of — SECURITY DEFINER+롤 가드+표·컬럼
+  화이트리스트, 대조 실패=예외). 사전 계산 없음 — 판정은 끝까지 실시간(ADR-0011).
+  어드민 LiveOps>segments(목록·조건 폼·대상 수)+플레이어 상세 소속 칩. 계약 테스트: 빈 조건
+  항등원(all=참/any=거짓)·경계값·any 결합·화이트리스트 거부·anon 거부
+- CS 액션 리뷰 반영 — 시스템 액션은 **액션+감사가 한 트랜잭션**(부분 삭제·기록 없는 실행
+  금지), GDPR 삭제 2단계는 **서버 표면**(confirmPlayerId 불일치=400), [CsAction] 감사 실패는
+  삼키고 stderr(성공 액션에 500 을 내면 재전송 이중 실행 위험 — 실측 지적), Photon 인증
+  웹훅(photon-auth)에 밴 겹(밴=resultCode 2 — 변조 클라도 막힘)+닉네임=auth 메타 name,
+  `SupaRunAuth.GetDisplayName()`(이름 변경의 게임 반영 경로), playerColumn 에 hostUserId
+  관례 추가(ActiveRoom — GDPR 삭제 시 유저 UUID 잔존 방지), GDPR 내보내기는 감사 선행
+  (실패=중단)+1만 행 절단 명시
 - **CS 액션 계층** (#38~#42, ③ 트랙) — `[CsAction]` 어트리뷰트: [Service] 메서드 하나 =
   서버 롤 게이트(admin_user_role 매 호출 조회 — JWT 클레임 불신, 회수 즉시 반영)+감사(cs:*)
   +어드민 버튼(메타 `cs_actions` 자동 렌더). 시스템 액션 5종은 패키지 생성

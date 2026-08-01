@@ -35,6 +35,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 GenerateVersionMigration(),
                 GenerateReleaseMigration(),
                 GeneratePlayersMigration(),
+                GenerateSegmentsMigration(),
                 GenerateConfigMetaMigration(specTypes),
                 GenerateTypeCatalogMigration(specTypes),
                 GenerateAdminUserMigration(),
@@ -75,6 +76,7 @@ namespace Tjdtjq5.SupaRun.Editor
             files.Add(GenerateVersionMigration());
             files.Add(GenerateReleaseMigration());
             files.Add(GeneratePlayersMigration());
+            files.Add(GenerateSegmentsMigration());
             files.Add(GenerateConfigMetaMigration(specTypes));
             files.Add(GenerateTypeCatalogMigration(specTypes));
             files.Add(GenerateTableMetaMigration(tableTypes));
@@ -634,10 +636,14 @@ public class DapperGameDB : IGameDB
                 var isVoidReturn = m.ReturnType == typeof(void) || m.ReturnType == typeof(System.Threading.Tasks.Task);
 
                 // CS 감사의 대상 플레이어 — 관례상 첫 playerId/userId 파라미터.
+                // 감사 실패는 삼키고 stderr 로 남긴다 — 서비스는 이미 자기 트랜잭션을 커밋했다.
+                // 여기서 500 을 내면 성공한 액션이 실패로 보이고, Mono HttpClient 재전송과
+                // 겹치면 이중 실행(재화 이중 지급)이 실위험이다(리뷰 실측 지적).
                 var csTarget = m.GetParameters().FirstOrDefault(p => p.Name == "playerId" || p.Name == "userId");
                 var csAudit = cs == null ? null :
-                    $"            await CsGate.Audit(_conn, __sub, \"cs:{m.Name}\", " +
-                    $"{(csTarget != null ? $"req.{csTarget.Name}" : "null")}, {(hasReqBody ? "reqJson" : "null")});";
+                    $"            try {{ await CsGate.Audit(_conn, __sub, \"cs:{m.Name}\", " +
+                    $"{(csTarget != null ? $"req.{csTarget.Name}" : "null")}, {(hasReqBody ? "reqJson" : "null")}); }}\n" +
+                    $"            catch (System.Exception __auditEx) {{ System.Console.Error.WriteLine(\"[CsGate] 감사 기록 실패({m.Name}): \" + __auditEx.Message); }}";
 
                 if (hasResult)
                 {
@@ -3096,12 +3102,219 @@ CREATE TRIGGER audit_admin_user_role
 
         // ── CS 액션 계층 (③ 트랙, #38~#42) ──
 
-        /// <summary>플레이어 귀속 컬럼(소문자 실컬럼명). userId/playerId 관례 둘 다 받는다.</summary>
+        /// <summary>플레이어 귀속 컬럼(소문자 실컬럼명). userId/playerId/hostUserId 관례를 받는다 —
+        /// hostUserId(ActiveRoom)를 빼면 GDPR 삭제·리셋(#40·#42)에서 유저 UUID 가 잔존한다.</summary>
         static string PlayerColumnOf(Type type)
         {
             var f = type.GetFields(BindingFlags.Public | BindingFlags.Instance).FirstOrDefault(x =>
-                x.Name == "userId" || x.Name == "user_id" || x.Name == "playerId" || x.Name == "player_id");
+                x.Name == "userId" || x.Name == "user_id" ||
+                x.Name == "playerId" || x.Name == "player_id" ||
+                x.Name == "hostUserId" || x.Name == "host_user_id");
             return f?.Name.ToLower();
+        }
+
+        /// <summary>
+        /// 세그먼트 계층 (③ 트랙 #43~#45, ADR-0011) — 조건으로 정의되는 플레이어 부분집합.
+        /// 평가기는 **DB 함수가 유일한 구현**이다: 어드민(브라우저 RPC)과 게임 서버(Npgsql)가
+        /// 같은 것을 부른다. 조건의 표·컬럼명은 메타(table_types)와 고정 화이트리스트에 대조하고
+        /// format(%I) 로만 임베드한다 — 대조 실패는 예외다(조용한 무시 금지).
+        /// </summary>
+        static GeneratedFile GenerateSegmentsMigration()
+        {
+            return new GeneratedFile("Generated/Migrations/_suparun_segments.sql",
+@"-- ══ 세그먼트 (자동 생성, ADR-0011) ═══════════════════════════════════
+-- 조건 모델: 술어 목록 + any/all (중첩 없음). 평가는 요청 시 SQL — 사전 계산 없음.
+
+CREATE TABLE IF NOT EXISTS suparun_segment (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT,
+    match       TEXT NOT NULL DEFAULT 'all',   -- 'all' | 'any'
+    conditions  JSONB NOT NULL DEFAULT '[]',
+    created_at  BIGINT NOT NULL,
+    created_by  TEXT,
+    updated_at  BIGINT,
+    updated_by  TEXT
+);
+ALTER TABLE suparun_segment ENABLE ROW LEVEL SECURITY;
+-- 세그먼트는 config 가 아니라 **운영 조작**이다(밴과 같은 부류) — 승격 전용 잠금(#50) 밖.
+DROP POLICY IF EXISTS operator_read ON suparun_segment;
+CREATE POLICY operator_read ON suparun_segment FOR SELECT USING (suparun_is_operator());
+DROP POLICY IF EXISTS admin_write ON suparun_segment;
+CREATE POLICY admin_write ON suparun_segment FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+DROP TRIGGER IF EXISTS audit_suparun_segment ON suparun_segment;
+CREATE TRIGGER audit_suparun_segment
+  AFTER INSERT OR UPDATE OR DELETE ON suparun_segment
+  FOR EACH ROW EXECUTE FUNCTION suparun_audit('id');
+
+-- ── 술어 1개 평가 ──
+-- 내부 헬퍼지만 PostgREST 에 노출되므로 같은 가드를 건다.
+DROP FUNCTION IF EXISTS suparun_segment_cond_match(text, jsonb);
+CREATE FUNCTION suparun_segment_cond_match(p_player_id text, cond jsonb)
+RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    src   text := cond->>'source';
+    col   text := lower(coalesce(cond->>'column', ''));
+    op    text := coalesce(cond->>'op', '=');
+    agg   text := coalesce(cond->>'agg', '');
+    tbl   text := lower(coalesce(cond->>'table', ''));
+    val   jsonb := cond->'value';
+    pcol  text;
+    cols  text[];
+    fkey  text;
+    fval  text;
+    fsql  text := '';
+    q     text;
+    num   numeric;
+    ok    boolean;
+BEGIN
+    IF NOT suparun_is_operator() THEN
+        RAISE EXCEPTION '롤 보유자만 평가할 수 있습니다';
+    END IF;
+
+    IF src = 'account' THEN
+        -- 화이트리스트: 계정 시각 2종. since_days = 최근 N일 안에 발생.
+        IF col NOT IN ('created_at', 'last_sign_in_at') THEN
+            RAISE EXCEPTION '허용되지 않는 account 컬럼: %', col;
+        END IF;
+        EXECUTE format(
+            'SELECT extract(epoch from %I)::numeric FROM auth.users WHERE id::text = $1', col)
+            INTO num USING p_player_id;
+        IF num IS NULL THEN RETURN false; END IF;
+        IF op = 'since_days' THEN
+            RETURN num >= extract(epoch from now() - ((val #>> '{}') || ' days')::interval);
+        END IF;
+        RETURN suparun_segment_cmp(num, op, (val #>> '{}')::numeric);
+
+    ELSIF src = 'system' THEN
+        IF col = 'is_developer' THEN
+            ok := EXISTS (SELECT 1 FROM suparun_developer d WHERE d.user_id = p_player_id);
+        ELSIF col = 'banned' THEN
+            ok := EXISTS (SELECT 1 FROM suparun_ban b WHERE b.user_id = p_player_id
+                AND (b.banned_until = 0 OR b.banned_until > (extract(epoch from now()) * 1000)::bigint));
+        ELSE
+            RAISE EXCEPTION '허용되지 않는 system 컬럼: %', col;
+        END IF;
+        RETURN ok = ((val #>> '{}')::boolean);
+
+    ELSIF src = 'table' THEN
+        -- 표·컬럼의 진실은 메타(table_types) — playerColumn 이 있는 표만, 컬럼도 그 표의 것만.
+        SELECT e->>'playerColumn',
+               array_agg(lower(f->>'name'))
+          INTO pcol, cols
+          FROM suparun_meta m,
+               jsonb_array_elements(m.value::jsonb) e
+               LEFT JOIN LATERAL jsonb_array_elements(e->'fields') f ON true
+         WHERE m.key = 'table_types' AND e->>'tableName' = tbl
+           AND e->>'playerColumn' IS NOT NULL
+         GROUP BY 1;
+        IF pcol IS NULL THEN
+            RAISE EXCEPTION '허용되지 않는 표: %', tbl;
+        END IF;
+        IF col <> '' AND NOT col = ANY(cols) THEN
+            RAISE EXCEPTION '허용되지 않는 컬럼: %.%', tbl, col;
+        END IF;
+
+        -- table_filter: 컬럼=상수 동치 목록 (예: currencyid=gold). 컬럼명은 같은 화이트리스트.
+        FOR fkey, fval IN SELECT k, v #>> '{}' FROM jsonb_each(coalesce(cond->'table_filter', '{}'::jsonb)) AS t(k, v)
+        LOOP
+            IF NOT lower(fkey) = ANY(cols) THEN
+                RAISE EXCEPTION '허용되지 않는 필터 컬럼: %.%', tbl, fkey;
+            END IF;
+            fsql := fsql || format(' AND %I::text = %L', lower(fkey), fval);
+        END LOOP;
+
+        IF agg = '' OR op = 'exists' THEN
+            q := format('SELECT count(*) FROM %I WHERE %I = $1', tbl, pcol) || fsql;
+            EXECUTE q INTO num USING p_player_id;
+            RETURN num > 0;
+        END IF;
+        IF agg NOT IN ('count', 'sum', 'max', 'min') THEN
+            RAISE EXCEPTION '허용되지 않는 집계: %', agg;
+        END IF;
+        IF agg = 'count' THEN
+            q := format('SELECT count(*)::numeric FROM %I WHERE %I = $1', tbl, pcol) || fsql;
+        ELSE
+            q := format('SELECT %s(%I)::numeric FROM %I WHERE %I = $1', agg, col, tbl, pcol) || fsql;
+        END IF;
+        EXECUTE q INTO num USING p_player_id;
+        RETURN suparun_segment_cmp(coalesce(num, 0), op, (val #>> '{}')::numeric);
+    END IF;
+
+    RAISE EXCEPTION '허용되지 않는 source: %', src;
+END $$;
+
+DROP FUNCTION IF EXISTS suparun_segment_cmp(numeric, text, numeric);
+CREATE FUNCTION suparun_segment_cmp(a numeric, op text, b numeric)
+RETURNS boolean LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    CASE op
+        WHEN '='  THEN RETURN a = b;
+        WHEN '!=' THEN RETURN a <> b;
+        WHEN '>=' THEN RETURN a >= b;
+        WHEN '<=' THEN RETURN a <= b;
+        ELSE RAISE EXCEPTION '허용되지 않는 연산자: %', op;
+    END CASE;
+END $$;
+
+-- ── 판정 (#45) ── 빈 조건: all=전원 참, any=전원 거짓 (합집합의 항등원).
+DROP FUNCTION IF EXISTS suparun_segment_match(text, text);
+CREATE FUNCTION suparun_segment_match(p_segment_id text, p_player_id text)
+RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    seg  record;
+    cond jsonb;
+    hit  boolean;
+BEGIN
+    IF NOT suparun_is_operator() THEN
+        RAISE EXCEPTION '롤 보유자만 평가할 수 있습니다';
+    END IF;
+    SELECT match, conditions INTO seg FROM suparun_segment WHERE id = p_segment_id;
+    IF NOT FOUND THEN RAISE EXCEPTION '없는 세그먼트: %', p_segment_id; END IF;
+    FOR cond IN SELECT jsonb_array_elements(seg.conditions)
+    LOOP
+        hit := suparun_segment_cond_match(p_player_id, cond);
+        IF seg.match = 'any' AND hit THEN RETURN true; END IF;
+        IF seg.match <> 'any' AND NOT hit THEN RETURN false; END IF;
+    END LOOP;
+    RETURN seg.match <> 'any';
+END $$;
+
+-- ── 대상 수 미리보기 ── 전수 평가다 — 규모가 커지면 여기만 주기 스냅샷으로 바꾼다 (ADR-0011).
+DROP FUNCTION IF EXISTS suparun_segment_count(text);
+CREATE FUNCTION suparun_segment_count(p_segment_id text)
+RETURNS bigint
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE n bigint;
+BEGIN
+    IF NOT suparun_is_operator() THEN
+        RAISE EXCEPTION '롤 보유자만 평가할 수 있습니다';
+    END IF;
+    SELECT count(*) INTO n FROM auth.users u
+     WHERE suparun_segment_match(p_segment_id, u.id::text);
+    RETURN n;
+END $$;
+
+-- ── 소속 목록 (플레이어 상세) ──
+DROP FUNCTION IF EXISTS suparun_segments_of(text);
+CREATE FUNCTION suparun_segments_of(p_player_id text)
+RETURNS TABLE(segment_id text, name text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+    IF NOT suparun_is_operator() THEN
+        RAISE EXCEPTION '롤 보유자만 평가할 수 있습니다';
+    END IF;
+    RETURN QUERY
+    SELECT s.id, s.name FROM suparun_segment s
+     WHERE suparun_segment_match(s.id, p_player_id);
+END $$;
+");
         }
 
         /// <summary>
@@ -3129,12 +3342,14 @@ public static class CsGate
         return n > 0;
     }
 
-    /// <summary>실행 감사. 서버 직접 연결이라 RLS·트리거 밖 — 여기서 직접 남긴다.</summary>
-    public static async Task Audit(NpgsqlConnection conn, string sub, string action, string rowId, string paramsJson)
+    /// <summary>실행 감사. 서버 직접 연결이라 RLS·트리거 밖 — 여기서 직접 남긴다.
+    /// tx 를 주면 액션과 원자다 — 감사 실패 = 전체 롤백(기록 없는 실행을 만들지 않는다).</summary>
+    public static async Task Audit(NpgsqlConnection conn, string sub, string action, string rowId, string paramsJson,
+        NpgsqlTransaction tx = null)
     {
         await using var cmd = new NpgsqlCommand(
             ""INSERT INTO admin_audit_log (id, admin_id, config_type, row_id, action, before_json, after_json, created_at) "" +
-            ""VALUES (gen_random_uuid()::text, @sub, 'player', @row, @act, NULL, @json, (extract(epoch from now()) * 1000)::bigint)"", conn);
+            ""VALUES (gen_random_uuid()::text, @sub, 'player', @row, @act, NULL, @json, (extract(epoch from now()) * 1000)::bigint)"", conn, tx);
         cmd.Parameters.AddWithValue(""sub"", (object)sub ?? System.DBNull.Value);
         cmd.Parameters.AddWithValue(""row"", (object)rowId ?? System.DBNull.Value);
         cmd.Parameters.AddWithValue(""act"", action);
@@ -3159,7 +3374,7 @@ public static class CsGate
                 .Where(x => x.Col != null)
                 .ToList();
             var deleteLines = string.Join("\n", playerTables.Select(x =>
-                $"        await Exec(\"DELETE FROM {x.Table} WHERE {x.Col} = @uid\", req.playerId);"));
+                $"        await Exec(\"DELETE FROM {x.Table} WHERE {x.Col} = @uid\", req.playerId, tx);"));
 
             var sb = new StringBuilder();
             sb.AppendLine("using System.Text.Json;");
@@ -3179,9 +3394,9 @@ public static class CsGate
             sb.AppendLine("");
             sb.AppendLine("    string Sub => User.FindFirst(\"sub\")?.Value ?? \"\";");
             sb.AppendLine("");
-            sb.AppendLine("    async Task Exec(string sql, string uid)");
+            sb.AppendLine("    async Task Exec(string sql, string uid, NpgsqlTransaction tx = null)");
             sb.AppendLine("    {");
-            sb.AppendLine("        await using var cmd = new NpgsqlCommand(sql, _conn);");
+            sb.AppendLine("        await using var cmd = new NpgsqlCommand(sql, _conn, tx);");
             sb.AppendLine("        cmd.Parameters.AddWithValue(\"uid\", uid);");
             sb.AppendLine("        await cmd.ExecuteNonQueryAsync();");
             sb.AppendLine("    }");
@@ -3202,25 +3417,27 @@ public static class CsGate
             sb.AppendLine("        return Ok(new { banned = false, reason = (string)null, bannedUntil = 0L });");
             sb.AppendLine("    }");
             sb.AppendLine("");
-            sb.AppendLine("    // ── 밴/해제 (#39) ──");
+            sb.AppendLine("    // ── 밴/해제 (#39) — 액션+감사가 한 트랜잭션이다: 기록 없는 실행을 만들지 않는다. ──");
             sb.AppendLine("    [HttpPost(\"cs/system/SetBan\")]");
             sb.AppendLine("    public async Task<IActionResult> SetBan([FromBody] CsSystem_SetBanRequest req)");
             sb.AppendLine("    {");
             sb.AppendLine("        if (!await CsGate.Allowed(_conn, Sub, seniorOnly: false)) return StatusCode(403, new { error = \"CS 롤이 필요합니다.\" });");
+            sb.AppendLine("        await using var tx = await _conn.BeginTransactionAsync();");
             sb.AppendLine("        if (req.banned)");
             sb.AppendLine("        {");
             sb.AppendLine("            await using var cmd = new NpgsqlCommand(");
             sb.AppendLine("                \"INSERT INTO suparun_ban (user_id, reason, banned_until, created_at, created_by) \" +");
             sb.AppendLine("                \"VALUES (@uid, @reason, @until, (extract(epoch from now()) * 1000)::bigint, @by) \" +");
-            sb.AppendLine("                \"ON CONFLICT (user_id) DO UPDATE SET reason = @reason, banned_until = @until, created_by = @by\", _conn);");
+            sb.AppendLine("                \"ON CONFLICT (user_id) DO UPDATE SET reason = @reason, banned_until = @until, created_by = @by\", _conn, tx);");
             sb.AppendLine("            cmd.Parameters.AddWithValue(\"uid\", req.playerId);");
             sb.AppendLine("            cmd.Parameters.AddWithValue(\"reason\", (object)req.reason ?? System.DBNull.Value);");
             sb.AppendLine("            cmd.Parameters.AddWithValue(\"until\", req.bannedUntil);");
             sb.AppendLine("            cmd.Parameters.AddWithValue(\"by\", Sub);");
             sb.AppendLine("            await cmd.ExecuteNonQueryAsync();");
             sb.AppendLine("        }");
-            sb.AppendLine("        else await Exec(\"DELETE FROM suparun_ban WHERE user_id = @uid\", req.playerId);");
-            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:SetBan\", req.playerId, JsonSerializer.Serialize(req));");
+            sb.AppendLine("        else await Exec(\"DELETE FROM suparun_ban WHERE user_id = @uid\", req.playerId, tx);");
+            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:SetBan\", req.playerId, JsonSerializer.Serialize(req), tx);");
+            sb.AppendLine("        await tx.CommitAsync();");
             sb.AppendLine("        return Ok(new { ok = true });");
             sb.AppendLine("    }");
             sb.AppendLine("");
@@ -3229,15 +3446,17 @@ public static class CsGate
             sb.AppendLine("    public async Task<IActionResult> Rename([FromBody] CsSystem_RenameRequest req)");
             sb.AppendLine("    {");
             sb.AppendLine("        if (!await CsGate.Allowed(_conn, Sub, seniorOnly: false)) return StatusCode(403, new { error = \"CS 롤이 필요합니다.\" });");
+            sb.AppendLine("        await using var tx = await _conn.BeginTransactionAsync();");
             sb.AppendLine("        await using var cmd = new NpgsqlCommand(");
             sb.AppendLine("            \"UPDATE auth.users SET raw_user_meta_data = \" +");
             sb.AppendLine("            \"jsonb_set(coalesce(raw_user_meta_data, '{}'::jsonb), '{name}', to_jsonb(@name::text)) \" +");
-            sb.AppendLine("            \"WHERE id = @uid::uuid\", _conn);");
+            sb.AppendLine("            \"WHERE id = @uid::uuid\", _conn, tx);");
             sb.AppendLine("        cmd.Parameters.AddWithValue(\"uid\", req.playerId);");
             sb.AppendLine("        cmd.Parameters.AddWithValue(\"name\", req.name ?? \"\");");
             sb.AppendLine("        var n = await cmd.ExecuteNonQueryAsync();");
             sb.AppendLine("        if (n == 0) return NotFound(new { error = \"없는 플레이어입니다.\" });");
-            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:Rename\", req.playerId, JsonSerializer.Serialize(req));");
+            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:Rename\", req.playerId, JsonSerializer.Serialize(req), tx);");
+            sb.AppendLine("        await tx.CommitAsync();");
             sb.AppendLine("        return Ok(new { ok = true });");
             sb.AppendLine("    }");
             sb.AppendLine("");
@@ -3246,43 +3465,53 @@ public static class CsGate
             sb.AppendLine("    public async Task<IActionResult> SetDeveloper([FromBody] CsSystem_SetDeveloperRequest req)");
             sb.AppendLine("    {");
             sb.AppendLine("        if (!await CsGate.Allowed(_conn, Sub, seniorOnly: false)) return StatusCode(403, new { error = \"CS 롤이 필요합니다.\" });");
+            sb.AppendLine("        await using var tx = await _conn.BeginTransactionAsync();");
             sb.AppendLine("        if (req.isDeveloper)");
             sb.AppendLine("        {");
             sb.AppendLine("            await using var cmd = new NpgsqlCommand(");
             sb.AppendLine("                \"INSERT INTO suparun_developer (user_id, note, created_at, created_by) \" +");
             sb.AppendLine("                \"VALUES (@uid, @note, (extract(epoch from now()) * 1000)::bigint, @by) \" +");
-            sb.AppendLine("                \"ON CONFLICT (user_id) DO UPDATE SET note = @note, created_by = @by\", _conn);");
+            sb.AppendLine("                \"ON CONFLICT (user_id) DO UPDATE SET note = @note, created_by = @by\", _conn, tx);");
             sb.AppendLine("            cmd.Parameters.AddWithValue(\"uid\", req.playerId);");
             sb.AppendLine("            cmd.Parameters.AddWithValue(\"note\", (object)req.note ?? System.DBNull.Value);");
             sb.AppendLine("            cmd.Parameters.AddWithValue(\"by\", Sub);");
             sb.AppendLine("            await cmd.ExecuteNonQueryAsync();");
             sb.AppendLine("        }");
-            sb.AppendLine("        else await Exec(\"DELETE FROM suparun_developer WHERE user_id = @uid\", req.playerId);");
-            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:SetDeveloper\", req.playerId, JsonSerializer.Serialize(req));");
+            sb.AppendLine("        else await Exec(\"DELETE FROM suparun_developer WHERE user_id = @uid\", req.playerId, tx);");
+            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:SetDeveloper\", req.playerId, JsonSerializer.Serialize(req), tx);");
+            sb.AppendLine("        await tx.CommitAsync();");
             sb.AppendLine("        return Ok(new { ok = true });");
             sb.AppendLine("    }");
             sb.AppendLine("");
-            sb.AppendLine("    // ── 리셋 (#40) — [UserData] 만 지운다. 계정·밴·개발자 지정은 남는다. ──");
+            sb.AppendLine("    // ── 리셋 (#40) — [UserData] 만 지운다. 계정·밴·개발자 지정은 남는다.");
+            sb.AppendLine("    // 표별 DELETE 전체가 한 트랜잭션이다 — 중간 실패 = 부분 삭제 없이 전체 롤백. ──");
             sb.AppendLine("    [HttpPost(\"cs/system/ResetPlayer\")]");
             sb.AppendLine("    public async Task<IActionResult> ResetPlayer([FromBody] CsSystem_ResetPlayerRequest req)");
             sb.AppendLine("    {");
             sb.AppendLine("        if (!await CsGate.Allowed(_conn, Sub, seniorOnly: false)) return StatusCode(403, new { error = \"CS 롤이 필요합니다.\" });");
+            sb.AppendLine("        await using var tx = await _conn.BeginTransactionAsync();");
             sb.AppendLine(deleteLines);
-            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:ResetPlayer\", req.playerId, null);");
+            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:ResetPlayer\", req.playerId, null, tx);");
+            sb.AppendLine("        await tx.CommitAsync();");
             sb.AppendLine("        return Ok(new { ok = true });");
             sb.AppendLine("    }");
             sb.AppendLine("");
-            sb.AppendLine("    // ── GDPR 삭제 (#42) — cs-senior 이상. auth 계정까지 지운다(세션·신원 FK 연쇄). ──");
+            sb.AppendLine("    // ── GDPR 삭제 (#42) — cs-senior 이상. auth 계정까지 지운다(세션·신원 FK 연쇄).");
+            sb.AppendLine("    // 2단계 확인은 서버 표면이다 — confirmPlayerId 재입력 불일치면 실행 자체가 안 된다.");
+            sb.AppendLine("    // 전체가 한 트랜잭션 + 감사 포함 — 부분 삭제도, 기록 없는 삭제도 만들지 않는다. ──");
             sb.AppendLine("    [HttpPost(\"cs/system/GdprDelete\")]");
             sb.AppendLine("    public async Task<IActionResult> GdprDelete([FromBody] CsSystem_GdprDeleteRequest req)");
             sb.AppendLine("    {");
             sb.AppendLine("        if (!await CsGate.Allowed(_conn, Sub, seniorOnly: true)) return StatusCode(403, new { error = \"cs-senior 이상만 실행할 수 있습니다.\" });");
+            sb.AppendLine("        if (req.confirmPlayerId != req.playerId)");
+            sb.AppendLine("            return BadRequest(new { error = \"2단계 확인 불일치 — 대상 ID 를 다시 입력하세요.\" });");
+            sb.AppendLine("        await using var tx = await _conn.BeginTransactionAsync();");
             sb.AppendLine(deleteLines);
-            sb.AppendLine("        await Exec(\"DELETE FROM suparun_ban WHERE user_id = @uid\", req.playerId);");
-            sb.AppendLine("        await Exec(\"DELETE FROM suparun_developer WHERE user_id = @uid\", req.playerId);");
-            sb.AppendLine("        await Exec(\"DELETE FROM auth.users WHERE id = @uid::uuid\", req.playerId);");
-            sb.AppendLine("        // 감사가 마지막인 이유: 삭제가 실패하면 '지웠다' 는 기록이 거짓이 된다.");
-            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:GdprDelete\", req.playerId, null);");
+            sb.AppendLine("        await Exec(\"DELETE FROM suparun_ban WHERE user_id = @uid\", req.playerId, tx);");
+            sb.AppendLine("        await Exec(\"DELETE FROM suparun_developer WHERE user_id = @uid\", req.playerId, tx);");
+            sb.AppendLine("        await Exec(\"DELETE FROM auth.users WHERE id = @uid::uuid\", req.playerId, tx);");
+            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:GdprDelete\", req.playerId, null, tx);");
+            sb.AppendLine("        await tx.CommitAsync();");
             sb.AppendLine("        return Ok(new { ok = true });");
             sb.AppendLine("    }");
             sb.AppendLine("}");
@@ -3291,7 +3520,7 @@ public static class CsGate
             sb.AppendLine("public class CsSystem_RenameRequest { public string playerId { get; set; } public string name { get; set; } }");
             sb.AppendLine("public class CsSystem_SetDeveloperRequest { public string playerId { get; set; } public bool isDeveloper { get; set; } public string note { get; set; } }");
             sb.AppendLine("public class CsSystem_ResetPlayerRequest { public string playerId { get; set; } }");
-            sb.AppendLine("public class CsSystem_GdprDeleteRequest { public string playerId { get; set; } }");
+            sb.AppendLine("public class CsSystem_GdprDeleteRequest { public string playerId { get; set; } public string confirmPlayerId { get; set; } }");
 
             return new GeneratedFile("Generated/Controllers/CsSystemController.cs", sb.ToString());
         }

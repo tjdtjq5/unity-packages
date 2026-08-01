@@ -146,10 +146,10 @@ namespace Tjdtjq5.SupaRun.Tests
             StringAssert.Contains("\"amount\":0", after.Replace(" ", ""), "차감 후 잔액이 0 이어야 한다");
         }
 
-        // ── 밴/해제 (#39) + GDPR 삭제 (#42) — 희생 계정 하나로 순서 실행 ──
+        // ── 밴/해제 + 이름 변경 (#39), 리셋 (#40), GDPR 삭제 (#42) — 희생 계정 하나로 순서 실행 ──
 
         [Test]
-        public async Task Ban_Blocks_And_GdprDelete_Erases_Victim()
+        public async Task Ban_Rename_Reset_And_GdprDelete_On_Victim()
         {
             var c = await Init();
             var (victimToken, victimUid) = await EnsureAccount(c, VictimEmail);
@@ -163,16 +163,61 @@ namespace Tjdtjq5.SupaRun.Tests
             StringAssert.Contains("\"banned\":true", check.body.Replace(" ", ""), "밴 후 ban-check 가 banned=true 여야 한다");
             StringAssert.Contains("contract-ban", check.body, "밴 사유가 내려와야 한다");
 
-            // 해제 — banned=false 로 복구된다.
+            // 밴의 서버 겹 — Photon 인증 웹훅이 밴 계정을 거부한다 (#39: 세션 진입의 진짜 문).
+            var photon = await Send(HttpMethod.Get,
+                $"{c.Url}/functions/v1/photon-auth?token={victimToken}", null);
+            StringAssert.Contains("\"resultCode\":2", photon.body.Replace(" ", ""),
+                $"밴 계정의 Photon 인증은 거부(resultCode 2)여야 한다 — {photon.body}");
+
+            // 밴 감사 — cs:SetBan 행이 남는다.
+            var banAudit = await Rest(c,
+                $"admin_audit_log?action=eq.cs:SetBan&row_id=eq.{victimUid}&select=admin_id&limit=1",
+                c.AdminToken);
+            StringAssert.Contains(c.AdminUid, banAudit, "밴이 감사 로그에 남아야 한다");
+
+            // 해제 — banned=false 로 복구되고, Photon 인증도 통과한다.
             var unban = await Send(HttpMethod.Post, $"{c.Server}/api/cs/system/SetBan", c.AdminToken,
                 $"{{\"playerId\":\"{victimUid}\",\"banned\":false,\"reason\":null,\"bannedUntil\":0}}");
             Assert.AreEqual(200, unban.status);
             var check2 = await Send(HttpMethod.Get, $"{c.Server}/api/auth/ban-check/{victimUid}", victimToken);
             StringAssert.Contains("\"banned\":false", check2.body.Replace(" ", ""), "해제 후 ban-check 가 banned=false 여야 한다");
+            var photon2 = await Send(HttpMethod.Get,
+                $"{c.Url}/functions/v1/photon-auth?token={victimToken}", null);
+            StringAssert.Contains("\"resultCode\":1", photon2.body.Replace(" ", ""), "해제 후 Photon 인증은 통과해야 한다");
 
-            // GDPR 삭제 — game-admin 은 senior 게이트를 지난다. 계정·데이터가 사라진다.
-            var del = await Send(HttpMethod.Post, $"{c.Server}/api/cs/system/GdprDelete", c.AdminToken,
+            // 이름 변경 (#39) — auth 메타가 진실. 플레이어 조회와 Photon 닉네임이 이 값을 읽는다.
+            var rename = await Send(HttpMethod.Post, $"{c.Server}/api/cs/system/Rename", c.AdminToken,
+                $"{{\"playerId\":\"{victimUid}\",\"name\":\"CS-Renamed\"}}");
+            Assert.AreEqual(200, rename.status, $"game-admin 의 이름 변경은 통과해야 한다 — {rename.body}");
+            var renamed = await Send(HttpMethod.Post, $"{c.Url}/rest/v1/rpc/suparun_player_get", c.AdminToken,
+                $"{{\"p_id\":\"{victimUid}\"}}", anonAuth: c.Anon);
+            StringAssert.Contains("CS-Renamed", renamed.body, "변경된 이름이 플레이어 조회에 반영돼야 한다");
+            var renameAudit = await Rest(c,
+                $"admin_audit_log?action=eq.cs:Rename&row_id=eq.{victimUid}&select=admin_id&limit=1",
+                c.AdminToken);
+            StringAssert.Contains(c.AdminUid, renameAudit, "이름 변경이 감사 로그에 남아야 한다");
+
+            // 리셋 (#40) — 재화를 만들어 두고 리셋하면 [UserData] 행이 사라진다.
+            var grant = await Send(HttpMethod.Post, $"{c.Server}/api/cs_tools_service/GrantCurrency", c.AdminToken,
+                $"{{\"playerId\":\"{victimUid}\",\"currencyId\":\"gold\",\"amount\":3,\"reason\":\"contract-reset-prep\"}}");
+            Assert.AreEqual(200, grant.status, $"리셋 준비 지급이 통과해야 한다 — {grant.body}");
+            var reset = await Send(HttpMethod.Post, $"{c.Server}/api/cs/system/ResetPlayer", c.AdminToken,
                 $"{{\"playerId\":\"{victimUid}\"}}");
+            Assert.AreEqual(200, reset.status, $"리셋은 통과해야 한다 — {reset.body}");
+            var afterReset = await Rest(c, $"currency?playerid=eq.{victimUid}&select=id", c.AdminToken);
+            Assert.AreEqual("[]", afterReset.Trim(), "리셋 후 재화 행이 없어야 한다 (#40 초기 상태)");
+            var resetAudit = await Rest(c,
+                $"admin_audit_log?action=eq.cs:ResetPlayer&row_id=eq.{victimUid}&select=admin_id&limit=1",
+                c.AdminToken);
+            StringAssert.Contains(c.AdminUid, resetAudit, "리셋이 감사 로그에 남아야 한다");
+
+            // GDPR 삭제 (#42) — 2단계 확인(confirmPlayerId)은 **서버 표면**이다: 불일치면 400.
+            var mismatch = await Send(HttpMethod.Post, $"{c.Server}/api/cs/system/GdprDelete", c.AdminToken,
+                $"{{\"playerId\":\"{victimUid}\",\"confirmPlayerId\":\"wrong\"}}");
+            Assert.AreEqual(400, mismatch.status, "확인 불일치의 GDPR 삭제는 400 이어야 한다");
+
+            var del = await Send(HttpMethod.Post, $"{c.Server}/api/cs/system/GdprDelete", c.AdminToken,
+                $"{{\"playerId\":\"{victimUid}\",\"confirmPlayerId\":\"{victimUid}\"}}");
             Assert.AreEqual(200, del.status, $"game-admin 의 GDPR 삭제는 통과해야 한다 — {del.body}");
 
             // 로그인 불가 — GoTrue 에 계정이 없다.

@@ -29,7 +29,7 @@ function client() {
 /** 디자인 미리보기용 표본 — 화면이 실데이터 없이도 자기 모양을 보여줄 수 있어야 한다. */
 const MOCK: Player[] = [
   { id: 'a1b2c3d4-0000-4000-8000-000000000001', email: 'guest_4d2@device.local', name: 'ErraticTurtle', created_at: 1753670000000, last_sign_in_at: Date.now() - 3600_000, banned: false, ban_reason: null, banned_until: null, is_developer: false },
-  { id: 'a1b2c3d4-0000-4000-8000-000000000002', email: 'sschoi@cookapps.com', name: 'DevChoi', created_at: 1750000000000, last_sign_in_at: Date.now() - 86400_000, banned: false, ban_reason: null, banned_until: null, is_developer: true },
+  { id: 'a1b2c3d4-0000-4000-8000-000000000002', email: 'dev@example.test', name: 'DevChoi', created_at: 1750000000000, last_sign_in_at: Date.now() - 86400_000, banned: false, ban_reason: null, banned_until: null, is_developer: true },
   { id: 'a1b2c3d4-0000-4000-8000-000000000003', email: 'guest_9f1@device.local', name: 'CrudeFox', created_at: 1752000000000, last_sign_in_at: Date.now() - 7 * 86400_000, banned: true, ban_reason: '반복 어뷰징', banned_until: 0, is_developer: false },
 ]
 

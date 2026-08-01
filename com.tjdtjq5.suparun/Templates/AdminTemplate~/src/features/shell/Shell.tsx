@@ -11,6 +11,8 @@ import { DeveloperPlayersPage } from '../players/DeveloperPlayersPage'
 import { PlayerDetailPage } from '../players/PlayerDetailPage'
 import { PlayersPage } from '../players/PlayersPage'
 import { RolesPage } from '../roles/RolesPage'
+import { SegmentDetailPage } from '../segments/SegmentDetailPage'
+import { SegmentsPage } from '../segments/SegmentsPage'
 import { SetupProjectPage } from '../setup/SetupProjectPage'
 import { ComparePage } from '../versions/ComparePage'
 import { ReleasesPage } from '../versions/ReleasesPage'
@@ -267,9 +269,21 @@ export function Shell({
 
                 <div className="tree-section">[LIVEOPS]</div>
                 <div className="tree-list">
-                  {/* 메일·이벤트·실험·세그먼트가 올 자리(#46). 숨기지 않고 자리를 보여준다 —
+                  {/* 세그먼트 (#44) — 라이브옵스의 첫 실기능. 열람은 전 롤, 쓰기는 game-admin. */}
+                  <a
+                    className={`tree-item${route.kind === 'segments' || route.kind === 'segment' ? ' active' : ''}`}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate({ kind: 'segments' })
+                    }}
+                  >
+                    <span className="branch">├─</span>
+                    <span className="label">segments</span>
+                  </a>
+                  {/* 메일·이벤트·실험이 올 자리(#46). 숨기지 않고 자리를 보여준다 —
                       "미설정 기능도 메뉴에 노출" (Metaplay 투어 §3-6, PRD 스토리 52). */}
-                  <span className="tree-item muted" title="라이브옵스 기능은 아직 준비 중입니다">
+                  <span className="tree-item muted" title="나머지 라이브옵스 기능은 아직 준비 중입니다">
                     <span className="branch">└─</span>
                     <span className="label">not enabled</span>
                   </span>
@@ -533,6 +547,10 @@ function describeRoute(
       return shell('Manage Player', 'PLAYERS.SH', `~/players/${route.id.slice(0, 8)}`)
     case 'developers':
       return shell('Developer Players', 'DEVELOPERS.SH', '~/developer_players')
+    case 'segments':
+      return shell('Player Segments', 'SEGMENTS.SH', '~/segments')
+    case 'segment':
+      return shell('Manage Segment', 'SEGMENTS.SH', `~/segments/${route.id}`)
     case 'home':
       return shell('Overview', 'DASHBOARD.SH', '~/admin')
   }
@@ -618,6 +636,10 @@ function ScreenContent({
       return <PlayerDetailPage key={route.id} id={route.id} />
     case 'developers':
       return <DeveloperPlayersPage />
+    case 'segments':
+      return <SegmentsPage />
+    case 'segment':
+      return <SegmentDetailPage key={route.id} id={route.id} />
     case 'home': {
       // 타입 메타가 오기 전에 "선택하세요"를 띄우면 사이드바가 비어 있는 이유를 오해하게 된다.
       if (!data.ready) return <LoadingBlock label="Config 목록 불러오는 중" />
