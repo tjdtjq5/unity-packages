@@ -256,9 +256,13 @@ namespace Tjdtjq5.SupaRun.Editor
         /// `TypeCache.GetTypesWithAttribute` 는 순서를 보장하지 않아(Unity 문서: "the order ... is undefined")
         /// 도메인 리로드마다 결과 순서가 달라질 수 있다. 그러면 내용이 같아도 생성 JSON 이 달라져
         /// SchemaAutoSync 가 매번 "변경됨"으로 판정하고, 어드민 사이드바 순서도 흔들린다.
+        ///
+        /// **테스트 어셈블리는 뺀다** — 테스트용 [SpecData] 타입(ConfigSessionTests 의 PinCfg 등)이
+        /// 실스키마에 표를 만든 사고가 있었다. 테스트 표는 어느 환경에도 존재하면 안 된다.
         /// </summary>
         static Type[] ScanTypes<T>() where T : Attribute
             => TypeCache.GetTypesWithAttribute<T>()
+                .Where(t => !(t.Assembly.GetName().Name ?? "").Contains(".Tests"))
                 .OrderBy(t => t.FullName, StringComparer.Ordinal)
                 .ToArray();
 

@@ -74,6 +74,23 @@ namespace Tjdtjq5.SupaRun
             return await Fetch<List<T>>(url);
         }
 
+        /// <summary>suparun_meta 한 행. 세션 협상(#35)이 읽는 활성 버전·logic 범위의 그릇이다.</summary>
+        internal class MetaRow
+        {
+            public string key = "";
+            public Newtonsoft.Json.Linq.JToken? value;
+        }
+
+        /// <summary>
+        /// suparun_meta 조회 — 세션 협상(ADR-0010, #35)의 창구다. 그 표는 public_read 라
+        /// anon 으로도 읽히므로 로그인 전 협상도 가능하다.
+        /// </summary>
+        internal UniTask<ServerResponse<List<MetaRow>>> GetMeta(params string[] keys)
+        {
+            var url = $"{_restUrl}/suparun_meta?select=key,value&key=in.({string.Join(",", keys)})";
+            return Fetch<List<MetaRow>>(url);
+        }
+
         async UniTask<ServerResponse<T>> Fetch<T>(string url)
         {
             // anonymous 호출 사전 경고: silent failure(success=true, count=0) 진단용

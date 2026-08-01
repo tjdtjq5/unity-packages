@@ -100,8 +100,9 @@ export const ops = {
   // ── 승격 ──
   promoteSchema: (target: string) =>
     bridge.post<{ started: boolean }>('/ops/promote-schema', { target }),
-  promoteData: (target: string) =>
-    bridge.post<{ started: boolean }>('/ops/promote-data', { target }),
+  /** dev 데이터를 대상 환경의 **미게시 버전**으로 올린다 (ADR-0010, #30). 라이브 무영향. */
+  uploadVersion: (target: string) =>
+    bridge.post<{ started: boolean }>('/ops/upload-version', { target }),
 }
 
 /** 아직 도는 중인가. 폴링을 계속할지 정한다. */

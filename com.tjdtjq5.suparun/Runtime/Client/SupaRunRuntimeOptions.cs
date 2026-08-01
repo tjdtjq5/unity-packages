@@ -55,5 +55,12 @@ namespace Tjdtjq5.SupaRun
         /// 단위 테스트 시 mock 주입으로 토큰 전파 검증에 사용.
         /// </summary>
         public Supabase.IRealtimeClient? Realtime;
+
+        /// <summary>
+        /// 클라 logic version (ADR-0010 결정 6, #35). 세션 협상에서 서버 허용 범위
+        /// (suparun_meta.logic_version_range)와 비교해 <see cref="ConfigSessionInfo.LogicCompatible"/>
+        /// 를 채운다. 0 = 게이트 미사용.
+        /// </summary>
+        public int LogicVersion;
     }
 }

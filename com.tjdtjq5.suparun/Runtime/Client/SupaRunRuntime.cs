@@ -36,7 +36,14 @@ namespace Tjdtjq5.SupaRun
         internal readonly LocalGameDB _localDB;
         internal readonly ISessionStorage _sessionStorage;
 
+        // [SpecData] 세션 캐시 (#35) — 첫 조회 시점 값으로 세션 동안 고정된다.
+        // 값은 List<T> 다. 비우는 곳은 RefreshConfigSessionAsync 하나뿐이다.
+        readonly Dictionary<Type, object> _configCache = new Dictionary<Type, object>();
+
         bool _disposed;
+
+        /// <summary>세션 협상 결과 (#35). Login()/RefreshConfigSessionAsync() 가 채운다. 협상 전엔 null.</summary>
+        public ConfigSessionInfo? ConfigSession { get; private set; }
 
         // ── public 프로퍼티 ──
         /// <summary>HTTP 클라이언트(Cloud Run). null 가능.</summary>
@@ -234,13 +241,42 @@ namespace Tjdtjq5.SupaRun
 
         // ── 데이터 API ──
 
-        /// <summary>단건 조회. [SpecData]→Supabase REST 직접, [UserData]→Cloud Run, 미배포→LocalGameDB.</summary>
+        /// <summary>단건 조회. [SpecData]→세션 캐시(#35)→Supabase REST, [UserData]→Cloud Run, 미배포→LocalGameDB.</summary>
         public async UniTask<ServerResponse<T>> Get<T>(object id)
         {
             if (_client != null)
             {
                 if (SupaRun.IsConfig<T>() && _restClient != null)
-                    return await _restClient.Get<T>(id);
+                {
+                    // 세션 고정을 위해 단건도 캐시(전체 목록)에서 찾는다 — [SpecData] 는 작다.
+                    // id 필드 관례 밖 타입만 직접 조회로 남긴다(고정 대상에서 빠진다).
+                    var idField = typeof(T).GetField("id");
+                    if (idField == null)
+                        return await _restClient.Get<T>(id);
+
+                    var all = await GetAll<T>();
+                    if (!all.success)
+                        return new ServerResponse<T>
+                        {
+                            success = false, error = all.error, errorType = all.errorType,
+                            statusCode = all.statusCode, isAuthenticated = all.isAuthenticated, hint = all.hint,
+                        };
+
+                    var key = id?.ToString();
+                    var found = default(T);
+                    foreach (var row in all.data ?? new List<T>())
+                        if (Equals(idField.GetValue(row)?.ToString(), key)) { found = row; break; }
+
+                    return new ServerResponse<T>
+                    {
+                        success = found != null,
+                        data = found,
+                        statusCode = found != null ? 200 : 404,
+                        errorType = found != null ? ErrorType.None : ErrorType.NotFound,
+                        error = found != null ? null : $"{typeof(T).Name} not found: {id}",
+                        isAuthenticated = all.isAuthenticated,
+                    };
+                }
 
                 var typeName = typeof(T).Name.ToLower();
                 return await _client.GetAsync<T>($"api/{typeName}/{id}");
@@ -261,13 +297,29 @@ namespace Tjdtjq5.SupaRun
             };
         }
 
-        /// <summary>전체 조회. [SpecData]→Supabase REST 직접, [UserData]→Cloud Run, 미배포→LocalGameDB.</summary>
+        /// <summary>전체 조회. [SpecData]→세션 캐시(#35)→Supabase REST, [UserData]→Cloud Run, 미배포→LocalGameDB.</summary>
         public async UniTask<ServerResponse<List<T>>> GetAll<T>()
         {
             if (_client != null)
             {
                 if (SupaRun.IsConfig<T>() && _restClient != null)
-                    return await _restClient.GetAll<T>();
+                {
+                    // 세션 캐시 (#35, Metaplay OTA 시맨틱) — 게시가 세션 중에 일어나도 이 세션의
+                    // 조회는 안 바뀐다. 새 값은 새 세션(Login/RefreshConfigSessionAsync)부터다.
+                    // 사본을 돌려준다 — 호출자가 목록을 고쳐도 캐시가 오염되지 않게.
+                    if (_configCache.TryGetValue(typeof(T), out var cached))
+                        return new ServerResponse<List<T>>
+                        {
+                            success = true,
+                            data = new List<T>((List<T>)cached),
+                            statusCode = 200,
+                            isAuthenticated = IsLoggedIn,
+                        };
+
+                    var r = await _restClient.GetAll<T>();
+                    if (r.success && r.data != null) _configCache[typeof(T)] = new List<T>(r.data);
+                    return r;
+                }
 
                 var typeName = typeof(T).Name.ToLower();
                 return await _client.GetAsync<List<T>>($"api/{typeName}");
@@ -303,6 +355,59 @@ namespace Tjdtjq5.SupaRun
             }
             if (_auth.IsLoggedIn) return;       // 이미 로그인됨
             await _auth.EnsureLoggedIn();        // SupaRunAuth 자체에서 동시 호출 dedup
+
+            // 세션 협상 (#35) — 활성 config 버전 스탬프 + logic version 게이트.
+            // 실패해도 로그인은 성립한다: 협상은 부가 정보이지 관문이 아니다.
+            await RefreshConfigSessionAsync();
+        }
+
+        /// <summary>
+        /// config 세션을 새로 연다 (#35) — 세션 캐시를 비우고 활성 버전을 다시 스탬프한다.
+        /// Login() 이 자동으로 부르고, 프로세스 재시작 없이 새 세션을 원하면(매치 사이 등)
+        /// 게임이 직접 부른다. 협상 실패는 스탬프 없음으로 계속 간다 — 오프라인·미게시
+        /// 환경에서 조회가 막히면 안 된다.
+        /// </summary>
+        public async UniTask<ConfigSessionInfo> RefreshConfigSessionAsync()
+        {
+            _configCache.Clear();
+            var info = new ConfigSessionInfo();
+
+            if (_restClient != null)
+            {
+                try
+                {
+                    var r = await _restClient.GetMeta("active_config_version", "logic_version_range");
+                    if (r.success && r.data != null)
+                    {
+                        foreach (var row in r.data)
+                        {
+                            if (row.key == "active_config_version" && row.value != null)
+                            {
+                                info.ActiveVersionHash = (string?)row.value["content_hash"];
+                                info.ActiveVersionGitSha = (string?)row.value["git_sha"];
+                                info.ActivePublishedAt = (long?)row.value["published_at"] ?? 0;
+                            }
+                            else if (row.key == "logic_version_range" && row.value != null)
+                            {
+                                info.LogicMin = (int?)row.value["min"] ?? 0;
+                                info.LogicMax = (int?)row.value["max"] ?? 0;
+                            }
+                        }
+
+                        var lv = _options.LogicVersion;
+                        if (lv > 0 && (info.LogicMin > 0 || info.LogicMax > 0))
+                            info.LogicCompatible = (info.LogicMin <= 0 || lv >= info.LogicMin)
+                                                && (info.LogicMax <= 0 || lv <= info.LogicMax);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogWarning($"[SupaRun] config 세션 협상 실패 — 스탬프 없이 계속합니다: {ex.Message}");
+                }
+            }
+
+            ConfigSession = info;
+            return info;
         }
 
         /// <summary>

@@ -32,6 +32,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 GenerateSecretMigration(),
                 GenerateEnvMigration(),
                 GenerateSnapshotMigration(),
+                GenerateVersionMigration(),
                 GenerateConfigMetaMigration(specTypes),
                 GenerateTypeCatalogMigration(specTypes),
                 GenerateAdminUserMigration(),
@@ -69,6 +70,7 @@ namespace Tjdtjq5.SupaRun.Editor
             files.Add(GenerateSecretMigration());
             files.Add(GenerateEnvMigration());
             files.Add(GenerateSnapshotMigration());
+            files.Add(GenerateVersionMigration());
             files.Add(GenerateConfigMetaMigration(specTypes));
             files.Add(GenerateTypeCatalogMigration(specTypes));
             files.Add(GenerateTableMetaMigration(tableTypes));
@@ -1849,6 +1851,259 @@ BEGIN
 
     -- 되돌아올 자리를 화면에 알려 준다.
     RETURN v_backup;
+END $$;
+");
+        }
+
+        /// <summary>
+        /// config 버전·게시 (ADR-0010, #30~#34).
+        ///
+        /// 버전의 실체는 **미게시 스냅샷**이다 — 별도 저장소를 만들지 않고 suparun_snapshot 에
+        /// 버전 메타(is_version·content_hash·git_sha·게시 기록)를 얹는다. 게시는 기존 복원기
+        /// (suparun_snapshot_restore — 자동 백업 포함)를 재사용하고, 활성 버전 스탬프는
+        /// suparun_meta(public_read)에 둬 클라가 세션 협상에서 anon 으로 읽는다 (#35).
+        ///
+        /// 파일명은 `_suparun_snapshot.sql`(restore·tables 가 거기서 생김) 다음이어야 한다.
+        /// `snapshot` &lt; `version` 이라 이름순으로 자연히 뒤가 된다.
+        /// </summary>
+        static GeneratedFile GenerateVersionMigration()
+        {
+            return new GeneratedFile("Generated/Migrations/_suparun_version.sql",
+@"-- ══ config 버전·게시 (자동 생성, ADR-0010) ═══════════════════════════
+-- 업로드 = 미게시 버전 스냅샷 생성(라이브 무영향), 게시 = 복원기로 public 에 반영.
+-- 버전 ID 는 내용 해시(동일 내용 재업로드 = 같은 버전), 재현 좌표로 git SHA 를 같이 둔다.
+
+ALTER TABLE suparun_snapshot ADD COLUMN IF NOT EXISTS is_version   BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE suparun_snapshot ADD COLUMN IF NOT EXISTS content_hash TEXT;
+ALTER TABLE suparun_snapshot ADD COLUMN IF NOT EXISTS git_sha      TEXT;
+ALTER TABLE suparun_snapshot ADD COLUMN IF NOT EXISTS published_at BIGINT;
+ALTER TABLE suparun_snapshot ADD COLUMN IF NOT EXISTS published_by TEXT;
+
+-- ── 업로드 ──
+-- 페이로드는 세션 변수(suparun.upload_payload)로 받는다 — 인자로 받으면 SQL 크기가 두 배가 된다.
+-- 테이블 구조의 기준은 **대상(public)** 이다: jsonb_populate_recordset 이 public 타입으로 펼치므로
+-- 원본에만 있는 컬럼은 무시되고 대상에만 있는 컬럼은 기본값이 된다(승격기와 같은 원리).
+CREATE OR REPLACE FUNCTION suparun_version_upload(
+    p_label text, p_content_hash text, p_git_sha text DEFAULT NULL)
+RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_schema  text;
+    v_tbl     text;
+    v_n       int := 0;
+    v_payload jsonb;
+BEGIN
+    IF NOT is_admin() THEN
+        RAISE EXCEPTION '관리자만 업로드할 수 있습니다';
+    END IF;
+    IF p_content_hash IS NULL OR length(p_content_hash) < 12 THEN
+        RAISE EXCEPTION '내용 해시가 필요합니다';
+    END IF;
+
+    -- 동일 내용 재업로드 = 같은 버전. 새로 만들지 않고 기존 좌표를 돌려준다.
+    SELECT schema_name INTO v_schema
+      FROM suparun_snapshot WHERE is_version AND content_hash = p_content_hash;
+    IF v_schema IS NOT NULL THEN
+        RETURN v_schema;
+    END IF;
+
+    v_payload := current_setting('suparun.upload_payload', true)::jsonb;
+    IF v_payload IS NULL THEN
+        RAISE EXCEPTION '업로드 페이로드가 없습니다 (suparun.upload_payload)';
+    END IF;
+
+    v_schema := 'ver_' || left(p_content_hash, 12);
+    -- 표에는 없는데 스키마만 남은 고아(중단된 업로드)는 걷어내고 새로 만든다.
+    IF to_regnamespace(quote_ident(v_schema)) IS NOT NULL THEN
+        EXECUTE format('DROP SCHEMA %I CASCADE', v_schema);
+    END IF;
+    EXECUTE format('CREATE SCHEMA %I', v_schema);
+
+    FOR v_tbl IN SELECT * FROM suparun_snapshot_tables() LOOP
+        -- CREATE TABLE AS 는 유틸리티 문이라 USING 파라미터($1)를 못 받는다 — 생성과 주입을 나눈다.
+        EXECUTE format('CREATE TABLE %I.%I (LIKE public.%I)', v_schema, v_tbl, v_tbl);
+        EXECUTE format(
+            'INSERT INTO %I.%I SELECT * FROM jsonb_populate_recordset(null::public.%I, coalesce($1 -> %L, ''[]''::jsonb))',
+            v_schema, v_tbl, v_tbl, v_tbl) USING v_payload;
+        v_n := v_n + 1;
+    END LOOP;
+
+    IF v_n = 0 THEN
+        EXECUTE format('DROP SCHEMA %I CASCADE', v_schema);
+        RAISE EXCEPTION '담을 [SpecData] 테이블이 없습니다';
+    END IF;
+
+    INSERT INTO suparun_snapshot
+        (schema_name, label, comment, created_by, created_at, created_by_auto, pinned,
+         is_version, content_hash, git_sha)
+    VALUES
+        (v_schema, coalesce(nullif(trim(p_label), ''), left(p_content_hash, 12)), NULL,
+         coalesce(auth.uid()::text, 'server'), (extract(epoch from now()) * 1000)::bigint,
+         false, true, true, p_content_hash, nullif(trim(p_git_sha), ''));
+
+    INSERT INTO admin_audit_log
+        (id, admin_id, config_type, row_id, action, before_json, after_json, created_at)
+    VALUES
+        (gen_random_uuid()::text, coalesce(auth.uid()::text, 'server'),
+         'suparun_config_version', v_schema, 'upload', NULL, p_content_hash,
+         (extract(epoch from now()) * 1000)::bigint);
+
+    RETURN v_schema;
+END $$;
+
+-- ── 게시 ──
+-- 복원기 재사용: 자동 백업을 먼저 찍고 public 을 TRUNCATE+복사한다. 활성 스탬프는
+-- suparun_meta(public_read) — 클라 세션 협상(#35)이 anon 으로 읽는 유일한 창구다.
+-- 롤백(#34)도 이 함수다: 과거 버전을 다시 게시하면 된다. 이력은 감사 로그가 담는다.
+CREATE OR REPLACE FUNCTION suparun_version_publish(p_schema text) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_row    suparun_snapshot%ROWTYPE;
+    v_prev   text;
+    v_backup text;
+    v_now    bigint := (extract(epoch from now()) * 1000)::bigint;
+BEGIN
+    IF NOT is_admin() THEN
+        RAISE EXCEPTION '관리자만 게시할 수 있습니다';
+    END IF;
+    SELECT * INTO v_row FROM suparun_snapshot WHERE schema_name = p_schema AND is_version;
+    IF v_row.schema_name IS NULL THEN
+        RAISE EXCEPTION '없는 버전입니다: %', p_schema;
+    END IF;
+
+    v_prev := (SELECT value ->> 'content_hash' FROM suparun_meta WHERE key = 'active_config_version');
+
+    v_backup := suparun_snapshot_restore(p_schema);
+
+    INSERT INTO suparun_meta (key, value, updated_at)
+    VALUES ('active_config_version', jsonb_build_object(
+                'content_hash', v_row.content_hash,
+                'schema_name',  p_schema,
+                'git_sha',      v_row.git_sha,
+                'published_at', v_now,
+                'published_by', coalesce(auth.uid()::text, 'server')), now())
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at;
+
+    UPDATE suparun_snapshot SET published_at = v_now,
+           published_by = coalesce(auth.uid()::text, 'server')
+     WHERE schema_name = p_schema;
+
+    INSERT INTO admin_audit_log
+        (id, admin_id, config_type, row_id, action, before_json, after_json, created_at)
+    VALUES
+        (gen_random_uuid()::text, coalesce(auth.uid()::text, 'server'),
+         'suparun_config_version', p_schema, 'publish', v_prev, v_row.content_hash, v_now);
+
+    RETURN v_backup;
+END $$;
+
+-- ── 좌표 검증 ──
+-- diff 의 양쪽 좌표는 'public'(활성본) 또는 우리 표에 있는 스냅샷 스키마만 허용한다.
+-- SECURITY DEFINER 함수가 임의 스키마를 읽는 통로가 되면 안 된다.
+CREATE OR REPLACE FUNCTION suparun_version_coord(p text) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+BEGIN
+    IF p = 'public' THEN RETURN 'public'; END IF;
+    IF EXISTS (SELECT 1 FROM suparun_snapshot WHERE schema_name = p) THEN
+        RETURN quote_ident(p);
+    END IF;
+    RAISE EXCEPTION '알 수 없는 좌표입니다: %', p;
+END $$;
+
+-- ── diff: 테이블 단위 (#32) ──
+-- 행 짝은 id(PK — [SpecData] 관례)로 맞춘다. 열람이라 operator 면 된다.
+DROP FUNCTION IF EXISTS suparun_version_diff_tables(text, text);
+CREATE FUNCTION suparun_version_diff_tables(p_base text, p_new text)
+RETURNS TABLE(tbl_name text, added int, removed int, modified int,
+              base_missing boolean, new_missing boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_tbl  text;
+    v_b    text;
+    v_n    text;
+BEGIN
+    IF NOT suparun_is_operator() THEN
+        RAISE EXCEPTION '롤 보유자만 볼 수 있습니다';
+    END IF;
+    v_b := suparun_version_coord(p_base);
+    v_n := suparun_version_coord(p_new);
+
+    FOR v_tbl IN SELECT * FROM suparun_snapshot_tables() LOOP
+        tbl_name := v_tbl;
+        base_missing := to_regclass(v_b || '.' || quote_ident(v_tbl)) IS NULL;
+        new_missing  := to_regclass(v_n || '.' || quote_ident(v_tbl)) IS NULL;
+        added := 0; removed := 0; modified := 0;
+
+        IF base_missing AND new_missing THEN
+            NULL;
+        ELSIF base_missing THEN
+            EXECUTE format('SELECT count(*) FROM %s.%I', v_n, v_tbl) INTO added;
+        ELSIF new_missing THEN
+            EXECUTE format('SELECT count(*) FROM %s.%I', v_b, v_tbl) INTO removed;
+        ELSE
+            EXECUTE format(
+                'SELECT count(*) FILTER (WHERE b.id IS NULL),
+                        count(*) FILTER (WHERE n.id IS NULL),
+                        count(*) FILTER (WHERE b.id IS NOT NULL AND n.id IS NOT NULL)
+                   FROM %s.%I b FULL OUTER JOIN %s.%I n ON b.id = n.id
+                  WHERE to_jsonb(b) IS DISTINCT FROM to_jsonb(n)',
+                v_b, v_tbl, v_n, v_tbl)
+            INTO added, removed, modified;
+        END IF;
+
+        RETURN NEXT;
+    END LOOP;
+END $$;
+
+-- ── diff: 행 단위 (#33) ──
+DROP FUNCTION IF EXISTS suparun_version_diff_rows(text, text, text);
+CREATE FUNCTION suparun_version_diff_rows(p_base text, p_new text, p_table text)
+RETURNS TABLE(row_id text, status text, before_json text, after_json text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_b text;
+    v_n text;
+    v_bm boolean;
+    v_nm boolean;
+BEGIN
+    IF NOT suparun_is_operator() THEN
+        RAISE EXCEPTION '롤 보유자만 볼 수 있습니다';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM suparun_snapshot_tables() t WHERE t = p_table) THEN
+        RAISE EXCEPTION '대상 테이블이 아닙니다: %', p_table;
+    END IF;
+    v_b := suparun_version_coord(p_base);
+    v_n := suparun_version_coord(p_new);
+    v_bm := to_regclass(v_b || '.' || quote_ident(p_table)) IS NULL;
+    v_nm := to_regclass(v_n || '.' || quote_ident(p_table)) IS NULL;
+
+    IF v_bm AND v_nm THEN RETURN; END IF;
+
+    IF v_bm THEN
+        RETURN QUERY EXECUTE format(
+            'SELECT n.id::text, ''added''::text, NULL::text, to_jsonb(n)::text FROM %s.%I n ORDER BY n.id',
+            v_n, p_table);
+    ELSIF v_nm THEN
+        RETURN QUERY EXECUTE format(
+            'SELECT b.id::text, ''removed''::text, to_jsonb(b)::text, NULL::text FROM %s.%I b ORDER BY b.id',
+            v_b, p_table);
+    ELSE
+        RETURN QUERY EXECUTE format(
+            'SELECT coalesce(b.id::text, n.id::text),
+                    CASE WHEN b.id IS NULL THEN ''added''
+                         WHEN n.id IS NULL THEN ''removed''
+                         ELSE ''modified'' END,
+                    to_jsonb(b)::text, to_jsonb(n)::text
+               FROM %s.%I b FULL OUTER JOIN %s.%I n ON b.id = n.id
+              WHERE to_jsonb(b) IS DISTINCT FROM to_jsonb(n)
+              ORDER BY 1',
+            v_b, p_table, v_n, p_table);
+    END IF;
 END $$;
 ");
         }

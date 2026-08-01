@@ -9,6 +9,8 @@ import { LogsPage } from '../logs/LogsPage'
 import { OpsPage } from '../ops/OpsPage'
 import { RolesPage } from '../roles/RolesPage'
 import { SetupProjectPage } from '../setup/SetupProjectPage'
+import { ComparePage } from '../versions/ComparePage'
+import { VersionsPage } from '../versions/VersionsPage'
 import { LoadingBlock } from '../../shared/Spinner'
 import { SecretsPage } from '../secrets/SecretsPage'
 import { SnapshotPage } from '../snapshot/SnapshotPage'
@@ -216,6 +218,18 @@ export function Shell({
                     onNavigate={navigate}
                     ready={data.ready}
                   />
+                  {/* 버전·게시 (#30, Metaplay Game Configs 동형). 열람은 전 롤 — 게시 버튼만 canWrite. */}
+                  <a
+                    className={`tree-item${route.kind === 'versions' || route.kind === 'compare' ? ' active' : ''}`}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate({ kind: 'versions' })
+                    }}
+                  >
+                    <span className="branch">└─</span>
+                    <span className="label">game_configs</span>
+                  </a>
                 </div>
 
                 <div className="tree-section">[LIVEOPS]</div>
@@ -461,6 +475,10 @@ function describeRoute(
       return shell('Manage Operations', 'OPS.SH', '~/ops')
     case 'roles':
       return shell('Manage User Roles', 'USER_ROLES.SH', '~/user_roles')
+    case 'versions':
+      return shell('Manage Game Configs', 'GAME_CONFIGS.SH', '~/game_configs')
+    case 'compare':
+      return shell('Compare Game Configs', 'GAME_CONFIGS.SH', '~/game_configs/compare')
     case 'home':
       return shell('Overview', 'DASHBOARD.SH', '~/admin')
   }
@@ -522,6 +540,10 @@ function ScreenContent({
       return <OpsPage />
     case 'roles':
       return <RolesPage />
+    case 'versions':
+      return <VersionsPage />
+    case 'compare':
+      return <ComparePage base={route.base} next={route.next} />
     case 'home': {
       // 타입 메타가 오기 전에 "선택하세요"를 띄우면 사이드바가 비어 있는 이유를 오해하게 된다.
       if (!data.ready) return <LoadingBlock label="Config 목록 불러오는 중" />

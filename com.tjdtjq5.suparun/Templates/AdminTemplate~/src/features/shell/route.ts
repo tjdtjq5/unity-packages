@@ -27,6 +27,10 @@ export type Route =
   | { kind: 'ops' }
   // 롤 부여/회수 (#24). 명단(admin_user)이 환경(프로젝트)별 표라 환경 안이다.
   | { kind: 'roles' }
+  // config 버전 목록·게시 (#30·#31·#34). 버전이 이 환경 안의 스냅샷이라 환경 안이다.
+  | { kind: 'versions' }
+  // 버전 비교 (#32·#33). base/next 는 메모리로만 넘긴다 — 해시 좌표는 새로고침에 안 남아도 된다.
+  | { kind: 'compare'; base?: string; next?: string }
   // 설정도 환경 안이다. 이름·로그인·배포·위험 영역 전부 **이 프로젝트**의 값이라,
   // 앱 레벨에 두면 "환경을 고르기 전인데 어느 환경을 고치는가" 가 어긋난다(실제로 어긋나 있었다).
   | { kind: 'envSettings' }
@@ -71,6 +75,10 @@ export function routeToHash(r: Route): string | null {
       return 'ops'
     case 'roles':
       return 'user_roles'
+    case 'versions':
+      return 'game_configs'
+    case 'compare':
+      return 'game_configs/compare'
     // home 은 해시를 남긴다 — 안 그러면 빈 해시가 되어 다시 환경 선택으로 돌아간다.
     case 'home':
       return 'home'
@@ -105,6 +113,8 @@ export function hashToRoute(
   if (h === 'logs') return { kind: 'logs' }
   if (h === 'ops') return { kind: 'ops' }
   if (h === 'user_roles') return { kind: 'roles' }
+  if (h === 'game_configs/compare') return { kind: 'compare' }
+  if (h === 'game_configs') return { kind: 'versions' }
   if (h === 'home') return { kind: 'home' }
 
   // 해시 없이 들어오면 **환경 선택**부터다. 어느 환경을 보고 있는지 모른 채

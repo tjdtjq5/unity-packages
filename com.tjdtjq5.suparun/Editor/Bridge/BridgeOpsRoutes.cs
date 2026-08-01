@@ -229,12 +229,14 @@ namespace Tjdtjq5.SupaRun.Editor
                     return;
                 }
 
-                case "/ops/promote-data" when m == "POST":
+                // 데이터는 이제 즉시 주입되지 않는다 — 대상에 **미게시 버전**을 만들 뿐이고
+                // (ADR-0010, #30), 라이브 반영은 대상 어드민의 게시(publish)가 따로 한다.
+                case "/ops/upload-version" when m == "POST":
                 {
                     var target = ResolveTarget(s, req, res);
                     if (target == null) return;
                     if (_schemaRunning) { BridgeIo.Fail(res, 409, "이미 진행 중입니다."); return; }
-                    RunPromote(s.Current, target).Forget();
+                    RunUpload(s.Current, target).Forget();
                     BridgeIo.Write(res, 200, new JObject { ["started"] = true });
                     return;
                 }
@@ -336,17 +338,18 @@ namespace Tjdtjq5.SupaRun.Editor
             finally { _schemaRunning = false; }
         }
 
-        static async UniTaskVoid RunPromote(
+        static async UniTaskVoid RunUpload(
             SupaRunSettings.EnvironmentData from, SupaRunSettings.EnvironmentData to)
         {
             _schemaRunning = true;
             _schemaError = null;
-            _schemaLabel = $"'{from.name}' → '{to.name}' 데이터 승격 중";
+            _schemaLabel = $"'{from.name}' → '{to.name}' 버전 업로드 중";
             try
             {
-                var ok = await EnvironmentPromoter.PromoteAsync(from, to);
-                if (ok) _schemaLabel = $"'{to.name}' 승격 완료";
-                else { _schemaError = "승격에 실패했습니다. Console 을 확인하세요."; _schemaLabel = null; }
+                var schema = await EnvironmentPromoter.UploadVersionAsync(from, to);
+                if (schema != null)
+                    _schemaLabel = $"'{to.name}' 에 미게시 버전 생성 완료 ({schema}) — 게시는 그쪽 어드민에서";
+                else { _schemaError = "업로드에 실패했습니다. Console 을 확인하세요."; _schemaLabel = null; }
             }
             catch (Exception ex)
             {

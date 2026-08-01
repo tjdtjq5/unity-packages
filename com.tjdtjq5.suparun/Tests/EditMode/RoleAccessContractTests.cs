@@ -188,6 +188,18 @@ namespace Tjdtjq5.SupaRun.Tests
             Assert.AreEqual("[]", body, $"viewer 의 config({tbl}) UPDATE 는 0건이어야 한다 (RLS 필터)");
         }
 
+        [Test]
+        public async Task Viewer_Cannot_Publish()
+        {
+            var c = await Init();
+            // 게시 RPC(#31)는 is_admin(=game-admin) 가드다 — viewer 는 예외로 거부된다
+            // (PostgREST 는 RAISE EXCEPTION 을 400 으로 낸다).
+            var r = await Send(HttpMethod.Post, $"{c.Url}/rest/v1/rpc/suparun_version_publish",
+                c.Anon, c.ViewerToken, "{\"p_schema\":\"ver_contract_none\"}");
+            Assert.AreEqual(400, r.status, $"viewer 의 게시는 거부돼야 한다 — {r.body}");
+            StringAssert.Contains("관리자", r.body, "거부 사유가 권한이어야 한다(없는 버전 검사보다 앞)");
+        }
+
         // ── game-admin ──
 
         [Test]

@@ -112,7 +112,8 @@ PAT 대행으로 무엇이든 할 수 있다. 그래서 개별 라우트에서 �
 | `POST /ops/deploy`, `POST /ops/deploy-reset` | 배포 시작(**스키마 선반영 포함** — 실패 시 중단) / 결과 닫기 |
 | `POST /ops/env-select`·`env-add`·`env-remove` | 환경 슬롯 (빌드 환경 라우트는 없다 — 빌드 = 편집 환경) |
 | `POST /ops/env-rename` | **편집 환경의** 이름 변경 — 슬롯·해시파일·DB(`suparun_env.name`) 동시 갱신 |
-| `POST /ops/promote-schema`·`promote-data` | 승격 |
+| `POST /ops/promote-schema` | 대상에 스키마 반영 |
+| `POST /ops/upload-version` | dev 데이터를 대상의 **미게시 버전**으로 (ADR-0010, #30 — 라이브 무영향. 게시는 대상 어드민의 Game Configs) |
 
 > 수동 스키마 반영·요약 라우트는 없다 — 반영 경로는 둘뿐이다: 자동을 켠 환경은 컴파일이,
 > 끈 환경은 배포가(선반영) 민다. prod 는 끄는 것이 규약 — 확인창 대신 구조가 막는다.

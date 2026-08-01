@@ -41,6 +41,12 @@
 - 어드민 설정에 **게임 로그인**(`platform_auth`) 토글. SettingsView 에만 있던 UI다
 - `POST /auth/claim-admin` — 로그인 신원을 GoTrue 에 되물어 확정하고 `admin_user` 등록 +
   **game-admin 롤 부여**(`SupaRunAdminClaim`). 빈 표의 RLS 매듭을 PAT 가 끊는 자리다
+- **config publish·릴리스 모델** (#30~#35, ADR-0010) — 업로드=미게시 버전 스냅샷(내용 해시
+  = 버전 ID, git SHA 동반, `suparun_version_upload`), 게시=복원기 재사용+`active_config_version`
+  스탬프(`suparun_version_publish` — 롤백은 재게시), 버전 diff RPC 2종(테이블/행 단위).
+  어드민 Game Configs·Compare 화면. **직접 주입 승격(`/ops/promote-data`) 제거** →
+  `/ops/upload-version`(라이브 무영향). 클라: [SpecData] 세션 캐시로 세션 중 버전 고정 +
+  세션 협상(`ConfigSessionInfo` — 활성 버전 스탬프, logic version 게이트, `RefreshConfigSessionAsync`)
 - **감사 화면 트랙** (#25~#28, Metaplay Audit Logs 클론) — 목록(타입·행위자·기간 서버
   필터 + Load More + 행위자 이메일 표시), 상세(`#audit_log/<id>` 직접 접근, before→after
   터미널 diff), 열람 자기기록(`suparun_audit_viewed` RPC — action='viewed' 만 여는 좁은 문,

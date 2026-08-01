@@ -90,7 +90,7 @@ export function OpsPage() {
           <Row
             name="대상 환경"
             state="ok"
-            hint={`[${st.editorEnv}] 의 [SpecData] 를 다른 환경으로 올립니다. 적용 직전 대상 스냅샷이 자동 저장됩니다.`}
+            hint={`[${st.editorEnv}] 의 [SpecData] 를 다른 환경의 미게시 버전으로 올립니다. 라이브에는 영향이 없습니다 (ADR-0010).`}
           >
             <select
               className="form-select form-select-sm"
@@ -105,7 +105,7 @@ export function OpsPage() {
             </select>
           </Row>
 
-          <Row name="순서" state="ok" hint="스키마가 먼저입니다 — 대상에 표가 없으면 데이터를 넣을 자리가 없습니다">
+          <Row name="순서" state="ok" hint="스키마가 먼저입니다 — 대상에 표가 없으면 버전을 담을 자리가 없습니다">
             <button
               className="btn btn-sm"
               disabled={busy !== null || st.schema.running || !targetName}
@@ -121,22 +121,14 @@ export function OpsPage() {
             >
               1. 스키마 반영
             </button>
+            {/* 확인창이 없다 — 업로드는 라이브에 아무 영향이 없어서 물을 것이 없다.
+                위험한 일(게시)은 대상 환경의 Game Configs 화면이 담당한다. */}
             <button
               className="btn btn-primary btn-sm"
               disabled={busy !== null || st.schema.running || !targetName}
-              onClick={() => {
-                if (
-                  !window.confirm(
-                    `'${st.editorEnv}' 의 [SpecData] 전체를 '${targetName}' 에 덮어씁니다.\n\n` +
-                      `'${targetName}' 의 현재 데이터는 지워지지만 직전 스냅샷이 자동 저장되어 되돌릴 수 있습니다.\n` +
-                      '플레이어 데이터([UserData])는 건드리지 않습니다.',
-                  )
-                )
-                  return
-                void act('pdata', () => ops.promoteData(targetName))
-              }}
+              onClick={() => void act('pdata', () => ops.uploadVersion(targetName))}
             >
-              2. 데이터 승격
+              2. 버전 업로드 (미게시)
             </button>
           </Row>
         </section>

@@ -42,7 +42,8 @@ AdminTemplate~/
 │       ├── secrets/    이 환경의 비밀 — SecretsPage (값은 절대 표시하지 않는다)
 │       ├── roles/      User Roles — 롤 부여/회수 (#24). game-admin 전용
 │       ├── audit/      감사 — 목록(필터 3종·Load More)/상세(diff)/공용 카드/열람 자기기록
-│       │               AuditPage / AuditDetailPage / AuditCard / useAuditLogs / actors / viewed / format
+│       │               AuditPage / AuditDetailPage / AuditCard / DiffView / useAuditLogs / actors / viewed / format
+│       ├── versions/   config 버전·게시 (#30~#34, ADR-0010) — VersionsPage / ComparePage
 │       └── …           auth / table / config
 │
 ├── node_modules/       (gitignore)
@@ -153,6 +154,16 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다. �
   목록에서 viewed 는 무채색 뱃지 — 색 자체가 "데이터가 바뀌었는가" 를 말한다
 - **공용 카드**(#28, `AuditCard`): 접힌 줄 = 최신 1건 요약, 펼치면 N건 + 전체 보기(타입
   필터 프리셋). 첫 적용은 ConfigPage 상단 — 표가 비어 있을수록 "누가 지웠나" 가 필요하다
+
+### config 버전·게시 (#30~#34 — Metaplay Game Configs 클론: 60/62/63-*.png, ADR-0010)
+
+- **버전 = 이 환경 안의 미게시 스냅샷**(suparun_snapshot.is_version). 업로드는 dev 어드민의
+  ops(브리지)가 하고, 이 화면(`#game_configs`)은 검토·게시·롤백을 한다
+- **게시** = 복원기 재사용(자동 백업 포함) + `suparun_meta.active_config_version` 스탬프
+  (public_read — 클라 협상 창구). 롤백 = 과거 버전 재게시. 게시 이력은 감사 카드가 말한다
+- **비교**(`#game_configs/compare`): Baseline/New 선택+스왑, Added/Removed/Modified 필터,
+  테이블 배지(#32) → 펼치면 행 단위 diff(#33 — 감사 DiffView 재사용). 좌표에 활성본(public) 포함
+- 열람은 전 롤, 게시는 RPC 의 is_admin(=game-admin)이 막는다 — UI 는 canWrite 겹
 
 ### 서버 로그 (`[SYSTEM] > server_log`)
 

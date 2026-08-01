@@ -1468,6 +1468,19 @@ tbody tr { animation: rowStagger 0.2s linear both; }
   border-radius: 4px; padding: 10px 12px;
   max-height: 420px; overflow: auto;
 }
+/* 버전 비교 (#32·#33) — 테이블 섹션은 접이식, 행 diff 는 감사 diff 문법을 그대로 쓴다 */
+.compare-table {
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: 8px 12px; margin: 0 4px 8px;
+}
+.compare-table > summary { cursor: pointer; list-style: none; user-select: none; }
+.compare-table > summary::before { content: '▸ '; color: var(--dim); }
+.compare-table[open] > summary::before { content: '▾ '; }
+.compare-rows { margin-top: 8px; }
+.compare-row {
+  padding: 8px 0; border-top: 1px dashed var(--line);
+}
+
 /* 표 상단에 접혀 있는 미니 감사 카드 — 접힌 줄이 곧 최신 1건 요약이다 */
 .audit-mini > summary {
   cursor: pointer; font-family: var(--mono); font-size: 11px;
