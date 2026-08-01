@@ -117,7 +117,9 @@ namespace Tjdtjq5.SupaRun.Tests
             var c = await Init();
             var r = await Send(HttpMethod.Post, $"{c.Url}/rest/v1/admin_user_role", c.Anon, null,
                 "{\"user_id\":\"intruder\",\"role\":\"game-admin\",\"granted_at\":0}");
-            Assert.AreEqual(403, r.status, "anon 의 롤 self-grant 는 RLS 가 거부해야 한다");
+            // PostgREST 는 권한 거부(42501)를 **anon 이면 401** 로 낸다("로그인하면 될 수도
+            // 있다"는 힌트 사양) — 로그인 사용자면 403 이다. 거부라는 계약은 동일하다.
+            Assert.AreEqual(401, r.status, "anon 의 롤 self-grant 는 거부돼야 한다");
         }
 
         // ── game-viewer ──
@@ -193,18 +195,28 @@ namespace Tjdtjq5.SupaRun.Tests
         {
             var c = await Init();
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var rowUrl = $"{c.Url}/rest/v1/admin_user_role?user_id=eq.{c.ViewerUid}&role=eq.cs-agent";
 
             // 이전 실행이 남긴 부여가 있으면 걷어낸다 — 멱등.
-            await Send(HttpMethod.Delete,
-                $"{c.Url}/rest/v1/admin_user_role?user_id=eq.{c.ViewerUid}&role=eq.cs-agent", c.Anon, c.AdminToken);
+            await Send(HttpMethod.Delete, rowUrl, c.Anon, c.AdminToken);
 
+            // 상태코드가 아니라 **결과 상태**를 계약으로 단언한다 — Mono HttpClient 는 재사용
+            // 커넥션이 끊기면 POST 를 재전송할 수 있어서(1차 성공 + 재전송 23505) 409 가
+            // 정상 경로에서도 온다(실측). 어느 쪽이든 "쓰기가 허용됐다" 는 사실은 같다 —
+            // 정책이 막았다면 409(중복)까지 가지도 못하고 403 이다.
             var grant = await Send(HttpMethod.Post, $"{c.Url}/rest/v1/admin_user_role", c.Anon, c.AdminToken,
                 $"{{\"user_id\":\"{c.ViewerUid}\",\"role\":\"cs-agent\",\"granted_at\":{now},\"granted_by\":\"contract-test\"}}");
-            Assert.AreEqual(201, grant.status, "game-admin 의 롤 부여는 통과해야 한다");
+            Assert.IsTrue(grant.status == 201 || grant.status == 409,
+                $"game-admin 의 롤 부여는 통과해야 한다 — HTTP {grant.status}: {grant.body}");
 
-            var revoke = await Send(HttpMethod.Delete,
-                $"{c.Url}/rest/v1/admin_user_role?user_id=eq.{c.ViewerUid}&role=eq.cs-agent", c.Anon, c.AdminToken);
+            var after = await Send(HttpMethod.Get, rowUrl + "&select=role", c.Anon, c.AdminToken);
+            StringAssert.Contains("cs-agent", after.body, "부여 후 롤 행이 존재해야 한다");
+
+            var revoke = await Send(HttpMethod.Delete, rowUrl, c.Anon, c.AdminToken);
             Assert.AreEqual(204, revoke.status, "game-admin 의 롤 회수는 통과해야 한다");
+
+            var gone = await Send(HttpMethod.Get, rowUrl + "&select=role", c.Anon, c.AdminToken);
+            Assert.AreEqual("[]", gone.body.Trim(), "회수 후 롤 행이 없어야 한다");
         }
 
         // ── HTTP 유틸 (패키지 HTTP 스택에 의존하지 않는다 — 계약은 바깥에서 두드려야 계약이다) ──

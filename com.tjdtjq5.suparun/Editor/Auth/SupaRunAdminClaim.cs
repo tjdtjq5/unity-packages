@@ -39,6 +39,11 @@ namespace Tjdtjq5.SupaRun.Editor
             // ⚠ admin_user.user_id 유니크는 부분 인덱스(WHERE user_id IS NOT NULL)라 ON CONFLICT
             // 를 못 쓴다 — UPDATE 후 없으면 INSERT 로 멱등을 만든다. 롤은 매핑 테이블이고
             // 그쪽은 일반 복합 PK 라 ON CONFLICT 가 된다 (#24).
+            //
+            // game-admin 은 **무롤 계정에만** 부여한다. 이 함수의 목적은 빈 표(첫 관리자)와
+            // 새 로컬 조작자의 매듭 끊기이지, 이미 롤이 정해진 계정(예: 일부러 viewer 로 지정)을
+            // 로컬 로그인마다 승격시키는 것이 아니다 — 부여/회수의 진실은 매핑 테이블이다.
+            // PAT 전권자는 어차피 User Roles 에서 언제든 되돌릴 수 있다.
             var e = Quote(email);
             var u = Quote(userId);
             var r = await SupabaseManagementApi.RunQuery(pid, pat,
@@ -49,8 +54,8 @@ namespace Tjdtjq5.SupaRun.Editor
                 "(extract(epoch from now()) * 1000)::bigint, 'local-bridge' " +
                 $"WHERE NOT EXISTS (SELECT 1 FROM admin_user WHERE user_id = {u}); " +
                 "INSERT INTO admin_user_role (user_id, role, granted_at, granted_by) " +
-                $"VALUES ({u}, 'game-admin', (extract(epoch from now()) * 1000)::bigint, 'local-bridge') " +
-                "ON CONFLICT (user_id, role) DO NOTHING;");
+                $"SELECT {u}, 'game-admin', (extract(epoch from now()) * 1000)::bigint, 'local-bridge' " +
+                $"WHERE NOT EXISTS (SELECT 1 FROM admin_user_role WHERE user_id = {u});");
             if (!r.Ok) return r.CarryFailure<(string, string)>();
 
             return SupabaseResult<(string, string)>.Success((userId, email));
