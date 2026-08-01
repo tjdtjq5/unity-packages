@@ -284,29 +284,32 @@ export function Shell({ email, onLogout }: { email: string; onLogout?: () => voi
                   </a>
                 </div>
 
-                <div className="tree-list" style={{ marginTop: 8 }}>
-                  {onLogout ? (
-                    <a
-                      className="tree-item"
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        onLogout()
-                      }}
-                    >
-                      <span className="branch">└─</span>
-                      <span className="label">log out</span>
-                    </a>
-                  ) : (
-                    // 프리뷰 — 끊을 세션이 없어 자리만 유지한다.
-                    <span className="tree-item muted">
-                      <span className="branch">└─</span>
-                      <span className="label">log out</span>
-                    </span>
-                  )}
-                </div>
               </>
             )}
+
+            {/* 로그아웃은 양쪽 레벨 공통이다 — 로그인 직후 착지가 앱 레벨(SELECT ENV)이라
+                환경 안에만 두면 나갈 방법이 없다 (실기에서 확인). */}
+            <div className="tree-list" style={{ marginTop: 8 }}>
+              {onLogout ? (
+                <a
+                  className="tree-item"
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    onLogout()
+                  }}
+                >
+                  <span className="branch">└─</span>
+                  <span className="label">log out</span>
+                </a>
+              ) : (
+                // 프리뷰 — 끊을 세션이 없어 자리만 유지한다.
+                <span className="tree-item muted">
+                  <span className="branch">└─</span>
+                  <span className="label">log out</span>
+                </span>
+              )}
+            </div>
 
             <div className="sidebar-status">
               <div className="row">
