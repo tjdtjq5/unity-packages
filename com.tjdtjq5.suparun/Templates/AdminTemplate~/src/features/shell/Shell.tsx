@@ -29,8 +29,9 @@ const CONTENT_ID = 'table-container'
  * 바닐라의 `#admin-page` HTML 과 showAdmin·renderSidebar·showToolbar·selectType·
  * show* 진입점들을 통째로 대체한다.
  *
- * email 은 기계 계정 신원(사람.머신@suparun.local)이다 — 로그아웃 버튼은 없다.
- * 세션은 브리지가 만들어 주입하므로 사람이 끊을 것도, 다시 맺을 것도 없다.
+ * email 은 기계 계정 신원(사람.머신@suparun.local)이다. 세션은 브리지가 만들어 주입한다.
+ * 사이드바는 Metaplay IA(ADR-0008)를 따라 Game / LiveOps / Technical 3그룹이고,
+ * 하단의 log out 은 자리만 있다 — 사람 로그인(ADR-0009, #23)이 들어오면 활성화된다.
  */
 export function Shell({ email }: { email: string }) {
   const data = useAdminData()
@@ -178,6 +179,9 @@ export function Shell({ email }: { email: string }) {
                 <div className="sidebar-prompt">
                   ~/admin <span className="dim">$ ls -la</span>
                 </div>
+                {/* Metaplay IA(ADR-0008) — Game / LiveOps / Technical 3그룹.
+                    Game 안의 세부 그룹([PERKS] 등)과 TABLES 는 Sidebar 가 그린다. */}
+                <div className="tree-section">[GAME]</div>
                 <div className="tree-list">
                   <Sidebar
                     types={data.types}
@@ -188,7 +192,17 @@ export function Shell({ email }: { email: string }) {
                   />
                 </div>
 
-                <div className="tree-section">[SYSTEM]</div>
+                <div className="tree-section">[LIVEOPS]</div>
+                <div className="tree-list">
+                  {/* 메일·이벤트·실험·세그먼트가 올 자리(#46). 숨기지 않고 자리를 보여준다 —
+                      "미설정 기능도 메뉴에 노출" (Metaplay 투어 §3-6, PRD 스토리 52). */}
+                  <span className="tree-item muted" title="라이브옵스 기능은 아직 준비 중입니다">
+                    <span className="branch">└─</span>
+                    <span className="label">not enabled</span>
+                  </span>
+                </div>
+
+                <div className="tree-section">[TECHNICAL]</div>
                 <div className="tree-list">
                   <a
                     className={`tree-item${route.kind === 'audit' ? ' active' : ''}`}
@@ -260,6 +274,14 @@ export function Shell({ email }: { email: string }) {
                     <span className="label">settings</span>
                   </a>
                 </div>
+
+                <div className="tree-list" style={{ marginTop: 8 }}>
+                  {/* 자리만 있다 — 사람 로그인(ADR-0009, #23)이 들어오면 활성화된다. */}
+                  <span className="tree-item muted" title="사람 로그인 도입(#23) 후 활성화">
+                    <span className="branch">└─</span>
+                    <span className="label">log out</span>
+                  </span>
+                </div>
               </>
             )}
 
@@ -272,7 +294,7 @@ export function Shell({ email }: { email: string }) {
               </div>
               {/* env 행은 없다 — "dev" 로 하드코딩돼 prod 에서도 dev 라고 말하던 자리다.
                   지금은 타이틀바의 환경 전환기가 진실을 보여준다.
-                  LOGOUT 버튼도 없다 — 기계 계정 세션은 사람이 맺은 것이 아니라 끊을 것도 없다. */}
+                  LOGOUT 은 사이드바 하단에 자리만 있다 — 사람 로그인(#23) 전까지 비활성. */}
               <div className="row">
                 <span className="lbl">ver </span> <span>0.7.0</span>
               </div>

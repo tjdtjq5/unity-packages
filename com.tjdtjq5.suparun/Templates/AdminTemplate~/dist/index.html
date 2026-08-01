@@ -257,6 +257,8 @@ code, kbd, pre, samp, .text-mono, .font-mono { font-family: var(--mono); font-si
 }
 .tree-item:hover { color: var(--green); background: var(--green-soft); }
 .tree-item.active { color: var(--green); }
+/* 자리만 있는 항목 (LiveOps not enabled, log out) — 클릭 불가, 흐리게 */
+.tree-item.muted { opacity: 0.45; cursor: default; pointer-events: none; }
 .tree-item.active::before { content: '▶ '; color: var(--green); flex-shrink: 0; }
 .tree-item .branch { color: var(--very-dim); user-select: none; flex-shrink: 0; }
 .tree-item .num {
