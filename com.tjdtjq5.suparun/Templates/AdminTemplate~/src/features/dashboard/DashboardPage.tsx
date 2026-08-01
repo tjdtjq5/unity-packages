@@ -115,9 +115,8 @@ export function DashboardPage() {
         ) : (
           <table className="table table-sm table-vcenter">
             <tbody>
-              {/* AuditLog 에는 id 가 없다 — AuditPage 와 같이 시각+인덱스로 키를 만든다 */}
-              {audit.map((a, i) => (
-                <tr key={`${a.created_at}_${i}`}>
+              {audit.map((a) => (
+                <tr key={a.id}>
                   <td style={{ width: 150 }} className="text-muted">
                     {new Date(a.created_at).toLocaleString('ko-KR')}
                   </td>

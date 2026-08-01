@@ -18,12 +18,16 @@ import { ACTION_BADGE, ACTION_ICON, eventLabel, fmtDateTime, timeAgo } from './f
 export function AuditDetailPage({ id }: { id: string }) {
   const { types, tableTypes, navigate } = useAdmin()
   const { emailOf } = useActors()
-  const [log, setLog] = useState<AuditLog | null | undefined>(undefined)
+  // 프리뷰는 조회 자체를 안 하므로 곧장 '없음' 으로 — 로딩에 갇히지 않게 한다.
+  const [log, setLog] = useState<AuditLog | null | undefined>(isPreview() ? null : undefined)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (isPreview() || !sb) return
     let alive = true
+    // 해시로 id 만 바뀌는 재진입 — 이전 이벤트의 잔상을 지우고 로딩부터 다시.
+    setLog(undefined)
+    setError(null)
     void sb
       .from('admin_audit_log')
       .select<AuditLog[]>('*')

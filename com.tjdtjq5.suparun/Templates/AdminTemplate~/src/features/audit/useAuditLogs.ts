@@ -16,6 +16,16 @@ export interface AuditFilter {
 export const EMPTY_FILTER: AuditFilter = { configType: '', adminId: '', from: '', to: '' }
 
 /**
+ * 'YYYY-MM-DD' → **로컬** 자정 epoch ms. `Date.parse` 는 날짜만 있으면 UTC 자정으로
+ * 해석해서(KST 기준 09:00) 당일 첫 9시간이 필터에서 빠진다 — 표시는 로컬인데 필터만
+ * UTC 면 화면과 결과가 서로 다른 말을 하게 된다.
+ */
+function localDayStart(ymd: string): number {
+  const [y, m, d] = ymd.split('-').map(Number)
+  return new Date(y, m - 1, d).getTime()
+}
+
+/**
  * 감사 이벤트 목록 — 필터는 서버(PostgREST)가 하고, 페이지는 [더 불러오기]로 붙인다
  * (#25·#26, Metaplay Load More 동형). 필터가 바뀌면 처음부터 다시 쌓는다.
  *
@@ -41,9 +51,9 @@ export function useAuditLogs(filter: AuditFilter) {
       let q = sb.from('admin_audit_log').select<AuditLog[]>('*')
       if (filter.configType) q = q.eq('config_type', filter.configType)
       if (filter.adminId) q = q.eq('admin_id', filter.adminId)
-      if (filter.from) q = q.gte('created_at', Date.parse(filter.from))
+      if (filter.from) q = q.gte('created_at', localDayStart(filter.from))
       // to 는 그 날의 끝까지 — 같은 날짜를 넣으면 하루가 통째로 잡혀야 한다.
-      if (filter.to) q = q.lte('created_at', Date.parse(filter.to) + 86_399_999)
+      if (filter.to) q = q.lte('created_at', localDayStart(filter.to) + 86_399_999)
 
       const r = await q.order('created_at', { ascending: false }).range(offset, offset + PAGE - 1)
       if (r.error) throw new Error(r.error.message)

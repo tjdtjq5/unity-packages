@@ -502,7 +502,8 @@ function ScreenContent({
       return t ? <TablePage key={t.tableName} tableType={t} /> : null
     }
     case 'audit':
-      return <AuditPage presetType={route.presetType} />
+      // key — 프리셋이 바뀌면(카드 "전체 보기" ↔ 사이드바 직접 진입) 필터 상태를 새로 시작한다.
+      return <AuditPage key={route.presetType ?? ''} presetType={route.presetType} />
     case 'auditDetail':
       return <AuditDetailPage id={route.id} />
     case 'snapshots':
