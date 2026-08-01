@@ -97,6 +97,12 @@ export function Shell({ email }: { email: string }) {
   )
 
   const view = describeRoute(route, data.types, data.tableTypes)
+
+  // 브라우저 탭 타이틀도 같은 컨벤션을 따른다 (#21) — 탭이 여럿일 때 어느 화면인지 보인다.
+  useEffect(() => {
+    document.title = `${view.title} — SupaRun Admin`
+  }, [view.title])
+
   const appLevel = isAppLevel(route)
   // 이 어드민이 붙은 환경 이름. 환경 안에 있을 때 사이드바 맨 위에 띄운다.
   const envLabel = data.envName || '환경'
@@ -354,11 +360,13 @@ function describeRoute(
     arg: '--list-all',
     supabaseTable: null,
   })
+  // View/Manage 타이틀 컨벤션 (#21, Metaplay 동형) — 읽기 화면은 View, 조작 화면은 Manage.
+  // 지금 위험한 화면(조작 가능)에 있는지 타이틀만 봐도 알게 한다.
   switch (route.kind) {
     case 'config': {
       const t = types.find((x) => x.tableName === route.tableName)
       return {
-        title: t?.name ?? route.tableName,
+        title: `Manage ${t?.name ?? route.tableName}`,
         context: `${route.tableName.toUpperCase()}.SH`,
         path: `~/configs/${route.tableName}`,
         arg: '--list-all',
@@ -366,9 +374,10 @@ function describeRoute(
       }
     }
     case 'table': {
+      // [UserData] 테이블은 읽기 전용 조회다 — 쓰기는 서버([Service])만 한다 (ADR-0004 결정 20)
       const t = tableTypes.find((x) => x.tableName === route.tableName)
       return {
-        title: t?.name ?? route.tableName,
+        title: `View ${t?.name ?? route.tableName}`,
         context: `${route.tableName.toUpperCase()}.SH`,
         path: `~/tables/${route.tableName}`,
         arg: '--list-all',
@@ -376,23 +385,23 @@ function describeRoute(
       }
     }
     case 'audit':
-      return shell('변경 이력', 'AUDIT_LOG.SH', '~/audit_log')
+      return shell('View Audit Logs', 'AUDIT_LOG.SH', '~/audit_log')
     case 'snapshots':
-      return shell('스냅샷', 'SNAPSHOTS.SH', '~/snapshots')
+      return shell('Manage Snapshots', 'SNAPSHOTS.SH', '~/snapshots')
     case 'environments':
-      return shell('환경', 'SELECT.SH', '~/environments')
+      return shell('Manage Environments', 'SELECT.SH', '~/environments')
     case 'setup':
-      return shell('셋업', 'SETUP.SH', `~/setup/${route.projectRef}`)
+      return shell('Manage Project Setup', 'SETUP.SH', `~/setup/${route.projectRef}`)
     case 'envSettings':
-      return shell('설정', 'SETTINGS.SH', '~/settings')
+      return shell('Manage Settings', 'SETTINGS.SH', '~/settings')
     case 'secrets':
-      return shell('공유 비밀', 'SECRETS.SH', '~/secrets')
+      return shell('Manage Secrets', 'SECRETS.SH', '~/secrets')
     case 'logs':
-      return shell('서버 로그', 'SERVER_LOG.SH', '~/server_log')
+      return shell('View Server Logs', 'SERVER_LOG.SH', '~/server_log')
     case 'ops':
-      return shell('운영', 'OPS.SH', '~/ops')
+      return shell('Manage Operations', 'OPS.SH', '~/ops')
     case 'home':
-      return shell('대시보드', 'DASHBOARD.SH', '~/admin')
+      return shell('Overview', 'DASHBOARD.SH', '~/admin')
   }
 }
 
