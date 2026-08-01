@@ -223,7 +223,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 {
                     var target = ResolveTarget(s, req, res);
                     if (target == null) return;
-                    if (_schemaRunning) { BridgeIo.Fail(res, 409, "이미 진행 중입니다."); return; }
+                    if (_opsRunning) { BridgeIo.Fail(res, 409, "이미 진행 중입니다."); return; }
                     RunSchema(target, isPromote: true).Forget();
                     BridgeIo.Write(res, 200, new JObject { ["started"] = true });
                     return;
@@ -240,8 +240,11 @@ namespace Tjdtjq5.SupaRun.Editor
                     var schema = (string)body["versionSchema"] ?? "";
                     if (lv <= 0 || schema.Length == 0)
                     { BridgeIo.Fail(res, 400, "logicVersion 과 versionSchema 가 필요합니다."); return; }
-                    if (_schemaRunning) { BridgeIo.Fail(res, 409, "이미 진행 중입니다."); return; }
-                    RunRelease(s, lv, lmin, schema, (string)body["memo"], (string)body["revisionTag"]).Forget();
+                    if (_opsRunning) { BridgeIo.Fail(res, 409, "이미 진행 중입니다."); return; }
+                    // actor = 어드민 로그인 이메일 — 매니페스트의 created_by/published_by 를 채운다.
+                    // 브라우저 주장값이지만 로컬 브리지를 연 사람은 이미 PAT 전권자라 따로 검증하지 않는다.
+                    RunRelease(s, lv, lmin, schema, (string)body["memo"], (string)body["revisionTag"],
+                        (string)body["actor"]).Forget();
                     BridgeIo.Write(res, 200, new JObject { ["started"] = true });
                     return;
                 }
@@ -252,7 +255,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 {
                     var target = ResolveTarget(s, req, res);
                     if (target == null) return;
-                    if (_schemaRunning) { BridgeIo.Fail(res, 409, "이미 진행 중입니다."); return; }
+                    if (_opsRunning) { BridgeIo.Fail(res, 409, "이미 진행 중입니다."); return; }
                     RunUpload(s.Current, target).Forget();
                     BridgeIo.Write(res, 200, new JObject { ["started"] = true });
                     return;
@@ -301,9 +304,9 @@ namespace Tjdtjq5.SupaRun.Editor
                 ["deployConfigured"] = s.IsGitHubConfigured,
                 ["schema"] = new JObject
                 {
-                    ["running"] = _schemaRunning,
-                    ["label"] = _schemaLabel,
-                    ["error"] = _schemaError,
+                    ["running"] = _opsRunning,
+                    ["label"] = _opsLabel,
+                    ["error"] = _opsError,
                 },
                 ["deploy"] = new JObject
                 {
@@ -326,74 +329,75 @@ namespace Tjdtjq5.SupaRun.Editor
             return ActionsTracker.GetActionsUrl($"{gh.Account}/{s.githubRepoName}");
         }
 
-        // ── 스키마·승격 실행 ──
+        // ── 스키마·승격·릴리스 실행 ──
+        // 한 번에 하나만 돈다는 가드까지 겸하는 상태다 — 화면의 state.schema 로 내려간다.
 
-        static bool _schemaRunning;
-        static string _schemaLabel;
-        static string _schemaError;
+        static bool _opsRunning;
+        static string _opsLabel;
+        static string _opsError;
 
         static async UniTaskVoid RunSchema(SupaRunSettings.EnvironmentData target, bool isPromote)
         {
-            _schemaRunning = true;
-            _schemaError = null;
-            _schemaLabel = isPromote ? $"'{target.name}' 에 스키마 반영 중" : "스키마 반영 중";
+            _opsRunning = true;
+            _opsError = null;
+            _opsLabel = isPromote ? $"'{target.name}' 에 스키마 반영 중" : "스키마 반영 중";
             try
             {
                 if (await SchemaAutoSync.SyncToEnvironment(target))
-                    _schemaLabel = isPromote ? $"'{target.name}' 스키마 반영 완료" : "스키마 반영 완료";
+                    _opsLabel = isPromote ? $"'{target.name}' 스키마 반영 완료" : "스키마 반영 완료";
                 else
                 {
-                    _schemaError = "반영 실패 — Unity Console 을 확인하세요.";
-                    _schemaLabel = null;
+                    _opsError = "반영 실패 — Unity Console 을 확인하세요.";
+                    _opsLabel = null;
                 }
             }
             catch (Exception ex)
             {
-                _schemaError = ex.Message;
-                _schemaLabel = null;
+                _opsError = ex.Message;
+                _opsLabel = null;
             }
-            finally { _schemaRunning = false; }
+            finally { _opsRunning = false; }
         }
 
         static async UniTaskVoid RunRelease(
-            SupaRunSettings s, int logicVersion, int logicMin, string schema, string memo, string tag)
+            SupaRunSettings s, int logicVersion, int logicMin, string schema, string memo, string tag, string actor)
         {
-            _schemaRunning = true;
-            _schemaError = null;
-            _schemaLabel = $"릴리스 실행 중 — logic {logicVersion}, {schema}";
+            _opsRunning = true;
+            _opsError = null;
+            _opsLabel = $"릴리스 실행 중 — logic {logicVersion}, {schema}";
             try
             {
-                var relId = await ReleaseOrchestrator.RunAsync(s, logicVersion, logicMin, schema, memo, tag);
-                if (relId != null) _schemaLabel = $"릴리스 완료 — {relId}";
-                else { _schemaError = "릴리스 실패 — 매니페스트의 단계 기록을 확인하세요."; _schemaLabel = null; }
+                var relId = await ReleaseOrchestrator.RunAsync(s, logicVersion, logicMin, schema, memo, tag, actor);
+                if (relId != null) _opsLabel = $"릴리스 완료 — {relId}";
+                else { _opsError = "릴리스 실패 — 매니페스트의 단계 기록을 확인하세요."; _opsLabel = null; }
             }
             catch (Exception ex)
             {
-                _schemaError = ex.Message;
-                _schemaLabel = null;
+                _opsError = ex.Message;
+                _opsLabel = null;
             }
-            finally { _schemaRunning = false; }
+            finally { _opsRunning = false; }
         }
 
         static async UniTaskVoid RunUpload(
             SupaRunSettings.EnvironmentData from, SupaRunSettings.EnvironmentData to)
         {
-            _schemaRunning = true;
-            _schemaError = null;
-            _schemaLabel = $"'{from.name}' → '{to.name}' 버전 업로드 중";
+            _opsRunning = true;
+            _opsError = null;
+            _opsLabel = $"'{from.name}' → '{to.name}' 버전 업로드 중";
             try
             {
                 var schema = await EnvironmentPromoter.UploadVersionAsync(from, to);
                 if (schema != null)
-                    _schemaLabel = $"'{to.name}' 에 미게시 버전 생성 완료 ({schema}) — 게시는 그쪽 어드민에서";
-                else { _schemaError = "업로드에 실패했습니다. Console 을 확인하세요."; _schemaLabel = null; }
+                    _opsLabel = $"'{to.name}' 에 미게시 버전 생성 완료 ({schema}) — 게시는 그쪽 어드민에서";
+                else { _opsError = "업로드에 실패했습니다. Console 을 확인하세요."; _opsLabel = null; }
             }
             catch (Exception ex)
             {
-                _schemaError = ex.Message;
-                _schemaLabel = null;
+                _opsError = ex.Message;
+                _opsLabel = null;
             }
-            finally { _schemaRunning = false; }
+            finally { _opsRunning = false; }
         }
 
         // ── 배포 실행 ──

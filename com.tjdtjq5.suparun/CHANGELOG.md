@@ -50,6 +50,9 @@
   오케스트레이션(`ReleaseOrchestrator` — 트래픽 전환→게시→logic 게이트, 순차+단계 기록) +
   Releases 화면. ⚠ ASP.NET: MapGet 리다이렉트는 `/admin/` 까지 매칭돼 정적 미들웨어를
   건너뛰게 한다 — 미들웨어로 리다이렉트할 것(실측 무한 루프)
+  - 리뷰 반영: 릴리스 행위자=로그인 이메일(created_by/published_by), 리비전 태그·GCP 좌표
+    검문(cmd 보간 방어), `suparun_release` 쓰기 정책 제거(생성 경로는 PAT 뿐), 완료 폴링,
+    ops 렌더 게이트를 `opsVisible()`(브리지 또는 미리보기)로 통일 — 미리보기 회귀 복구
 - **config publish·릴리스 모델** (#30~#35, ADR-0010) — 업로드=미게시 버전 스냅샷(내용 해시
   = 버전 ID, git SHA 동반, `suparun_version_upload`), 게시=복원기 재사용+`active_config_version`
   스탬프(`suparun_version_publish` — 롤백은 재게시), 버전 diff RPC 2종(테이블/행 단위).

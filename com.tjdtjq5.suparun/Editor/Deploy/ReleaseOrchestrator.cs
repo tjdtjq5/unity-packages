@@ -1,4 +1,5 @@
 using System;
+using System.Text.RegularExpressions;
 using Cysharp.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -15,10 +16,11 @@ namespace Tjdtjq5.SupaRun.Editor
     /// </summary>
     public static class ReleaseOrchestrator
     {
-        /// <summary>릴리스를 실행한다. 성공 시 릴리스 id, 실패 시 null(매니페스트에 실패 단계가 남는다).</summary>
+        /// <summary>릴리스를 실행한다. 성공 시 릴리스 id, 실패 시 null(매니페스트에 실패 단계가 남는다).
+        /// actor 는 어드민 로그인 이메일 — 매니페스트의 "누가"를 채운다(ADR-0009 취지).</summary>
         public static async UniTask<string> RunAsync(
             SupaRunSettings s, int logicVersion, int logicMin,
-            string versionSchema, string memo, string revisionTag)
+            string versionSchema, string memo, string revisionTag, string actor)
         {
             var env = s.Current;
             var pid = SupaRunSettings.ProjectIdOf(env.supabaseUrl);
@@ -30,6 +32,14 @@ namespace Tjdtjq5.SupaRun.Editor
             if (logicMin <= 0) logicMin = 1;
             if (logicMin > logicVersion)
             { Debug.LogError("[SupaRun:Release] 허용 최소가 릴리스 버전보다 큽니다."); return null; }
+            // 태그는 cmd 한 줄에 보간된다 — 규약(deploy.yml: 소문자·숫자·하이픈) 밖 문자는
+            // 셸 메타문자일 수 있으니 여기서 자른다. 설정 좌표 3종도 같은 줄에 들어가므로 같이 검문.
+            if (!string.IsNullOrEmpty(revisionTag) && !Regex.IsMatch(revisionTag, "^[a-z0-9-]+$"))
+            { Debug.LogError($"[SupaRun:Release] 리비전 태그는 소문자·숫자·하이픈만 됩니다: {revisionTag}"); return null; }
+            foreach (var v in new[] { s.gcpServiceName, s.gcpRegion, s.gcpProjectId })
+                if (!string.IsNullOrEmpty(v) && !Regex.IsMatch(v, @"^[A-Za-z0-9._-]+$"))
+                { Debug.LogError($"[SupaRun:Release] GCP 설정값에 허용되지 않는 문자가 있습니다: {v}"); return null; }
+            if (string.IsNullOrEmpty(actor)) actor = "bridge";
 
             // 대상 버전의 좌표(해시·git SHA)를 매니페스트에 옮겨 적는다.
             var ver = await SupabaseManagementApi.RunQuery(pid, pat,
@@ -46,7 +56,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 "INSERT INTO suparun_release (id, logic_version, logic_min, git_sha, content_hash, revision_tag, memo, status, created_at, created_by) " +
                 $"VALUES ('{relId}', {logicVersion}, {logicMin}, '{Escape(gitSha)}', '{Escape(hash)}', " +
                 $"'{Escape(revisionTag ?? "")}', '{Escape(memo ?? "")}', 'running', " +
-                "(extract(epoch from now()) * 1000)::bigint, 'server');");
+                $"(extract(epoch from now()) * 1000)::bigint, '{Escape(actor)}');");
             if (!created.Ok) { created.LogIfFailed("릴리스 매니페스트 생성"); return null; }
 
             // ── 1. 서버 트래픽 전환 ──
@@ -69,7 +79,7 @@ namespace Tjdtjq5.SupaRun.Editor
             // publish RPC 는 is_admin 을 요구한다 — 관리자 신원을 트랜잭션 동안만 빌린다(승격 관용구).
             var pub = await SupabaseManagementApi.RunQuery(pid, pat,
                 "SELECT set_config('request.jwt.claims', json_build_object('sub', " +
-                "(SELECT user_id FROM admin_user_role WHERE role = 'game-admin' LIMIT 1))::text, true); " +
+                "(SELECT user_id FROM admin_user_role WHERE role = 'game-admin' ORDER BY user_id LIMIT 1))::text, true); " +
                 $"SELECT suparun_version_publish('{Escape(versionSchema)}') AS backup;");
             await RecordStep(pid, pat, relId, "publish", pub.Ok,
                 pub.Ok ? $"게시 완료 — {versionSchema}" : Truncate(pub.Message, 300));
@@ -84,10 +94,12 @@ namespace Tjdtjq5.SupaRun.Editor
                 gate.Ok ? $"허용 범위 {logicMin}~{logicVersion}" : Truncate(gate.Message, 300));
             if (!gate.Ok) { await Fail(pid, pat, relId); return null; }
 
-            await SupabaseManagementApi.RunQuery(pid, pat,
+            // 이 UPDATE 가 실패하면 성공한 릴리스가 'running' 으로 남는다 — 최소한 로그는 남긴다.
+            var done = await SupabaseManagementApi.RunQuery(pid, pat,
                 $"UPDATE suparun_release SET status = 'done', " +
-                "published_at = (extract(epoch from now()) * 1000)::bigint, published_by = 'server' " +
+                $"published_at = (extract(epoch from now()) * 1000)::bigint, published_by = '{Escape(actor)}' " +
                 $"WHERE id = '{relId}';");
+            done.LogIfFailed("릴리스 완료 기록");
 
             Debug.Log($"[SupaRun:Release] {relId} 완료 — logic {logicMin}~{logicVersion}, {versionSchema}" +
                       (string.IsNullOrEmpty(revisionTag) ? "" : $", 트래픽 {revisionTag}"));

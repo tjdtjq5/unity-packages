@@ -16,7 +16,7 @@ import { LoadingBlock } from '../../shared/Spinner'
 import { SecretsPage } from '../secrets/SecretsPage'
 import { SnapshotPage } from '../snapshot/SnapshotPage'
 import { TablePage } from '../table/TablePage'
-import { bridgeAvailable } from '../../shared/bridge'
+import { opsVisible } from '../../shared/bridge'
 import { AdminProvider, type AdminContextValue, type ToolbarActions } from './AdminContext'
 import { EnvSwitcher } from './EnvSwitcher'
 import { KeymapHelp } from './KeymapHelp'
@@ -70,7 +70,7 @@ export function Shell({
       (tn) => data.tableTypes.some((t) => t.tableName === tn),
     )
     // 호스팅본(#48)은 자기 환경 하나뿐이라 환경 선택이 무의미하다 — 곧장 환경 안(home)으로.
-    setRoute(!bridgeAvailable() && r.kind === 'environments' ? { kind: 'home' } : r)
+    setRoute(!opsVisible() && r.kind === 'environments' ? { kind: 'home' } : r)
   }, [data.ready, data.types, data.tableTypes, restored])
 
   const navigate = useCallback((r: Route) => {
@@ -131,8 +131,8 @@ export function Shell({
   // 이 어드민이 붙은 환경 이름. 환경 안에 있을 때 사이드바 맨 위에 띄운다.
   const envLabel = data.envName || '환경'
   // prod 계열 환경이면 타이틀바가 스스로 경고색을 입는다 (Metaplay 헤더 색 구분 동형, #20).
-  // 환경 오인 조작 방지가 목적 — 이름 규약(prod 포함)으로 판별한다.
-  const isProd = !appLevel && /prod/i.test(envLabel)
+  // 환경 오인 조작 방지가 목적 — 판정은 승격 전용(#50)과 같은 이름 규약 하나다.
+  const isProd = !appLevel && promoteOnly
 
   return (
     <AdminProvider value={ctx}>
@@ -328,7 +328,7 @@ export function Shell({
                   )}
                   {/* 운영·설정은 맨 아래다 — 되돌리기 어려운 일들이라 지나가다 누르는 자리가 아니다.
                       ops 는 Unity 를 시키는 화면이라 호스팅본(#48 — 브리지 없음)에는 아예 없다. */}
-                  {canWrite && bridgeAvailable() && (
+                  {canWrite && opsVisible() && (
                     <a
                       className={`tree-item${route.kind === 'ops' ? ' active' : ''}`}
                       href="#"
@@ -529,7 +529,7 @@ function ScreenContent({
   }
 
   // ops 는 Unity(브리지)를 시키는 화면 — 호스팅본(#48)에는 시킬 Unity 가 없다.
-  if ((route.kind === 'ops' || route.kind === 'setup') && !bridgeAvailable()) {
+  if ((route.kind === 'ops' || route.kind === 'setup') && !opsVisible()) {
     return (
       <div className="empty-state">
         <i className="ti ti-plug-off" />

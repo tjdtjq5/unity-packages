@@ -65,11 +65,17 @@ jobs:
       # 릴리스↔리비전 매핑, non-addressable 리비전 1000개 자동 삭제 회피, 태그 URL 확보가 목적.
       - name: Resolve release tag and flags
         id: rel
+        # 입력은 env 로 간접화한다 — `${{ }}` 를 run 스크립트에 직접 보간하면 입력값이
+        # 셸 코드로 해석되는 스크립트 인젝션 표면이 된다(GitHub 문서의 권고 패턴).
+        env:
+          INPUT_TAG: ${{ github.event.inputs.release_tag }}
+          INPUT_NO_TRAFFIC: ${{ github.event.inputs.no_traffic }}
         run: |
-          TAG="${{ github.event.inputs.release_tag }}"
+          TAG="$INPUT_TAG"
           if [ -z "$TAG" ]; then TAG="rel-${GITHUB_SHA::7}"; fi
+          case "$TAG" in (*[!a-z0-9-]*) echo "잘못된 태그: $TAG (소문자·숫자·하이픈만)"; exit 1;; esac
           FLAGS="--allow-unauthenticated --tag $TAG --min-instances ${{ secrets.CLOUD_RUN_MIN_INSTANCES || 0 }} --max-instances ${{ secrets.CLOUD_RUN_MAX_INSTANCES || 3 }}"
-          if [ "${{ github.event.inputs.no_traffic }}" = "true" ]; then FLAGS="$FLAGS --no-traffic"; fi
+          if [ "$INPUT_NO_TRAFFIC" = "true" ]; then FLAGS="$FLAGS --no-traffic"; fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "flags=$FLAGS" >> $GITHUB_OUTPUT
 

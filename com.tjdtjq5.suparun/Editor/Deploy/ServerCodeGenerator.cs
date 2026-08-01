@@ -2166,18 +2166,12 @@ CREATE TABLE IF NOT EXISTS suparun_release (
 
 ALTER TABLE suparun_release ENABLE ROW LEVEL SECURITY;
 
--- 열람은 롤 보유자 전체, 쓰기는 game-admin. 관리표라 승격 전용 잠금(#50)의 대상이 아니다 —
--- 릴리스는 prod 에서 만드는 조작 그 자체다.
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_release' AND policyname = 'operator_read') THEN
-    CREATE POLICY operator_read ON suparun_release FOR SELECT USING (suparun_is_operator());
-  END IF;
-END $$;
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'suparun_release' AND policyname = 'admin_write') THEN
-    CREATE POLICY admin_write ON suparun_release FOR ALL USING (is_admin()) WITH CHECK (is_admin());
-  END IF;
-END $$;
+-- 열람만 연다(롤 보유자 전체). 쓰기 정책은 **없다** — 생성·갱신은 오케스트레이션의
+-- PAT(Management API, RLS 미적용) 경로뿐이라 브라우저 쓰기 표면을 열 이유가 없다.
+-- DROP+CREATE 인 이유: IF NOT EXISTS 로 만들면 식을 바꾸는 날 기존 DB 가 조용히 옛 식에 남는다.
+DROP POLICY IF EXISTS operator_read ON suparun_release;
+CREATE POLICY operator_read ON suparun_release FOR SELECT USING (suparun_is_operator());
+DROP POLICY IF EXISTS admin_write ON suparun_release;
 
 -- 릴리스도 감사에 남는다 — 이력의 이력이지만, 누가 릴리스 행을 고쳤는가는 다른 질문이다.
 DROP TRIGGER IF EXISTS audit_suparun_release ON suparun_release;

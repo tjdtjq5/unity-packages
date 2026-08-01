@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { bridgeAvailable } from '../../shared/bridge'
+import { opsVisible } from '../../shared/bridge'
 import { isPreview } from '../../shared/env'
 import { ops } from '../../shared/ops'
+import { sb } from '../../shared/supabase'
 import { LoadingBlock, Spinner } from '../../shared/Spinner'
 import { toast } from '../../shared/toast'
 import {
@@ -26,18 +27,21 @@ export function ReleasesPage() {
   const [versions, setVersions] = useState<ConfigVersion[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  // 목록을 다시 읽고 그 결과를 돌려준다 — CreateForm 의 완료 폴링이 running 여부를 본다.
+  const load = useCallback(async (): Promise<Release[] | null> => {
     if (isPreview()) {
       setReleases([])
-      return
+      return []
     }
     try {
       setError(null)
       const [r, v] = await Promise.all([listReleases(), listVersions()])
       setReleases(r)
       setVersions(v)
+      return r
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
+      return null
     }
   }, [])
 
@@ -64,7 +68,7 @@ export function ReleasesPage() {
         버전·서버 리비전이 한 줄에 묶입니다. 실행은 순차이고 단계마다 기록이 남습니다.
       </p>
 
-      {canWrite && bridgeAvailable() && <CreateForm versions={versions} onDone={load} />}
+      {canWrite && opsVisible() && <CreateForm versions={versions} onDone={load} />}
 
       {releases.length === 0 ? (
         <div className="empty-state">
@@ -112,6 +116,10 @@ function ReleaseRow({ r }: { r: Release }) {
             <td className="text-muted">게시</td>
             <td>{r.published_at ? fmtDateTime(r.published_at) : '-'}</td>
           </tr>
+          <tr>
+            <td className="text-muted">행위자</td>
+            <td>{r.published_by ?? r.created_by ?? '-'}</td>
+          </tr>
         </tbody>
       </table>
       <ul className="audit-mini-list">
@@ -127,8 +135,8 @@ function ReleaseRow({ r }: { r: Release }) {
   )
 }
 
-/** 릴리스 생성 — 로컬 브리지 전용. 완료는 목록의 status 가 말한다(잠깐 뒤 다시 읽는다). */
-function CreateForm({ versions, onDone }: { versions: ConfigVersion[]; onDone: () => Promise<void> }) {
+/** 릴리스 생성 — 로컬 브리지 전용. 완료는 목록의 status 가 말한다(running 이 끝날 때까지 폴링). */
+function CreateForm({ versions, onDone }: { versions: ConfigVersion[]; onDone: () => Promise<Release[] | null> }) {
   const [schema, setSchema] = useState('')
   const [logicVersion, setLogicVersion] = useState(1)
   const [logicMin, setLogicMin] = useState(1)
@@ -140,10 +148,18 @@ function CreateForm({ versions, onDone }: { versions: ConfigVersion[]; onDone: (
     if (!schema) return toast('대상 버전을 고르세요.', 'error')
     setBusy(true)
     try {
-      await ops.createRelease({ logicVersion, logicMin, versionSchema: schema, memo, revisionTag: tag })
+      // 행위자 = 어드민 로그인 이메일 — 매니페스트의 created_by/published_by 가 된다.
+      const session = sb ? (await sb.auth.getSession()).data.session : null
+      const actor = session?.user?.email ?? ''
+      await ops.createRelease({ logicVersion, logicMin, versionSchema: schema, memo, revisionTag: tag, actor })
       toast('릴리스를 시작했습니다 — 단계 기록은 목록에서 봅니다.')
-      // 오케스트레이션은 수 초 단위다 — 잠깐 뒤 목록을 다시 읽어 status 를 보여준다.
-      setTimeout(() => void onDone(), 4000)
+      // 완료 감지는 매니페스트 폴링 — 트래픽 전환(gcloud)은 수십 초를 먹을 수 있어
+      // 1회 재조회로는 running 으로 굳어 보인다. running 이 사라지거나 90초면 멈춘다.
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 3000))
+        const list = await onDone()
+        if (list && !list.some((x) => x.status === 'running')) break
+      }
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
     } finally {

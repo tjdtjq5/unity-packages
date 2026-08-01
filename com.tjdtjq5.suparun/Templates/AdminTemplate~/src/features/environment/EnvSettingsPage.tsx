@@ -7,7 +7,7 @@ import {
   saveEnvSettings,
   type EnvSettings,
 } from '../../shared/envSettings'
-import { bridgeAvailable } from '../../shared/bridge'
+import { bridgeAvailable, opsVisible } from '../../shared/bridge'
 import { env as suparunEnv } from '../../shared/env'
 import { ops, type OpsState } from '../../shared/ops'
 import { DeployBlock } from '../deploy/DeployBlock'
@@ -287,7 +287,7 @@ export function EnvSettingsPage() {
       {/* ── 배포 ──
           체크리스트가 상태·값·자동화를 모두 가진다. 여기서는 자리만 내준다.
           호스팅본(#48)에는 안 그린다 — 배포는 브리지(Unity)의 일이다. */}
-      {bridgeAvailable() && <DeployBlock />}
+      {opsVisible() && <DeployBlock />}
 
       {/* ── 게임 로그인 ──
           어드민 로그인(웹 프로바이더) 블록은 없다 — 어드민은 이메일+비밀번호 전용이라

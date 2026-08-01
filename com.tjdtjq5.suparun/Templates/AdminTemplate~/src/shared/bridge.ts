@@ -14,6 +14,8 @@
  * 게임 빌드에서 뽑히는 키다.
  */
 
+import { isPreview } from './env'
+
 declare global {
   interface Window {
     __SUPARUN_BRIDGE?: { port: number; token: string }
@@ -66,6 +68,15 @@ export const bridge = {
  */
 export function bridgeAvailable(): boolean {
   return !!window.__SUPARUN_BRIDGE
+}
+
+/**
+ * ops/브리지 UI 를 **그릴** 것인가 — 로컬(브리지 있음) 또는 디자인 미리보기(mock).
+ * 렌더 게이트는 전부 이걸 쓴다. bridgeAvailable 을 직접 쓰면 미리보기에서 화면이
+ * 사라져 디자인 확인이 안 된다(#48 회귀 실측). 실호출 가드는 bridgeAvailable 그대로.
+ */
+export function opsVisible(): boolean {
+  return bridgeAvailable() || isPreview()
 }
 
 /** Unity 가 살아 있는가. 실패해도 던지지 않는다 — 화면이 그 상태를 그려야 한다. */

@@ -338,7 +338,7 @@ namespace Tjdtjq5.SupaRun.Editor
                 if (rel == "index.html")
                     content = content
                         .Replace("{{SUPABASE_URL}}", settings.supabaseUrl ?? "")
-                        .Replace("{{SUPABASE_ANON_KEY}}", SupaRunSettings.Instance.SupabaseAnonKey ?? "");
+                        .Replace("{{SUPABASE_ANON_KEY}}", settings.SupabaseAnonKey ?? "");
                 files.Add(new GeneratedFile("admin/" + rel, content));
             }
             return files;

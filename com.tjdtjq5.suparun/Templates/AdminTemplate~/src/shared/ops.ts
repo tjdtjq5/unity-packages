@@ -104,13 +104,15 @@ export const ops = {
   uploadVersion: (target: string) =>
     bridge.post<{ started: boolean }>('/ops/upload-version', { target }),
 
-  /** 릴리스 오케스트레이션 (#51) — 대상은 편집 환경 자신. 진행·결과는 매니페스트가 진실이다. */
+  /** 릴리스 오케스트레이션 (#51) — 대상은 편집 환경 자신. 진행·결과는 매니페스트가 진실이다.
+   * actor 는 로그인 이메일 — 매니페스트의 created_by/published_by 를 채운다. */
   createRelease: (p: {
     logicVersion: number
     logicMin: number
     versionSchema: string
     memo: string
     revisionTag: string
+    actor: string
   }) => bridge.post<{ started: boolean }>('/ops/release', p),
 }
 

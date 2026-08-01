@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { auth as bridgeAuth, bridgeAvailable, needsSetup, setup, type SetupState } from './shared/bridge'
+import { auth as bridgeAuth, bridgeAvailable, needsSetup, opsVisible, setup, type SetupState } from './shared/bridge'
 import { isPreview } from './shared/env'
 import { FullScreenLoader } from './shared/Spinner'
 import { sb } from './shared/supabase'
@@ -28,9 +28,10 @@ import { Shell } from './features/shell/Shell'
  */
 export function App() {
   const preview = isPreview()
-  // 호스팅본(#48) = 브리지 주입이 없다. 셋업·온보딩은 로컬(브리지+PAT)의 일이라 통째로
-  // 건너뛴다 — 호스팅본이 서빙된다는 것 자체가 셋업이 끝난 환경이라는 뜻이다.
-  const hosted = !preview && !bridgeAvailable()
+  // 호스팅본(#48) = 브리지도 미리보기도 아니다(opsVisible 의 부정 — 게이트 판정은 한 곳).
+  // 셋업·온보딩은 로컬(브리지+PAT)의 일이라 통째로 건너뛴다 — 호스팅본이 서빙된다는 것
+  // 자체가 셋업이 끝난 환경이라는 뜻이다.
+  const hosted = !opsVisible()
 
   // 셋업이 어디까지 됐는가. 세션보다 먼저 본다 — 프로젝트가 없으면 세션도 없다.
   const [setupState, setSetupState] = useState<SetupState | null | undefined>(undefined)
