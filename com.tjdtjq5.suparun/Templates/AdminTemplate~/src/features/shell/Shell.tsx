@@ -100,10 +100,13 @@ export function Shell({ email }: { email: string }) {
   const appLevel = isAppLevel(route)
   // 이 어드민이 붙은 환경 이름. 환경 안에 있을 때 사이드바 맨 위에 띄운다.
   const envLabel = data.envName || '환경'
+  // prod 계열 환경이면 타이틀바가 스스로 경고색을 입는다 (Metaplay 헤더 색 구분 동형, #20).
+  // 환경 오인 조작 방지가 목적 — 이름 규약(prod 포함)으로 판별한다.
+  const isProd = !appLevel && /prod/i.test(envLabel)
 
   return (
     <AdminProvider value={ctx}>
-      <div className="terminal-titlebar" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }}>
+      <div className={`terminal-titlebar${isProd ? ' env-prod' : ''}`} style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }}>
         <span>
           <span className="dot" />
           <span className="title">SUPARUN.ADMIN :: </span>

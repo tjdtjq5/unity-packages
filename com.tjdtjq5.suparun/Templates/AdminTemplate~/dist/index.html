@@ -176,11 +176,18 @@ code, kbd, pre, samp, .text-mono, .font-mono { font-family: var(--mono); font-si
 .tb-env-menu button.cur { color: var(--green); }
 .tb-env-menu .sep { border-top: 1px solid var(--line); margin: 4px 0; }
 .tb-clock { color: var(--dim); margin-right: 14px; }
+/* 시간대 라벨 — 듀얼 시계(로컬+UTC 상시 병기, #20)라 더는 버튼이 아니다 */
 .tb-clock .tz {
-  background: none; border: 1px solid var(--line); border-radius: 3px;
-  color: var(--green-2); font: inherit; padding: 0 5px; margin-left: 5px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 3px;
+  color: var(--green-2); padding: 0 5px; margin-left: 5px;
 }
-.tb-clock .tz:hover { border-color: var(--green-2); }
+
+/* prod 환경 — 타이틀바가 경고색을 입는다 (Metaplay 헤더 색 구분 동형, #20).
+   환경 오인 조작 방지. Shell 이 환경 이름(prod 계열)으로 클래스를 단다. */
+.terminal-titlebar.env-prod { background: #2a0d0d; border-bottom: 1px solid #b91c1c; }
+.terminal-titlebar.env-prod .title { color: #f87171; }
+.env-prod .tb-env-chip { color: #f87171; border-color: #b91c1c; }
+.env-prod .tb-env-chip:hover { border-color: #f87171; background: rgba(248,113,113,0.08); }
 
 /* ── Terminal Prompt (페이지 상단) ── */
 .terminal-prompt {
