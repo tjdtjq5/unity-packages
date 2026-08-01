@@ -105,6 +105,11 @@ namespace Tjdtjq5.SupaRun.Editor
                 files.AddRange(GenerateRequestDTOs(type));
             }
 
+            // CS 액션 계층 (③ 트랙) — 게이트 + 시스템 액션 + 어드민 버튼 메타
+            files.Add(GenerateCsGate());
+            files.Add(GenerateCsSystemController(tableTypes));
+            files.Add(GenerateCsActionsMetaMigration(logicTypes));
+
             // [Cron] → CronController (HTTP 엔드포인트는 그대로 필요)
             var cronMethods = ScanCronMethods(logicTypes);
             if (cronMethods.Count > 0)
@@ -130,14 +135,16 @@ namespace Tjdtjq5.SupaRun.Editor
             sb.AppendLine("namespace Tjdtjq5.SupaRun");
             sb.AppendLine("{");
 
-            string[] attrs = { "UserData", "SpecData", "Service", "API", "Cron",
+            string[] attrs = { "UserData", "SpecData", "Service", "API", "Cron", "CsAction",
                 "PrimaryKey", "ForeignKey", "Index", "Unique", "NotNull", "Default",
                 "MaxLength", "Hidden", "Json", "RenamedFrom", "CreatedAt", "UpdatedAt",
                 "Public", "Private" };
 
             foreach (var a in attrs)
             {
-                if (a == "ForeignKey")
+                if (a == "CsAction")
+                    sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.Method)] public class {a}Attribute : System.Attribute {{ public string Label; public bool SeniorOnly; public bool Dangerous; public {a}Attribute(string label = null) {{ Label = label; }} }}");
+                else if (a == "ForeignKey")
                     sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.All)] public class {a}Attribute : System.Attribute {{ public {a}Attribute(System.Type t) {{}} }}");
                 else if (a == "Default")
                     sb.AppendLine($"    [System.AttributeUsage(System.AttributeTargets.All)] public class {a}Attribute : System.Attribute {{ public {a}Attribute(object v) {{}} }}");
@@ -522,6 +529,11 @@ public class DapperGameDB : IGameDB
                 .FirstOrDefault();
             var ctorParams = ctor?.GetParameters() ?? Array.Empty<ParameterInfo>();
 
+            // CS 액션(#38)이 하나라도 있으면 롤 게이트·감사용 NpgsqlConnection 을 함께 받는다
+            // (admin_user_role/admin_audit_log 는 IGameDB 의 타입 CRUD 밖 — raw SQL 이 필요하다).
+            var hasCsActions = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Any(m => !m.IsSpecialName && m.GetCustomAttribute<CsActionAttribute>() != null);
+
             sb.AppendLine("[ApiController]");
             sb.AppendLine($"[Route(\"api/{ToSnakeCase(type.Name)}\")]");
             sb.AppendLine($"public class {type.Name}Controller : ControllerBase");
@@ -529,7 +541,15 @@ public class DapperGameDB : IGameDB
 
             // IGameDB는 항상 주입 (서비스 + ServerLogger 양쪽에서 사용)
             sb.AppendLine("    readonly IGameDB _db;");
-            sb.AppendLine($"    public {type.Name}Controller(IGameDB db) => _db = db;");
+            if (hasCsActions)
+            {
+                sb.AppendLine("    readonly Npgsql.NpgsqlConnection _conn;");
+                sb.AppendLine($"    public {type.Name}Controller(IGameDB db, Npgsql.NpgsqlConnection conn) {{ _db = db; _conn = conn; }}");
+            }
+            else
+            {
+                sb.AppendLine($"    public {type.Name}Controller(IGameDB db) => _db = db;");
+            }
 
             // 서비스 인스턴스 생성 코드 구축
             var svcCtorLines = new List<string>();
@@ -555,26 +575,32 @@ public class DapperGameDB : IGameDB
                 }
             }
 
-            // [API] 어트리뷰트가 붙은 메서드만 엔드포인트로 생성
+            // [API]/[CsAction] 어트리뷰트가 붙은 메서드만 엔드포인트로 생성
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                .Where(m => !m.IsSpecialName && m.GetCustomAttribute<APIAttribute>() != null);
+                .Where(m => !m.IsSpecialName &&
+                    (m.GetCustomAttribute<APIAttribute>() != null ||
+                     m.GetCustomAttribute<CsActionAttribute>() != null));
 
             var svcPrefix = type.Name.Replace("Service", "");
 
             foreach (var m in methods)
             {
+                var cs = m.GetCustomAttribute<CsActionAttribute>();
                 var reqName = $"{svcPrefix}_{m.Name}Request";
                 var paramList = m.GetParameters().Any()
                     ? $"[FromBody] {reqName} req"
                     : "";
                 var args = string.Join(", ", m.GetParameters().Select(p => $"req.{p.Name}"));
 
-                // 접근 제어
-                var authAttr = m.GetCustomAttribute<PublicAttribute>() != null
-                    ? "[AllowAnonymous]"
-                    : m.GetCustomAttribute<PrivateAttribute>() != null
-                        ? "[Authorize(Roles = \"admin\")]"
-                        : "[Authorize]";
+                // 접근 제어. CS 액션은 [Authorize] + 본문 롤 게이트 2겹이다 — JWT 롤 클레임에
+                // 기대지 않는 이유: 롤의 진실은 admin_user_role 표라 회수가 즉시 반영돼야 한다.
+                var authAttr = cs != null
+                    ? "[Authorize]"
+                    : m.GetCustomAttribute<PublicAttribute>() != null
+                        ? "[AllowAnonymous]"
+                        : m.GetCustomAttribute<PrivateAttribute>() != null
+                            ? "[Authorize(Roles = \"admin\")]"
+                            : "[Authorize]";
 
                 var endpointName = $"{type.Name}/{m.Name}";
                 var hasReqBody = m.GetParameters().Any();
@@ -589,6 +615,13 @@ public class DapperGameDB : IGameDB
                     sb.AppendLine("        var reqJson = JsonSerializer.Serialize(req);");
                 sb.AppendLine("        try");
                 sb.AppendLine("        {");
+                if (cs != null)
+                {
+                    // 롤 게이트 — 실행 전. 감사 — 실행 성공 후(실패한 시도는 500 경로의 서버 로그가 남긴다).
+                    sb.AppendLine("            var __sub = User.FindFirst(\"sub\")?.Value ?? \"\";");
+                    sb.AppendLine($"            if (!await CsGate.Allowed(_conn, __sub, seniorOnly: {(cs.SeniorOnly ? "true" : "false")}))");
+                    sb.AppendLine("                return StatusCode(403, new { error = \"CS 롤이 필요합니다.\" });");
+                }
                 foreach (var line in svcCtorLines)
                     sb.AppendLine("    " + line);
                 var svcArgsStr = string.Join(", ", svcCtorArgs);
@@ -600,11 +633,18 @@ public class DapperGameDB : IGameDB
                 var hasResult = m.ReturnType.IsGenericType && m.ReturnType != typeof(System.Threading.Tasks.Task);
                 var isVoidReturn = m.ReturnType == typeof(void) || m.ReturnType == typeof(System.Threading.Tasks.Task);
 
+                // CS 감사의 대상 플레이어 — 관례상 첫 playerId/userId 파라미터.
+                var csTarget = m.GetParameters().FirstOrDefault(p => p.Name == "playerId" || p.Name == "userId");
+                var csAudit = cs == null ? null :
+                    $"            await CsGate.Audit(_conn, __sub, \"cs:{m.Name}\", " +
+                    $"{(csTarget != null ? $"req.{csTarget.Name}" : "null")}, {(hasReqBody ? "reqJson" : "null")});";
+
                 if (hasResult)
                 {
                     sb.AppendLine(isTask
                         ? $"            var result = await service.{m.Name}({args});"
                         : $"            var result = service.{m.Name}({args});");
+                    if (csAudit != null) sb.AppendLine(csAudit);
                     sb.AppendLine("            return Ok(result);");
                 }
                 else if (isVoidReturn)
@@ -612,12 +652,14 @@ public class DapperGameDB : IGameDB
                     sb.AppendLine(isTask
                         ? $"            await service.{m.Name}({args});"
                         : $"            service.{m.Name}({args});");
+                    if (csAudit != null) sb.AppendLine(csAudit);
                     sb.AppendLine("            return Ok();");
                 }
                 else
                 {
                     // 동기 + 값 반환 (long, string 등)
                     sb.AppendLine($"            var result = service.{m.Name}({args});");
+                    if (csAudit != null) sb.AppendLine(csAudit);
                     sb.AppendLine("            return Ok(result);");
                 }
                 sb.AppendLine("        }");
@@ -651,7 +693,9 @@ public class DapperGameDB : IGameDB
             var svcName = type.Name.Replace("Service", "");
 
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                .Where(m => !m.IsSpecialName && m.GetCustomAttribute<APIAttribute>() != null && m.GetParameters().Length > 0);
+                .Where(m => !m.IsSpecialName && m.GetParameters().Length > 0 &&
+                    (m.GetCustomAttribute<APIAttribute>() != null ||
+                     m.GetCustomAttribute<CsActionAttribute>() != null));
 
             foreach (var m in methods)
             {
@@ -3050,6 +3094,249 @@ CREATE TRIGGER audit_admin_user_role
             return "string";
         }
 
+        // ── CS 액션 계층 (③ 트랙, #38~#42) ──
+
+        /// <summary>플레이어 귀속 컬럼(소문자 실컬럼명). userId/playerId 관례 둘 다 받는다.</summary>
+        static string PlayerColumnOf(Type type)
+        {
+            var f = type.GetFields(BindingFlags.Public | BindingFlags.Instance).FirstOrDefault(x =>
+                x.Name == "userId" || x.Name == "user_id" || x.Name == "playerId" || x.Name == "player_id");
+            return f?.Name.ToLower();
+        }
+
+        /// <summary>
+        /// CS 액션 공통 게이트 — 롤 검증 + 감사 기록. JWT 롤 클레임이 아니라 admin_user_role
+        /// 표를 매 호출 조회한다: 롤의 진실은 표이고, 회수가 토큰 만료를 기다리면 안 된다.
+        /// </summary>
+        static GeneratedFile GenerateCsGate()
+        {
+            return new GeneratedFile("Generated/CsGate.cs",
+@"using System.Threading.Tasks;
+using Npgsql;
+
+/// <summary>CS 액션 공통 게이트 (자동 생성, ③ 트랙) — 롤 검증 + 감사 기록.</summary>
+public static class CsGate
+{
+    /// <summary>cs 계열 롤 보유 여부. seniorOnly 면 cs-agent 는 제외된다.</summary>
+    public static async Task<bool> Allowed(NpgsqlConnection conn, string sub, bool seniorOnly)
+    {
+        if (string.IsNullOrEmpty(sub)) return false;
+        var roles = seniorOnly ? ""('game-admin','cs-senior')"" : ""('game-admin','cs-senior','cs-agent')"";
+        await using var cmd = new NpgsqlCommand(
+            $""SELECT count(*) FROM admin_user_role WHERE user_id = @uid AND role IN {roles}"", conn);
+        cmd.Parameters.AddWithValue(""uid"", sub);
+        var n = (long)await cmd.ExecuteScalarAsync();
+        return n > 0;
+    }
+
+    /// <summary>실행 감사. 서버 직접 연결이라 RLS·트리거 밖 — 여기서 직접 남긴다.</summary>
+    public static async Task Audit(NpgsqlConnection conn, string sub, string action, string rowId, string paramsJson)
+    {
+        await using var cmd = new NpgsqlCommand(
+            ""INSERT INTO admin_audit_log (id, admin_id, config_type, row_id, action, before_json, after_json, created_at) "" +
+            ""VALUES (gen_random_uuid()::text, @sub, 'player', @row, @act, NULL, @json, (extract(epoch from now()) * 1000)::bigint)"", conn);
+        cmd.Parameters.AddWithValue(""sub"", (object)sub ?? System.DBNull.Value);
+        cmd.Parameters.AddWithValue(""row"", (object)rowId ?? System.DBNull.Value);
+        cmd.Parameters.AddWithValue(""act"", action);
+        cmd.Parameters.AddWithValue(""json"", (object)paramsJson ?? System.DBNull.Value);
+        await cmd.ExecuteNonQueryAsync();
+    }
+}
+");
+        }
+
+        /// <summary>
+        /// 시스템 CS 액션 컨트롤러 — 밴·이름 변경·개발자 지정·리셋·GDPR 삭제 (#39·#40·#42)
+        /// + 클라 밴 확인(ban-check). 게임 도메인이 아니라 **계정·운영 상태**를 만지므로
+        /// 게임 [Service] 가 아니라 패키지가 직접 생성한다. 리셋·삭제의 [UserData] 표 목록은
+        /// 생성 시점의 타입 스캔에서 온다 — 표가 늘면 재배포로 따라온다.
+        /// </summary>
+        static GeneratedFile GenerateCsSystemController(Type[] tableTypes)
+        {
+            // 플레이어 귀속 표들 — 리셋(#40)·GDPR 삭제(#42)가 지울 대상.
+            var playerTables = tableTypes
+                .Select(t => new { Table = ToSnakeCase(t.Name), Col = PlayerColumnOf(t) })
+                .Where(x => x.Col != null)
+                .ToList();
+            var deleteLines = string.Join("\n", playerTables.Select(x =>
+                $"        await Exec(\"DELETE FROM {x.Table} WHERE {x.Col} = @uid\", req.playerId);"));
+
+            var sb = new StringBuilder();
+            sb.AppendLine("using System.Text.Json;");
+            sb.AppendLine("using System.Threading.Tasks;");
+            sb.AppendLine("using Microsoft.AspNetCore.Authorization;");
+            sb.AppendLine("using Microsoft.AspNetCore.Mvc;");
+            sb.AppendLine("using Npgsql;");
+            sb.AppendLine("");
+            sb.AppendLine("/// <summary>시스템 CS 액션 (자동 생성, ③ 트랙) — 밴·이름·개발자·리셋·GDPR.</summary>");
+            sb.AppendLine("[ApiController]");
+            sb.AppendLine("[Route(\"api\")]");
+            sb.AppendLine("[Authorize]");
+            sb.AppendLine("public class CsSystemController : ControllerBase");
+            sb.AppendLine("{");
+            sb.AppendLine("    readonly NpgsqlConnection _conn;");
+            sb.AppendLine("    public CsSystemController(NpgsqlConnection conn) => _conn = conn;");
+            sb.AppendLine("");
+            sb.AppendLine("    string Sub => User.FindFirst(\"sub\")?.Value ?? \"\";");
+            sb.AppendLine("");
+            sb.AppendLine("    async Task Exec(string sql, string uid)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        await using var cmd = new NpgsqlCommand(sql, _conn);");
+            sb.AppendLine("        cmd.Parameters.AddWithValue(\"uid\", uid);");
+            sb.AppendLine("        await cmd.ExecuteNonQueryAsync();");
+            sb.AppendLine("    }");
+            sb.AppendLine("");
+            sb.AppendLine("    // ── 밴 확인 — 클라(SupaRunAuth.CheckBan)가 부른다. 본인 또는 cs 롤만. ──");
+            sb.AppendLine("    [HttpGet(\"auth/ban-check/{userId}\")]");
+            sb.AppendLine("    public async Task<IActionResult> BanCheck(string userId)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (Sub != userId && !await CsGate.Allowed(_conn, Sub, seniorOnly: false))");
+            sb.AppendLine("            return StatusCode(403, new { error = \"본인 밴 상태만 확인할 수 있습니다.\" });");
+            sb.AppendLine("        await using var cmd = new NpgsqlCommand(");
+            sb.AppendLine("            \"SELECT reason, banned_until FROM suparun_ban WHERE user_id = @uid \" +");
+            sb.AppendLine("            \"AND (banned_until = 0 OR banned_until > (extract(epoch from now()) * 1000)::bigint)\", _conn);");
+            sb.AppendLine("        cmd.Parameters.AddWithValue(\"uid\", userId);");
+            sb.AppendLine("        await using var r = await cmd.ExecuteReaderAsync();");
+            sb.AppendLine("        if (await r.ReadAsync())");
+            sb.AppendLine("            return Ok(new { banned = true, reason = r.IsDBNull(0) ? null : r.GetString(0), bannedUntil = r.GetInt64(1) });");
+            sb.AppendLine("        return Ok(new { banned = false, reason = (string)null, bannedUntil = 0L });");
+            sb.AppendLine("    }");
+            sb.AppendLine("");
+            sb.AppendLine("    // ── 밴/해제 (#39) ──");
+            sb.AppendLine("    [HttpPost(\"cs/system/SetBan\")]");
+            sb.AppendLine("    public async Task<IActionResult> SetBan([FromBody] CsSystem_SetBanRequest req)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (!await CsGate.Allowed(_conn, Sub, seniorOnly: false)) return StatusCode(403, new { error = \"CS 롤이 필요합니다.\" });");
+            sb.AppendLine("        if (req.banned)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            await using var cmd = new NpgsqlCommand(");
+            sb.AppendLine("                \"INSERT INTO suparun_ban (user_id, reason, banned_until, created_at, created_by) \" +");
+            sb.AppendLine("                \"VALUES (@uid, @reason, @until, (extract(epoch from now()) * 1000)::bigint, @by) \" +");
+            sb.AppendLine("                \"ON CONFLICT (user_id) DO UPDATE SET reason = @reason, banned_until = @until, created_by = @by\", _conn);");
+            sb.AppendLine("            cmd.Parameters.AddWithValue(\"uid\", req.playerId);");
+            sb.AppendLine("            cmd.Parameters.AddWithValue(\"reason\", (object)req.reason ?? System.DBNull.Value);");
+            sb.AppendLine("            cmd.Parameters.AddWithValue(\"until\", req.bannedUntil);");
+            sb.AppendLine("            cmd.Parameters.AddWithValue(\"by\", Sub);");
+            sb.AppendLine("            await cmd.ExecuteNonQueryAsync();");
+            sb.AppendLine("        }");
+            sb.AppendLine("        else await Exec(\"DELETE FROM suparun_ban WHERE user_id = @uid\", req.playerId);");
+            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:SetBan\", req.playerId, JsonSerializer.Serialize(req));");
+            sb.AppendLine("        return Ok(new { ok = true });");
+            sb.AppendLine("    }");
+            sb.AppendLine("");
+            sb.AppendLine("    // ── 이름 변경 (#39) — 이름의 진실은 auth 메타(raw_user_meta_data.name)다. ──");
+            sb.AppendLine("    [HttpPost(\"cs/system/Rename\")]");
+            sb.AppendLine("    public async Task<IActionResult> Rename([FromBody] CsSystem_RenameRequest req)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (!await CsGate.Allowed(_conn, Sub, seniorOnly: false)) return StatusCode(403, new { error = \"CS 롤이 필요합니다.\" });");
+            sb.AppendLine("        await using var cmd = new NpgsqlCommand(");
+            sb.AppendLine("            \"UPDATE auth.users SET raw_user_meta_data = \" +");
+            sb.AppendLine("            \"jsonb_set(coalesce(raw_user_meta_data, '{}'::jsonb), '{name}', to_jsonb(@name::text)) \" +");
+            sb.AppendLine("            \"WHERE id = @uid::uuid\", _conn);");
+            sb.AppendLine("        cmd.Parameters.AddWithValue(\"uid\", req.playerId);");
+            sb.AppendLine("        cmd.Parameters.AddWithValue(\"name\", req.name ?? \"\");");
+            sb.AppendLine("        var n = await cmd.ExecuteNonQueryAsync();");
+            sb.AppendLine("        if (n == 0) return NotFound(new { error = \"없는 플레이어입니다.\" });");
+            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:Rename\", req.playerId, JsonSerializer.Serialize(req));");
+            sb.AppendLine("        return Ok(new { ok = true });");
+            sb.AppendLine("    }");
+            sb.AppendLine("");
+            sb.AppendLine("    // ── 개발자 지정/해제 (#40) ──");
+            sb.AppendLine("    [HttpPost(\"cs/system/SetDeveloper\")]");
+            sb.AppendLine("    public async Task<IActionResult> SetDeveloper([FromBody] CsSystem_SetDeveloperRequest req)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (!await CsGate.Allowed(_conn, Sub, seniorOnly: false)) return StatusCode(403, new { error = \"CS 롤이 필요합니다.\" });");
+            sb.AppendLine("        if (req.isDeveloper)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            await using var cmd = new NpgsqlCommand(");
+            sb.AppendLine("                \"INSERT INTO suparun_developer (user_id, note, created_at, created_by) \" +");
+            sb.AppendLine("                \"VALUES (@uid, @note, (extract(epoch from now()) * 1000)::bigint, @by) \" +");
+            sb.AppendLine("                \"ON CONFLICT (user_id) DO UPDATE SET note = @note, created_by = @by\", _conn);");
+            sb.AppendLine("            cmd.Parameters.AddWithValue(\"uid\", req.playerId);");
+            sb.AppendLine("            cmd.Parameters.AddWithValue(\"note\", (object)req.note ?? System.DBNull.Value);");
+            sb.AppendLine("            cmd.Parameters.AddWithValue(\"by\", Sub);");
+            sb.AppendLine("            await cmd.ExecuteNonQueryAsync();");
+            sb.AppendLine("        }");
+            sb.AppendLine("        else await Exec(\"DELETE FROM suparun_developer WHERE user_id = @uid\", req.playerId);");
+            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:SetDeveloper\", req.playerId, JsonSerializer.Serialize(req));");
+            sb.AppendLine("        return Ok(new { ok = true });");
+            sb.AppendLine("    }");
+            sb.AppendLine("");
+            sb.AppendLine("    // ── 리셋 (#40) — [UserData] 만 지운다. 계정·밴·개발자 지정은 남는다. ──");
+            sb.AppendLine("    [HttpPost(\"cs/system/ResetPlayer\")]");
+            sb.AppendLine("    public async Task<IActionResult> ResetPlayer([FromBody] CsSystem_ResetPlayerRequest req)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (!await CsGate.Allowed(_conn, Sub, seniorOnly: false)) return StatusCode(403, new { error = \"CS 롤이 필요합니다.\" });");
+            sb.AppendLine(deleteLines);
+            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:ResetPlayer\", req.playerId, null);");
+            sb.AppendLine("        return Ok(new { ok = true });");
+            sb.AppendLine("    }");
+            sb.AppendLine("");
+            sb.AppendLine("    // ── GDPR 삭제 (#42) — cs-senior 이상. auth 계정까지 지운다(세션·신원 FK 연쇄). ──");
+            sb.AppendLine("    [HttpPost(\"cs/system/GdprDelete\")]");
+            sb.AppendLine("    public async Task<IActionResult> GdprDelete([FromBody] CsSystem_GdprDeleteRequest req)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (!await CsGate.Allowed(_conn, Sub, seniorOnly: true)) return StatusCode(403, new { error = \"cs-senior 이상만 실행할 수 있습니다.\" });");
+            sb.AppendLine(deleteLines);
+            sb.AppendLine("        await Exec(\"DELETE FROM suparun_ban WHERE user_id = @uid\", req.playerId);");
+            sb.AppendLine("        await Exec(\"DELETE FROM suparun_developer WHERE user_id = @uid\", req.playerId);");
+            sb.AppendLine("        await Exec(\"DELETE FROM auth.users WHERE id = @uid::uuid\", req.playerId);");
+            sb.AppendLine("        // 감사가 마지막인 이유: 삭제가 실패하면 '지웠다' 는 기록이 거짓이 된다.");
+            sb.AppendLine("        await CsGate.Audit(_conn, Sub, \"cs:GdprDelete\", req.playerId, null);");
+            sb.AppendLine("        return Ok(new { ok = true });");
+            sb.AppendLine("    }");
+            sb.AppendLine("}");
+            sb.AppendLine("");
+            sb.AppendLine("public class CsSystem_SetBanRequest { public string playerId { get; set; } public bool banned { get; set; } public string reason { get; set; } public long bannedUntil { get; set; } }");
+            sb.AppendLine("public class CsSystem_RenameRequest { public string playerId { get; set; } public string name { get; set; } }");
+            sb.AppendLine("public class CsSystem_SetDeveloperRequest { public string playerId { get; set; } public bool isDeveloper { get; set; } public string note { get; set; } }");
+            sb.AppendLine("public class CsSystem_ResetPlayerRequest { public string playerId { get; set; } }");
+            sb.AppendLine("public class CsSystem_GdprDeleteRequest { public string playerId { get; set; } }");
+
+            return new GeneratedFile("Generated/Controllers/CsSystemController.cs", sb.ToString());
+        }
+
+        /// <summary>
+        /// cs_actions 메타 — 어드민이 Admin Tools 버튼·모달을 자동으로 그리는 근거 (#38).
+        /// 시스템 액션 5종 + 게임 [CsAction] 메서드. playerId 파라미터는 화면이 자동으로 채운다.
+        /// </summary>
+        static GeneratedFile GenerateCsActionsMetaMigration(Type[] logicTypes)
+        {
+            var items = new List<string>
+            {
+                // 시스템 액션 — 컨트롤러(GenerateCsSystemController)와 같은 좌표를 손으로 맞춘다.
+                "{\"service\":\"system\",\"method\":\"SetBan\",\"path\":\"api/cs/system/SetBan\",\"label\":\"밴/해제\",\"seniorOnly\":false,\"dangerous\":true,\"params\":[{\"name\":\"playerId\",\"type\":\"string\"},{\"name\":\"banned\",\"type\":\"bool\"},{\"name\":\"reason\",\"type\":\"string\"},{\"name\":\"bannedUntil\",\"type\":\"number\"}]}",
+                "{\"service\":\"system\",\"method\":\"Rename\",\"path\":\"api/cs/system/Rename\",\"label\":\"이름 변경\",\"seniorOnly\":false,\"dangerous\":false,\"params\":[{\"name\":\"playerId\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"}]}",
+                "{\"service\":\"system\",\"method\":\"SetDeveloper\",\"path\":\"api/cs/system/SetDeveloper\",\"label\":\"개발자 지정\",\"seniorOnly\":false,\"dangerous\":false,\"params\":[{\"name\":\"playerId\",\"type\":\"string\"},{\"name\":\"isDeveloper\",\"type\":\"bool\"},{\"name\":\"note\",\"type\":\"string\"}]}",
+                "{\"service\":\"system\",\"method\":\"ResetPlayer\",\"path\":\"api/cs/system/ResetPlayer\",\"label\":\"플레이어 리셋\",\"seniorOnly\":false,\"dangerous\":true,\"params\":[{\"name\":\"playerId\",\"type\":\"string\"}]}",
+                "{\"service\":\"system\",\"method\":\"GdprDelete\",\"path\":\"api/cs/system/GdprDelete\",\"label\":\"GDPR 계정 삭제\",\"seniorOnly\":true,\"dangerous\":true,\"params\":[{\"name\":\"playerId\",\"type\":\"string\"}]}",
+            };
+
+            foreach (var type in logicTypes)
+            {
+                var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Where(m => !m.IsSpecialName && m.GetCustomAttribute<CsActionAttribute>() != null);
+                foreach (var m in methods)
+                {
+                    var cs = m.GetCustomAttribute<CsActionAttribute>();
+                    var ps = string.Join(",", m.GetParameters().Select(p =>
+                        $"{{\"name\":\"{p.Name}\",\"type\":\"{GetJsType(p.ParameterType)}\"}}"));
+                    items.Add("{" +
+                        $"\"service\":\"{ToSnakeCase(type.Name)}\",\"method\":\"{m.Name}\"," +
+                        $"\"path\":\"api/{ToSnakeCase(type.Name)}/{m.Name}\"," +
+                        $"\"label\":\"{(cs.Label ?? m.Name)}\"," +
+                        $"\"seniorOnly\":{(cs.SeniorOnly ? "true" : "false")}," +
+                        $"\"dangerous\":{(cs.Dangerous ? "true" : "false")}," +
+                        $"\"params\":[{ps}]" + "}");
+                }
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine("-- cs_actions 메타 (자동 생성, ③ 트랙 #38) — 어드민 Admin Tools 의 버튼 목록");
+            AppendMetaUpsert(sb, "cs_actions", "[" + string.Join(",", items) + "]");
+            return new GeneratedFile("Generated/Migrations/suparun_meta_cs.sql", sb.ToString());
+        }
+
         /// <summary>[UserData] 타입 목록에서 메타데이터 JSON 문자열 생성.</summary>
         static string BuildTableMetadataJson(Type[] tableTypes)
         {
@@ -3060,13 +3347,10 @@ CREATE TRIGGER audit_admin_user_role
                 var group = type.GetCustomAttribute<UserDataAttribute>()?.Group;
                 var groupPart = group != null ? $"\"group\":\"{group}\"," : "";
                 // 플레이어 귀속 컬럼 — 상세 화면(#37)이 이 컬럼으로 본인 행을 필터한다.
-                // 관례 두 갈래(userId/playerId)를 모두 받고, **소문자화된 실컬럼명**을 내보낸다
-                // (컬럼은 f.Name.ToLower() 로 만들어진다) — 화면이 규약을 추측하지 않게.
-                var playerField = fields.FirstOrDefault(f =>
-                    f.Name == "userId" || f.Name == "user_id" ||
-                    f.Name == "playerId" || f.Name == "player_id");
-                var userIdPart = playerField != null
-                    ? $"\"playerColumn\":\"{playerField.Name.ToLower()}\"," : "";
+                // **소문자화된 실컬럼명**을 내보낸다(컬럼은 f.Name.ToLower() 로 만들어진다)
+                // — 화면이 규약을 추측하지 않게.
+                var playerCol = PlayerColumnOf(type);
+                var userIdPart = playerCol != null ? $"\"playerColumn\":\"{playerCol}\"," : "";
                 var item = "{" +
                     $"\"name\":\"{type.Name}\"," +
                     $"\"tableName\":\"{ToSnakeCase(type.Name)}\"," +

@@ -7,6 +7,7 @@ import { EnvSettingsPage } from '../environment/EnvSettingsPage'
 import { EnvironmentPage } from '../environment/EnvironmentPage'
 import { LogsPage } from '../logs/LogsPage'
 import { OpsPage } from '../ops/OpsPage'
+import { DeveloperPlayersPage } from '../players/DeveloperPlayersPage'
 import { PlayerDetailPage } from '../players/PlayerDetailPage'
 import { PlayersPage } from '../players/PlayersPage'
 import { RolesPage } from '../roles/RolesPage'
@@ -115,11 +116,12 @@ export function Shell({
       typeCatalog: data.typeCatalog,
       canWrite,
       promoteOnly,
+      roles,
       setPageSubtitle: setSubtitle,
       navigate,
       setToolbarActions: setActions,
     }),
-    [data.types, data.tableTypes, data.fkSources, data.rewardSources, data.typeCatalog, canWrite, promoteOnly, navigate],
+    [data.types, data.tableTypes, data.fkSources, data.rewardSources, data.typeCatalog, canWrite, promoteOnly, roles, navigate],
   )
 
   const view = describeRoute(route, data.types, data.tableTypes)
@@ -277,6 +279,18 @@ export function Shell({
                 <div className="tree-list">
                   {/* 조작(Manage) 화면들은 game-admin 만 본다 (#24) — 숨김은 UI 겹이고
                       진짜 거부는 RLS·RPC 가드가 한다. 열람 화면(audit·server_log)은 전 롤. */}
+                  {/* 개발자 플레이어 (#40) — 열람은 전 롤. 지정은 플레이어 상세의 CS 액션. */}
+                  <a
+                    className={`tree-item${route.kind === 'developers' ? ' active' : ''}`}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate({ kind: 'developers' })
+                    }}
+                  >
+                    <span className="branch">├─</span>
+                    <span className="label">developer_players</span>
+                  </a>
                   <a
                     className={`tree-item${route.kind === 'audit' || route.kind === 'auditDetail' ? ' active' : ''}`}
                     href="#"
@@ -517,6 +531,8 @@ function describeRoute(
       return shell('Manage Players', 'PLAYERS.SH', '~/players')
     case 'player':
       return shell('Manage Player', 'PLAYERS.SH', `~/players/${route.id.slice(0, 8)}`)
+    case 'developers':
+      return shell('Developer Players', 'DEVELOPERS.SH', '~/developer_players')
     case 'home':
       return shell('Overview', 'DASHBOARD.SH', '~/admin')
   }
@@ -600,6 +616,8 @@ function ScreenContent({
     case 'player':
       // key — 다른 플레이어로 이동하면 상태(카드·열람 기록 플래그)를 새로 시작한다
       return <PlayerDetailPage key={route.id} id={route.id} />
+    case 'developers':
+      return <DeveloperPlayersPage />
     case 'home': {
       // 타입 메타가 오기 전에 "선택하세요"를 띄우면 사이드바가 비어 있는 이유를 오해하게 된다.
       if (!data.ready) return <LoadingBlock label="Config 목록 불러오는 중" />

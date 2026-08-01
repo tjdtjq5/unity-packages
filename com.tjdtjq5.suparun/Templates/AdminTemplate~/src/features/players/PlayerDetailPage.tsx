@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AdminTools } from './AdminTools'
 import { selectBy } from '../../shared/db'
 import { getPlayer, type Player } from '../../shared/players'
 import { LoadingBlock } from '../../shared/Spinner'
@@ -19,19 +20,21 @@ export function PlayerDetailPage({ id }: { id: string }) {
   const [player, setPlayer] = useState<Player | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [rows, setRows] = useState<Record<string, TableRow[]>>({})
+  // CS 액션 실행 후 재조회 트리거 — 잔액·밴 상태가 카드에 바로 반영돼야 한다.
+  const [generation, setGeneration] = useState(0)
 
   const userTables = tableTypes.filter((t) => t.playerColumn)
 
   useEffect(() => {
-    setPlayer(undefined)
+    if (generation === 0) setPlayer(undefined)
     getPlayer(id)
       .then((p) => {
         setPlayer(p)
         // 존재하는 플레이어를 실제로 열람했을 때만 감사에 남긴다 — 오타 진입은 열람이 아니다.
-        if (p) recordViewed('player', p.id)
+        if (p && generation === 0) recordViewed('player', p.id)
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-  }, [id])
+  }, [id, generation])
 
   useEffect(() => {
     if (!player) return
@@ -126,11 +129,8 @@ export function PlayerDetailPage({ id }: { id: string }) {
         <UserDataCard key={t.tableName} table={t} rows={rows[t.tableName]} />
       ))}
 
-      {/* Admin Tools 자리 — 첫 CS 액션(#38)부터 버튼이 들어온다. 자리를 보여주는 이유는
-          사이드바의 not enabled 와 같다: 미설정 기능도 노출한다 (Metaplay 투어 §3-6). */}
-      <div className="mt-3 text-muted">
-        <i className="ti ti-tool me-1" /> Admin Tools — CS 액션은 아직 준비 중입니다.
-      </div>
+      {/* Admin Tools (#38~#42) — 버튼 목록은 메타(cs_actions), 실행은 서버 롤 게이트+감사. */}
+      <AdminTools player={player} onChanged={() => setGeneration((g) => g + 1)} />
     </div>
   )
 }

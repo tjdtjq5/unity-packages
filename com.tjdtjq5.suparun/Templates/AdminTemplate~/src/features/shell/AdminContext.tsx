@@ -31,6 +31,11 @@ export interface AdminContextValue {
    * 걷어내고 승격 경로를 안내한다. RLS(admin_write 의 suparun_is_promote_only)가 2겹째다.
    */
   promoteOnly: boolean
+  /**
+   * 로그인 신원의 롤 전체 (#38 — CS 액션 게이트가 cs 계열을 본다).
+   * canWrite 는 이 목록의 요약(game-admin 보유)일 뿐이다. UI 겹 — 진짜 거부는 서버가 한다.
+   */
+  roles: string[]
   /** `[ForeignKey]` 드롭다운 옵션 (참조 대상 Config 이름 → 행 목록). */
   fkSources: Record<string, FkOption[]>
   /** Rewards 모달용 재화/아이템 목록 (`currency_def`, `inventory_item_def`). */

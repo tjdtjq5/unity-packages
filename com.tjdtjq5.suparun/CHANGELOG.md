@@ -41,6 +41,13 @@
 - 어드민 설정에 **게임 로그인**(`platform_auth`) 토글. SettingsView 에만 있던 UI다
 - `POST /auth/claim-admin` — 로그인 신원을 GoTrue 에 되물어 확정하고 `admin_user` 등록 +
   **game-admin 롤 부여**(`SupaRunAdminClaim`). 빈 표의 RLS 매듭을 PAT 가 끊는 자리다
+- **CS 액션 계층** (#38~#42, ③ 트랙) — `[CsAction]` 어트리뷰트: [Service] 메서드 하나 =
+  서버 롤 게이트(admin_user_role 매 호출 조회 — JWT 클레임 불신, 회수 즉시 반영)+감사(cs:*)
+  +어드민 버튼(메타 `cs_actions` 자동 렌더). 시스템 액션 5종은 패키지 생성
+  (`CsSystemController` — 밴/해제·이름 변경(auth 메타)·개발자 지정·리셋·GDPR 삭제(senior))
+  + 클라 밴 확인 `GET api/auth/ban-check/{userId}`(본인 또는 cs 롤). GDPR 내보내기(#41)는
+  클라이언트 수집+감사(gdpr_export). 서버에 CORS(Bearer 인증이라 오리진 개방 무해).
+  ⚠ 컨트롤러 라우트는 `api/{snake(클래스명 전체)}` — CsToolsService → `api/cs_tools_service`
 - **플레이어 검색·목록 + 상세** (#36·#37, ③ 트랙 — Metaplay Manage Players 동형) —
   `suparun_player_search`/`suparun_player_get` RPC(SECURITY DEFINER, 롤 가드 — auth.users 로
   가는 유일한 창), `suparun_ban`·`suparun_developer` 시스템 표(쓰기 정책 없음 — 쓰기는 서버

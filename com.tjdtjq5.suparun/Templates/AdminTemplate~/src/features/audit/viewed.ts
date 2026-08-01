@@ -14,12 +14,20 @@ import { sb } from '../../shared/supabase'
 
 const recorded = new Set<string>()
 
-export function recordViewed(configType: string, rowId?: string): void {
-  const key = `${configType}|${rowId ?? ''}`
-  if (recorded.has(key) || isPreview() || !sb) return
-  recorded.add(key)
+export function recordViewed(
+  configType: string,
+  rowId?: string,
+  action: 'viewed' | 'gdpr_export' = 'viewed',
+): void {
+  // gdpr_export(#41)는 중복 정책 밖이다 — 내보내기는 한 번 한 번이 전부 기록 대상이다.
+  if (action === 'viewed') {
+    const key = `${configType}|${rowId ?? ''}`
+    if (recorded.has(key)) return
+    recorded.add(key)
+  }
+  if (isPreview() || !sb) return
   void sb
-    .rpc('suparun_audit_viewed', { p_config_type: configType, p_row_id: rowId ?? null })
+    .rpc('suparun_audit_viewed', { p_config_type: configType, p_row_id: rowId ?? null, p_action: action })
     .then((r) => {
       if (r.error) console.warn('열람 기록 실패:', r.error.message)
     })

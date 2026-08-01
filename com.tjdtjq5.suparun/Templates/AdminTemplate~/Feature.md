@@ -166,6 +166,24 @@ supabase-js 가 갱신을 알아서 하므로 옮겨 적을 필요가 없다. �
   테이블 배지(#32) → 펼치면 행 단위 diff(#33 — 감사 DiffView 재사용). 좌표에 활성본(public) 포함
 - 열람은 전 롤, 게시는 RPC 의 is_admin(=game-admin)이 막는다 — UI 는 canWrite 겹
 
+### 플레이어·CS 액션 (③ 트랙 #36~#42 — Metaplay Manage Players 클론: 10/11/150-*.png)
+
+- **목록**(`#players`): 디바운스 검색(ID 접두·이메일·이름) + 빈 질의=최근 로그인 순.
+  데이터 창구는 `suparun_player_search` RPC 뿐 — auth.users 는 PostgREST 밖이라
+  SECURITY DEFINER + `suparun_is_operator()` 가드가 유일한 문이다. 밴/dev 뱃지 동반
+- **상세**(`#players/<id>`): 계정 카드 + **[UserData] 카드 자동 생성** — 메타
+  `table_types[].playerColumn`(소문자 실컬럼명, userId/playerId 관례 수용)으로 본인 행 필터.
+  진입은 열람 감사(viewed), 없는 ID 는 명시 안내(#37)
+- **Admin Tools**(#38~): 버튼 목록 = 메타 `cs_actions` — [CsAction] 메서드 하나 = 버튼 하나.
+  모달 파라미터 폼도 메타(params)에서 자동. playerId 는 페이지 플레이어로 잠금.
+  dangerous = 빨간 버튼 + 대상 ID 재입력 2단계(#42), seniorOnly = cs-senior·game-admin 만.
+  호출 대상: 호스팅본=같은 오리진, 로컬=편집 환경 Cloud Run(ops.state) — 서버가 롤 게이트
+  (admin_user_role 매 호출 조회)+감사(cs:*)를 맡는다. UI 겹은 어디까지나 겹이다
+- **GDPR 내보내기**(#41): 서버 액션이 아니다 — [UserData]+계정 요약을 열람 권한으로 모아
+  isHidden 컬럼을 걸러 미리보기→JSON 다운로드. 실행은 `suparun_audit_viewed(action='gdpr_export')`
+- **개발자 플레이어**(`#developer_players`, #40): `suparun_developer` 열람 + 프로필 조인.
+  지정/해제는 상세의 CS 액션이 한다
+
 ### 서버 로그 (`[SYSTEM] > server_log`)
 
 레벨 필터(전체/error/warn) · 50개 페이징 · 행을 눌러 스택트레이스와 request body 를 편다.

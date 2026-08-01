@@ -71,6 +71,10 @@ builder.Services.AddRateLimiter(options =>
 // Response Compression
 builder.Services.AddResponseCompression();
 
+// CORS — 로컬 어드민(브리지 서빙, 다른 오리진)이 CS 액션(#38)을 직접 부른다.
+// 인증이 쿠키가 아니라 Bearer 헤더라 오리진 개방이 세션 도용 표면이 되지 않는다.
+builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+
 var app = builder.Build();
 
 // Auto Migration
@@ -98,6 +102,7 @@ var app = builder.Build();
 }
 
 app.UseResponseCompression();
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
