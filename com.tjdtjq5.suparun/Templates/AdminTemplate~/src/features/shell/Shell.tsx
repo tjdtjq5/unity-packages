@@ -36,13 +36,12 @@ import { useKeymap } from './useKeymap'
 const CONTENT_ID = 'table-container'
 
 /**
- * 어드민 껍데기 — titlebar / 사이드바 / 페이지 헤더 / 콘텐츠 영역 / 키맵.
- * 바닐라의 `#admin-page` HTML 과 showAdmin·renderSidebar·showToolbar·selectType·
- * show* 진입점들을 통째로 대체한다.
+ * 어드민 껍데기 — 사이드바 / 탑바 / 페이지 툴바 / 콘텐츠 영역 / 키맵.
+ * 레이아웃은 Metaplay 대시보드 클론이다 (ADR-0008, docs/reports/metaplay-screens):
+ * 좌측 화이트 사이드바(브랜드+환경 칩, Game/LiveOps/Technical 3그룹, 하단 Log Out),
+ * 콘텐츠 상단 탑바(페이지 타이틀 + 로컬/UTC 듀얼 시계 + 아바타).
  *
  * email 은 로그인한 사람 계정이다 (ADR-0009, #23 — 이메일+비밀번호).
- * 사이드바는 Metaplay IA(ADR-0008)를 따라 Game / LiveOps / Technical 3그룹이고,
- * 하단의 log out 이 세션을 끊는다 — 프리뷰처럼 세션이 없는 곳은 onLogout 을 안 넘긴다.
  *
  * roles 는 이 사람의 롤 목록(#24). game-admin 이 없으면 조작(Manage) 화면·쓰기 UI 를
  * 걷어낸다 — UI 겹일 뿐, 진짜 거부는 RLS 가 한다. 프리뷰는 전체 UI 를 봐야 하므로 기본값이
@@ -106,7 +105,7 @@ export function Shell({
   useKeymap({ scrollTargetId: CONTENT_ID, onCycleConfig, onToggleHelp })
 
   const canWrite = roles.includes('game-admin')
-  // 승격 전용 판정(#50) — 타이틀바 경고색(isProd)과 같은 이름 규약을 쓴다.
+  // 승격 전용 판정(#50) — 탑바 경고색(isProd)과 같은 이름 규약을 쓴다.
   const promoteOnly = /prod/i.test(data.envName || '')
 
   const ctx = useMemo<AdminContextValue>(
@@ -134,337 +133,174 @@ export function Shell({
   }, [view.title])
 
   const appLevel = isAppLevel(route)
-  // 이 어드민이 붙은 환경 이름. 환경 안에 있을 때 사이드바 맨 위에 띄운다.
+  // 이 어드민이 붙은 환경 이름. 브랜드 아래 환경 칩으로 항상 보인다.
   const envLabel = data.envName || '환경'
-  // prod 계열 환경이면 타이틀바가 스스로 경고색을 입는다 (Metaplay 헤더 색 구분 동형, #20).
+  // prod 계열 환경이면 탑바·환경 칩이 스스로 경고색을 입는다 (Metaplay 헤더 색 구분 동형, #20).
   // 환경 오인 조작 방지가 목적 — 판정은 승격 전용(#50)과 같은 이름 규약 하나다.
   const isProd = !appLevel && promoteOnly
 
+  /** 사이드바 항목 하나 — 채움형(FA solid) 아이콘 + 라벨, 활성이면 블루 채움 (Metaplay 동형). */
+  const item = (
+    label: string,
+    icon: string,
+    active: boolean,
+    to: Route,
+  ) => (
+    <a
+      className={`tree-item${active ? ' active' : ''}`}
+      href="#"
+      onClick={(e) => {
+        e.preventDefault()
+        navigate(to)
+      }}
+    >
+      <i className={`fa-solid ${icon}`} />
+      <span className="label">{label}</span>
+    </a>
+  )
+
   return (
     <AdminProvider value={ctx}>
-      <div className={`terminal-titlebar${isProd ? ' env-prod' : ''}`} style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }}>
-        <span>
-          <span className="dot" />
-          <span className="title">SUPARUN.ADMIN :: </span>
-          {/* 환경 안일 때만 경로에 환경이 낀다 — 고르기 전에는 보여줄 환경이 없다. */}
-          {!appLevel && (
-            <>
+      <aside className={`mp-sidebar${isProd ? ' env-prod' : ''}`}>
+        <div className="mp-brand">
+          {/* Metaplay 의 초록 사각 "m" 동형 — 글자 하나가 로고다 */}
+          <div className="mp-logo">S</div>
+          <div className="mp-brand-text">
+            <div className="mp-brand-name">SupaRun</div>
+            {/* Metaplay 의 "› demo" 자리 — 환경 안일 때만 보인다. 로컬에선 드롭다운 전환기다. */}
+            {!appLevel && (
               <EnvSwitcher
                 label={envLabel}
                 onGoEnvironments={() => navigate({ kind: 'environments' })}
               />
-              <span className="title"> › </span>
+            )}
+          </div>
+        </div>
+
+        <nav className="mp-nav">
+          {/* 환경을 고르기 전에는 앱 레벨 항목만 보인다 —
+              나머지는 전부 특정 Supabase 프로젝트의 데이터라 어느 것을 보여줄지 정해지지 않는다. */}
+          {appLevel ? (
+            <div className="tree-list">
+              {/* settings 는 여기 없다 — 설정은 전부 특정 프로젝트의 값이라 환경 안으로 갔다. */}
+              {item('Environments', 'fa-cloud', route.kind === 'environments', { kind: 'environments' })}
+            </div>
+          ) : (
+            <>
+              {/* Metaplay IA(ADR-0008) — Game / LiveOps / Technical 3그룹. */}
+              <div className="tree-section">Game</div>
+              <div className="tree-list">
+                {/* 플레이어 (#36·#37, Metaplay Game>Players 동형) — 열람은 전 롤(RPC 가드). */}
+                {item('Players', 'fa-users', route.kind === 'players' || route.kind === 'player', { kind: 'players' })}
+                {/* Game 안의 세부 그룹([PERKS] 등)과 TABLES 는 Sidebar 가 그린다. */}
+                <Sidebar
+                  types={data.types}
+                  tableTypes={data.tableTypes}
+                  route={route}
+                  onNavigate={navigate}
+                  ready={data.ready}
+                />
+                {/* 버전·게시 (#30, Metaplay Game Configs 동형). 열람은 전 롤 — 게시 버튼만 canWrite. */}
+                {item('Game Configs', 'fa-table-cells', route.kind === 'versions' || route.kind === 'compare', { kind: 'versions' })}
+                {/* 릴리스 매니페스트 (#51) — 무엇이 함께 나갔는가. 열람 전 롤, 생성은 로컬+game-admin. */}
+                {item('Releases', 'fa-rocket', route.kind === 'releases', { kind: 'releases' })}
+              </div>
+
+              <div className="tree-section">LiveOps</div>
+              <div className="tree-list">
+                {/* 세그먼트 (#44) — 라이브옵스의 첫 실기능. 열람은 전 롤, 쓰기는 game-admin. */}
+                {item('Player Segments', 'fa-user-group', route.kind === 'segments' || route.kind === 'segment', { kind: 'segments' })}
+                {/* 메일·이벤트·실험이 올 자리(#46). 숨기지 않고 자리를 보여준다 —
+                    "미설정 기능도 메뉴에 노출" (Metaplay 투어 §3-6, PRD 스토리 52). */}
+                <span className="tree-item muted" title="나머지 라이브옵스 기능은 아직 준비 중입니다">
+                  <i className="fa-solid fa-ellipsis" />
+                  <span className="label">Not enabled</span>
+                </span>
+              </div>
+
+              <div className="tree-section">Technical</div>
+              <div className="tree-list">
+                {/* 조작(Manage) 화면들은 game-admin 만 본다 (#24) — 숨김은 UI 겹이고
+                    진짜 거부는 RLS·RPC 가드가 한다. 열람 화면(audit·server_log)은 전 롤. */}
+                {/* 개발자 플레이어 (#40) — 열람은 전 롤. 지정은 플레이어 상세의 CS 액션. */}
+                {item('Developer Players', 'fa-chalkboard-user', route.kind === 'developers', { kind: 'developers' })}
+                {item('Audit Logs', 'fa-book', route.kind === 'audit' || route.kind === 'auditDetail', { kind: 'audit' })}
+                {canWrite && item('Snapshots', 'fa-camera', route.kind === 'snapshots', { kind: 'snapshots' })}
+                {/* 비밀은 이 환경의 데이터다 — `suparun_secret` 은 각 Supabase 프로젝트 안의 표다. */}
+                {canWrite && item('Secrets', 'fa-key', route.kind === 'secrets', { kind: 'secrets' })}
+                {item('Server Logs', 'fa-message', route.kind === 'logs', { kind: 'logs' })}
+                {/* 사람과 롤 (#24). 명단·부여/회수 전부 game-admin 전용이다. */}
+                {canWrite && item('User Roles', 'fa-user-shield', route.kind === 'roles', { kind: 'roles' })}
+                {/* 운영·설정은 맨 아래다 — 되돌리기 어려운 일들이라 지나가다 누르는 자리가 아니다.
+                    ops 는 Unity 를 시키는 화면이라 호스팅본(#48 — 브리지 없음)에는 아예 없다. */}
+                {canWrite && opsVisible() && item('Operations', 'fa-screwdriver-wrench', route.kind === 'ops', { kind: 'ops' })}
+                {/* 이 환경의 설정. 앱 레벨이 아니다 — 내용물이 전부 이 프로젝트의 값이다. */}
+                {canWrite && item('Settings', 'fa-gear', route.kind === 'envSettings', { kind: 'envSettings' })}
+              </div>
             </>
           )}
-          <span className="title">{view.context}</span>
-        </span>
-        {/* 스냅샷 저장 버튼은 여기 없다 — snapshots 화면의 [지금 저장] 과 같은 일을 했다.
-            타이틀바는 "지금 어디에 누구로, 언제인가" 만 말한다. */}
-        <span className="meta">
-          <TitlebarClock />
-          v0.7.0 / {email || '—'}
-        </span>
-      </div>
 
-      <aside
-        className="navbar navbar-vertical navbar-expand-lg navbar-dark"
-        style={{ marginTop: 32 }}
-      >
-        <div className="container-fluid">
-          <h1 className="navbar-brand">
-            <i className="ti ti-server-bolt me-2" />
-            <span className="nav-link-title">SupaRun.ADMIN</span>
-          </h1>
-          <div className="collapse navbar-collapse" id="sidebar-menu">
-            {/* 환경을 고르기 전에는 앱 레벨 항목만 보인다 —
-                나머지는 전부 특정 Supabase 프로젝트의 데이터라 어느 것을 보여줄지 정해지지 않는다. */}
-            {appLevel ? (
-              <>
-                <div className="sidebar-prompt">
-                  ~/ <span className="dim">$ select env</span>
-                </div>
-                <div className="tree-list">
-                  {/* settings 는 여기 없다 — 설정은 전부 특정 프로젝트의 값이라 환경 안으로 갔다.
-                      admins(User Roles)는 아직 없다 — 롤 게이트와 함께 온다(#24). */}
-                  <a
-                    className={`tree-item${route.kind === 'environments' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'environments' })
-                    }}
-                  >
-                    <span className="branch">└─</span>
-                    <span className="label">environments</span>
-                  </a>
-                </div>
-              </>
+          {/* 로그아웃은 양쪽 레벨 공통이다 — 로그인 직후 착지가 앱 레벨(환경 선택)이라
+              환경 안에만 두면 나갈 방법이 없다 (실기에서 확인). */}
+          <div className="tree-list mp-logout">
+            {onLogout ? (
+              <a
+                className="tree-item"
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault()
+                  onLogout()
+                }}
+              >
+                <i className="fa-solid fa-right-from-bracket" />
+                <span className="label">Log Out</span>
+              </a>
             ) : (
-              <>
-                {/* 환경 안. 어디에 들어와 있는지 항상 보이고, 눌러서 나갈 수 있다. */}
-                <a
-                  className="sidebar-envchip"
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    navigate({ kind: 'environments' })
-                  }}
-                  title="환경 선택으로 돌아가기"
-                >
-                  <i className="ti ti-chevron-left me-1" />
-                  {envLabel}
-                </a>
-
-                <div className="sidebar-prompt">
-                  ~/admin <span className="dim">$ ls -la</span>
-                </div>
-                {/* Metaplay IA(ADR-0008) — Game / LiveOps / Technical 3그룹.
-                    Game 안의 세부 그룹([PERKS] 등)과 TABLES 는 Sidebar 가 그린다. */}
-                <div className="tree-section">[GAME]</div>
-                <div className="tree-list">
-                  {/* 플레이어 (#36·#37, Metaplay Game>Players 동형) — 열람은 전 롤(RPC 가드). */}
-                  <a
-                    className={`tree-item${route.kind === 'players' || route.kind === 'player' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'players' })
-                    }}
-                  >
-                    <span className="branch">├─</span>
-                    <span className="label">players</span>
-                  </a>
-                  <Sidebar
-                    types={data.types}
-                    tableTypes={data.tableTypes}
-                    route={route}
-                    onNavigate={navigate}
-                    ready={data.ready}
-                  />
-                  {/* 버전·게시 (#30, Metaplay Game Configs 동형). 열람은 전 롤 — 게시 버튼만 canWrite. */}
-                  <a
-                    className={`tree-item${route.kind === 'versions' || route.kind === 'compare' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'versions' })
-                    }}
-                  >
-                    <span className="branch">├─</span>
-                    <span className="label">game_configs</span>
-                  </a>
-                  {/* 릴리스 매니페스트 (#51) — 무엇이 함께 나갔는가. 열람 전 롤, 생성은 로컬+game-admin. */}
-                  <a
-                    className={`tree-item${route.kind === 'releases' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'releases' })
-                    }}
-                  >
-                    <span className="branch">└─</span>
-                    <span className="label">releases</span>
-                  </a>
-                </div>
-
-                <div className="tree-section">[LIVEOPS]</div>
-                <div className="tree-list">
-                  {/* 세그먼트 (#44) — 라이브옵스의 첫 실기능. 열람은 전 롤, 쓰기는 game-admin. */}
-                  <a
-                    className={`tree-item${route.kind === 'segments' || route.kind === 'segment' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'segments' })
-                    }}
-                  >
-                    <span className="branch">├─</span>
-                    <span className="label">segments</span>
-                  </a>
-                  {/* 메일·이벤트·실험이 올 자리(#46). 숨기지 않고 자리를 보여준다 —
-                      "미설정 기능도 메뉴에 노출" (Metaplay 투어 §3-6, PRD 스토리 52). */}
-                  <span className="tree-item muted" title="나머지 라이브옵스 기능은 아직 준비 중입니다">
-                    <span className="branch">└─</span>
-                    <span className="label">not enabled</span>
-                  </span>
-                </div>
-
-                <div className="tree-section">[TECHNICAL]</div>
-                <div className="tree-list">
-                  {/* 조작(Manage) 화면들은 game-admin 만 본다 (#24) — 숨김은 UI 겹이고
-                      진짜 거부는 RLS·RPC 가드가 한다. 열람 화면(audit·server_log)은 전 롤. */}
-                  {/* 개발자 플레이어 (#40) — 열람은 전 롤. 지정은 플레이어 상세의 CS 액션. */}
-                  <a
-                    className={`tree-item${route.kind === 'developers' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'developers' })
-                    }}
-                  >
-                    <span className="branch">├─</span>
-                    <span className="label">developer_players</span>
-                  </a>
-                  <a
-                    className={`tree-item${route.kind === 'audit' || route.kind === 'auditDetail' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'audit' })
-                    }}
-                  >
-                    <span className="branch">├─</span>
-                    <span className="label">audit_log</span>
-                  </a>
-                  {canWrite && (
-                    <a
-                      className={`tree-item${route.kind === 'snapshots' ? ' active' : ''}`}
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        navigate({ kind: 'snapshots' })
-                      }}
-                    >
-                      <span className="branch">├─</span>
-                      <span className="label">snapshots</span>
-                    </a>
-                  )}
-                  {/* 비밀은 이 환경의 데이터다 — `suparun_secret` 은 각 Supabase 프로젝트 안의 표다. */}
-                  {canWrite && (
-                    <a
-                      className={`tree-item${route.kind === 'secrets' ? ' active' : ''}`}
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        navigate({ kind: 'secrets' })
-                      }}
-                    >
-                      <span className="branch">├─</span>
-                      <span className="label">secrets</span>
-                    </a>
-                  )}
-                  <a
-                    className={`tree-item${route.kind === 'logs' ? ' active' : ''}`}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate({ kind: 'logs' })
-                    }}
-                  >
-                    <span className="branch">{canWrite ? '├─' : '└─'}</span>
-                    <span className="label">server_log</span>
-                  </a>
-                  {/* 사람과 롤 (#24). 명단·부여/회수 전부 game-admin 전용이다. */}
-                  {canWrite && (
-                    <a
-                      className={`tree-item${route.kind === 'roles' ? ' active' : ''}`}
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        navigate({ kind: 'roles' })
-                      }}
-                    >
-                      <span className="branch">├─</span>
-                      <span className="label">user_roles</span>
-                    </a>
-                  )}
-                  {/* 운영·설정은 맨 아래다 — 되돌리기 어려운 일들이라 지나가다 누르는 자리가 아니다.
-                      ops 는 Unity 를 시키는 화면이라 호스팅본(#48 — 브리지 없음)에는 아예 없다. */}
-                  {canWrite && opsVisible() && (
-                    <a
-                      className={`tree-item${route.kind === 'ops' ? ' active' : ''}`}
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        navigate({ kind: 'ops' })
-                      }}
-                    >
-                      <span className="branch">├─</span>
-                      <span className="label">ops</span>
-                    </a>
-                  )}
-                  {/* 이 환경의 설정. 앱 레벨이 아니다 — 내용물이 전부 이 프로젝트의 값이다. */}
-                  {canWrite && (
-                    <a
-                      className={`tree-item${route.kind === 'envSettings' ? ' active' : ''}`}
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        navigate({ kind: 'envSettings' })
-                      }}
-                    >
-                      <span className="branch">└─</span>
-                      <span className="label">settings</span>
-                    </a>
-                  )}
-                </div>
-
-              </>
+              // 프리뷰 — 끊을 세션이 없어 자리만 유지한다.
+              <span className="tree-item muted">
+                <i className="fa-solid fa-right-from-bracket" />
+                <span className="label">Log Out</span>
+              </span>
             )}
+          </div>
+        </nav>
 
-            {/* 로그아웃은 양쪽 레벨 공통이다 — 로그인 직후 착지가 앱 레벨(SELECT ENV)이라
-                환경 안에만 두면 나갈 방법이 없다 (실기에서 확인). */}
-            <div className="tree-list" style={{ marginTop: 8 }}>
-              {onLogout ? (
-                <a
-                  className="tree-item"
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    onLogout()
-                  }}
-                >
-                  <span className="branch">└─</span>
-                  <span className="label">log out</span>
-                </a>
-              ) : (
-                // 프리뷰 — 끊을 세션이 없어 자리만 유지한다.
-                <span className="tree-item muted">
-                  <span className="branch">└─</span>
-                  <span className="label">log out</span>
-                </span>
-              )}
-            </div>
-
-            <div className="sidebar-status">
-              <div className="row">
-                <span className="lbl">conn</span> <span className="ok">●</span> <span>live</span>
-              </div>
-              <div className="row">
-                <span className="lbl">user</span> <span>{email || '—'}</span>
-              </div>
-              {/* env 행은 없다 — "dev" 로 하드코딩돼 prod 에서도 dev 라고 말하던 자리다.
-                  지금은 타이틀바의 환경 전환기가 진실을 보여준다. */}
-              <div className="row">
-                <span className="lbl">ver </span> <span>0.7.0</span>
-              </div>
-            </div>
+        <div className="sidebar-status">
+          <div className="row">
+            <span className="lbl">conn</span> <span className="ok">●</span> <span>live</span>
+          </div>
+          <div className="row">
+            <span className="lbl">user</span> <span>{email || '—'}</span>
+          </div>
+          <div className="row">
+            <span className="lbl">ver </span> <span>1.1.0</span>
           </div>
         </div>
       </aside>
 
-      <div className="page-wrapper page-transition" style={{ marginTop: 32 }}>
-        <div className="terminal-prompt">
-          <span className="user">admin@suparun</span>
-          <span className="sep">:</span>
-          <span className="path">{view.path}</span>
-          <span className="sep">$</span> <span className="cmd">inspect</span>{' '}
-          <span className="arg">{view.arg}</span>
-          <span className="cursor">_</span>
-        </div>
+      <div className="mp-main">
+        {/* Metaplay 탑바 동형 — 페이지 타이틀 / 듀얼 시계 / 아바타.
+            타이틀은 View/Manage 컨벤션(#21)이라 위험한 화면인지 여기서 바로 읽힌다. */}
+        <header className={`mp-topbar${isProd ? ' env-prod' : ''}`}>
+          <h2 className="mp-topbar-title">{view.title}</h2>
+          <span className="spacer" />
+          <TitlebarClock />
+          {/* Metaplay 동형 — 회색 원 + 사람 글리프. 누구인지는 title(이메일)로 말한다. */}
+          <div className="mp-avatar" title={email || '미로그인'}>
+            <i className="fa-solid fa-user" />
+          </div>
+        </header>
 
-        <PageHeader
-          title={view.title}
-          subtitle={subtitle}
-          supabaseTable={view.supabaseTable}
-          search={search}
-          onSearch={setSearch}
-          actions={actions}
-        />
-
-        <div className="page-body">
+        <div className="mp-body page-transition">
           <div className="container-xl page-fade">
-            <div className="card shadow-sm">
+            <PageHeader
+              subtitle={subtitle}
+              supabaseTable={view.supabaseTable}
+              search={search}
+              onSearch={setSearch}
+              actions={actions}
+            />
+            <div className="card">
               <div id={CONTENT_ID} className="table-responsive">
                 <ScreenContent route={route} data={data} search={search} canWrite={canWrite} />
               </div>
@@ -478,81 +314,62 @@ export function Shell({
   )
 }
 
-/** 라우트에서 껍데기 표시값을 뽑는다. */
+/** 라우트에서 껍데기 표시값(탑바 타이틀·Supabase 링크 대상)을 뽑는다. */
 function describeRoute(
   route: Route,
   types: AdminContextValue['types'],
   tableTypes: AdminContextValue['tableTypes'],
-): { title: string; context: string; path: string; arg: string; supabaseTable: string | null } {
-  const shell = (title: string, ctx: string, path: string) => ({
-    title,
-    context: ctx,
-    path,
-    arg: '--list-all',
-    supabaseTable: null,
-  })
+): { title: string; supabaseTable: string | null } {
   // View/Manage 타이틀 컨벤션 (#21, Metaplay 동형) — 읽기 화면은 View, 조작 화면은 Manage.
   // 지금 위험한 화면(조작 가능)에 있는지 타이틀만 봐도 알게 한다.
   switch (route.kind) {
     case 'config': {
       const t = types.find((x) => x.tableName === route.tableName)
-      return {
-        title: `Manage ${t?.name ?? route.tableName}`,
-        context: `${route.tableName.toUpperCase()}.SH`,
-        path: `~/configs/${route.tableName}`,
-        arg: '--list-all',
-        supabaseTable: route.tableName,
-      }
+      return { title: `Manage ${t?.name ?? route.tableName}`, supabaseTable: route.tableName }
     }
     case 'table': {
       // [UserData] 테이블은 읽기 전용 조회다 — 쓰기는 서버([Service])만 한다 (ADR-0004 결정 20)
       const t = tableTypes.find((x) => x.tableName === route.tableName)
-      return {
-        title: `View ${t?.name ?? route.tableName}`,
-        context: `${route.tableName.toUpperCase()}.SH`,
-        path: `~/tables/${route.tableName}`,
-        arg: '--list-all',
-        supabaseTable: route.tableName,
-      }
+      return { title: `View ${t?.name ?? route.tableName}`, supabaseTable: route.tableName }
     }
     case 'audit':
-      return shell('View Audit Logs', 'AUDIT_LOG.SH', '~/audit_log')
+      return { title: 'View Audit Logs', supabaseTable: null }
     case 'auditDetail':
-      return shell('View Audit Event', 'AUDIT_LOG.SH', `~/audit_log/${route.id.slice(0, 8)}`)
+      return { title: 'View Audit Event', supabaseTable: null }
     case 'snapshots':
-      return shell('Manage Snapshots', 'SNAPSHOTS.SH', '~/snapshots')
+      return { title: 'Manage Snapshots', supabaseTable: null }
     case 'environments':
-      return shell('Manage Environments', 'SELECT.SH', '~/environments')
+      return { title: 'Manage Environments', supabaseTable: null }
     case 'setup':
-      return shell('Manage Project Setup', 'SETUP.SH', `~/setup/${route.projectRef}`)
+      return { title: 'Manage Project Setup', supabaseTable: null }
     case 'envSettings':
-      return shell('Manage Settings', 'SETTINGS.SH', '~/settings')
+      return { title: 'Manage Settings', supabaseTable: null }
     case 'secrets':
-      return shell('Manage Secrets', 'SECRETS.SH', '~/secrets')
+      return { title: 'Manage Secrets', supabaseTable: null }
     case 'logs':
-      return shell('View Server Logs', 'SERVER_LOG.SH', '~/server_log')
+      return { title: 'View Server Logs', supabaseTable: null }
     case 'ops':
-      return shell('Manage Operations', 'OPS.SH', '~/ops')
+      return { title: 'Manage Operations', supabaseTable: null }
     case 'roles':
-      return shell('Manage User Roles', 'USER_ROLES.SH', '~/user_roles')
+      return { title: 'Manage User Roles', supabaseTable: null }
     case 'versions':
-      return shell('Manage Game Configs', 'GAME_CONFIGS.SH', '~/game_configs')
+      return { title: 'Manage Game Configs', supabaseTable: null }
     case 'compare':
-      return shell('Compare Game Configs', 'GAME_CONFIGS.SH', '~/game_configs/compare')
+      return { title: 'Compare Game Configs', supabaseTable: null }
     case 'releases':
-      return shell('Manage Releases', 'RELEASES.SH', '~/releases')
+      return { title: 'Manage Releases', supabaseTable: null }
     case 'players':
-      return shell('Manage Players', 'PLAYERS.SH', '~/players')
+      return { title: 'Manage Players', supabaseTable: null }
     case 'player':
-      return shell('Manage Player', 'PLAYERS.SH', `~/players/${route.id.slice(0, 8)}`)
+      return { title: 'Manage Player', supabaseTable: null }
     case 'developers':
-      return shell('Developer Players', 'DEVELOPERS.SH', '~/developer_players')
+      return { title: 'Developer Players', supabaseTable: null }
     case 'segments':
-      return shell('Player Segments', 'SEGMENTS.SH', '~/segments')
+      return { title: 'Player Segments', supabaseTable: null }
     case 'segment':
-      return shell('Manage Segment', 'SEGMENTS.SH', `~/segments/${route.id}`)
+      return { title: 'Manage Segment', supabaseTable: null }
     case 'home':
-      return shell('Overview', 'DASHBOARD.SH', '~/admin')
+      return { title: 'Overview', supabaseTable: null }
   }
 }
 

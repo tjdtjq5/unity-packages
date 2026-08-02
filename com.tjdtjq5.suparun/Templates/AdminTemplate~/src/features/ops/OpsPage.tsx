@@ -90,7 +90,7 @@ export function OpsPage() {
           <Row
             name="대상 환경"
             state="ok"
-            hint={`[${st.editorEnv}] 의 [SpecData] 를 다른 환경의 미게시 버전으로 올립니다. 라이브에는 영향이 없습니다 (ADR-0010).`}
+            hint={`[${st.editorEnv}] 의 데이터를 미게시 버전으로 올립니다 — 라이브에는 영향이 없습니다`}
           >
             <select
               className="form-select form-select-sm"

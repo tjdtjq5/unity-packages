@@ -62,10 +62,13 @@ export function SegmentsPage() {
 
   return (
     <div className="m-3">
-      <p className="text-muted mb-2">
-        세그먼트는 <b>조건으로 정의되는 플레이어 부분집합</b>입니다 — 브로드캐스트·실험·오퍼가
-        대상을 고를 때 공용으로 씁니다. 소속은 저장되지 않고 매번 평가됩니다 (ADR-0011).
-      </p>
+      <div className="sec-title">
+        세그먼트{' '}
+        <i
+          className="fa-solid fa-circle-info hint-i"
+          title="조건으로 정의되는 플레이어 부분집합입니다. 브로드캐스트·실험·오퍼가 대상을 고를 때 공용으로 쓰고, 소속은 저장되지 않고 매번 평가됩니다."
+        />
+      </div>
 
       {canWrite && (
         <div className="row g-2 mb-3" style={{ maxWidth: 480 }}>

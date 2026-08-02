@@ -62,30 +62,24 @@ export function OnboardingPage() {
 
   if (!st) {
     return (
-      <div className="page page-center">
-        <div className="terminal-window">
-          <div className="terminal-body">
-            {error ? <div className="alert alert-danger">{error}</div> : <Spinner size={16} />}
-          </div>
+      <div className="auth-page">
+        <div className="auth-card">
+          {error ? <div className="alert alert-danger">{error}</div> : <Spinner size={16} />}
         </div>
       </div>
     )
   }
 
   return (
-    <div className="page page-center">
-      <div className="terminal-window">
-        <div className="terminal-titlebar">
-          <span className="dot" />
-          <span className="title">SUPARUN.ADMIN :: SETUP</span>
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-head">
+          <div className="auth-logo">S</div>
+          <h1 className="auth-title">프로젝트 연결</h1>
+          <p className="auth-sub">Supabase 프로젝트를 연결하고 초기화합니다</p>
         </div>
 
-        <div className="terminal-body">
-          <div className="prompt-line">
-            <span className="user">supabase://setup</span>
-            <span className="sep">$</span> connect<span className="cursor">_</span>
-          </div>
-
+        <div>
           {error && <div className="alert alert-danger">{error}</div>}
 
           {/* ── 토큰 ── */}
@@ -216,7 +210,7 @@ export function OnboardingPage() {
             </div>
           )}
 
-          <div className="status-bar" style={{ marginTop: 18 }}>
+          <div className="auth-foot" style={{ marginTop: 18 }}>
             Unity 가 켜져 있어야 이 화면이 동작합니다.
           </div>
         </div>

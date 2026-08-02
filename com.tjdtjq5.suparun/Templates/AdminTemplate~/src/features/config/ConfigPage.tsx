@@ -121,8 +121,7 @@ export function ConfigPage({ configType, filter }: { configType: ConfigType; fil
       {/* 승격 전용 잠금(#50) — 편집 UI 가 없는 이유와 대신 가야 할 길을 그 자리에서 말한다. */}
       {promoteOnly && canWrite && (
         <div className="alert alert-warning m-2 mb-0">
-          <b>이 환경은 승격 전용입니다.</b> 데이터는 dev 에서 수정해 업로드 → 비교 → 게시로
-          반영하세요.{' '}
+          <b>승격 전용 환경</b> — dev 에서 수정해 게시로 반영하세요.{' '}
           <a
             href="#"
             onClick={(e) => {

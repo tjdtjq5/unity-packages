@@ -80,10 +80,13 @@ export function VersionsPage() {
 
   return (
     <div className="versions-page">
-      <p className="text-muted m-3 mb-2">
-        게임 데이터의 버전입니다. dev 에서 업로드하면 여기 <b>미게시 버전</b>이 생기고, 검토(비교) 후
-        게시해야 라이브에 반영됩니다. 과거 버전을 다시 게시하면 롤백입니다.
-      </p>
+      <div className="sec-title m-3 mb-2">
+        버전{' '}
+        <i
+          className="fa-solid fa-circle-info hint-i"
+          title="dev 에서 업로드하면 여기 미게시 버전이 생기고, 검토(비교) 후 게시해야 라이브에 반영됩니다. 과거 버전을 다시 게시하면 롤백입니다."
+        />
+      </div>
 
       <div className="m-2">
         {/* key — 게시로 활성이 바뀌면 카드를 리마운트해 방금의 publish 가 이력에 보이게 한다. */}

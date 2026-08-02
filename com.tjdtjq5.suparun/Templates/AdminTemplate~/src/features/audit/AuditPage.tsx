@@ -35,13 +35,9 @@ export function AuditPage({ presetType }: { presetType?: string }) {
 
   return (
     <div className="audit-page">
-      <p className="text-muted m-3 mb-2">
-        감사 이벤트는 누가 언제 무엇을 했는지의 기록입니다. 변경은 DB 트리거가, 열람은 화면이
-        스스로 남깁니다.
-      </p>
-
-      {/* ── 검색 (Metaplay Search 블록 동형 — 우리 축은 타입·행위자·기간 3종) ── */}
-      <div className="audit-search m-3 mt-0">
+      {/* ── 검색 (Metaplay Search 블록 동형 — 우리 축은 타입·행위자·기간 3종).
+          머리 산문은 없다 — 검색 폼과 목록이 곧 설명이다. */}
+      <div className="audit-search m-3">
         <div className="row g-2">
           <div className="col-sm-3">
             <label className="form-label mb-1">대상 타입</label>
@@ -133,7 +129,7 @@ export function AuditPage({ presetType }: { presetType?: string }) {
 
           {hasMore && (
             <div className="text-center my-3">
-              <button className="btn-terminal" disabled={loading} onClick={() => void loadMore()}>
+              <button className="btn" disabled={loading} onClick={() => void loadMore()}>
                 {loading ? (
                   <>
                     <Spinner size={12} /> [LOADING...]

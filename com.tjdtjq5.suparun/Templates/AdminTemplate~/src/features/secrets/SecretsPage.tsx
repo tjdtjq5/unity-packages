@@ -77,11 +77,14 @@ export function SecretsPage() {
   return (
     <div className="appset">
       <section className="appset-block">
-        <h3 className="appset-title">공유 비밀</h3>
-        <p className="appset-desc">
-          git 에 올릴 수 없지만 팀이 공유해야 하는 값들입니다. <strong>값은 보여주지 않습니다</strong> —
-          읽는 경로 자체가 없어서, 관리자라도 꺼낼 수 없습니다. 빈칸이 정상이고, 채워 넣으면 덮어씁니다.
-        </p>
+        <h3 className="appset-title">
+          공유 비밀{' '}
+          <i
+            className="fa-solid fa-circle-info hint-i"
+            title="값은 저장만 되고 다시 보이지 않습니다 — 읽는 경로(SELECT 정책)가 없어 관리자라도 꺼낼 수 없습니다. 빈칸이 정상이고, 채워 넣으면 덮어씁니다."
+          />
+        </h3>
+        <p className="appset-desc">팀이 공유하는 값입니다. 저장한 값은 다시 보이지 않습니다.</p>
 
         {error && <div className="gsetup-warn">{error}</div>}
 
@@ -91,24 +94,27 @@ export function SecretsPage() {
             <div key={s.key} className="appset-row">
               <div className="appset-row-main">
                 <div className="appset-row-name">
-                  {m ? '✓' : '○'} {s.label}
-                  {s.shared && <span className="appset-row-key"> · 모든 환경 공통</span>}
+                  {s.label}
+                  {/* 상태는 칩 하나 — 언제·누가 채웠는지는 툴팁이 말한다 */}
+                  <span
+                    className={`stat-chip ${m ? 'on' : 'off'}`}
+                    title={
+                      m
+                        ? `${m.updatedAt ? new Date(m.updatedAt).toLocaleString() : '시각 모름'}${
+                            m.updatedBy ? ` · ${m.updatedBy}` : ''
+                          }`
+                        : undefined
+                    }
+                  >
+                    {m ? '설정됨' : '비어 있음'}
+                  </span>
+                  {s.shared && (
+                    <span className="stat-chip off" title="모든 환경이 같은 값을 씁니다">
+                      공통
+                    </span>
+                  )}
                 </div>
                 <div className="appset-row-key">{s.hint}</div>
-                <div className="appset-row-key">
-                  {m
-                    ? `채워짐 · ${m.updatedAt ? new Date(m.updatedAt).toLocaleString() : '시각 모름'}${
-                        m.updatedBy ? ` · ${m.updatedBy}` : ''
-                      }`
-                    : '비어 있음'}
-                </div>
-                {s.link && (
-                  <div className="appset-row-key">
-                    <a href={s.link(projectRef)} target="_blank" rel="noreferrer">
-                      {s.linkLabel}
-                    </a>
-                  </div>
-                )}
               </div>
 
               <div className="appset-row-fields">
@@ -143,18 +149,29 @@ export function SecretsPage() {
                     </button>
                   </>
                 )}
+                {/* 값을 얻으러 갈 곳 — 링크 한 줄 대신 아이콘 버튼 하나 */}
+                {s.link && (
+                  <a
+                    className="btn btn-sm btn-icon"
+                    href={s.link(projectRef)}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={s.linkLabel}
+                  >
+                    <i className="fa-solid fa-arrow-up-right-from-square" />
+                  </a>
+                )}
               </div>
             </div>
           )
         })}
-      </section>
 
-      <section className="appset-block">
-        <h3 className="appset-title">여기 없는 것</h3>
-        <p className="appset-desc">
-          <strong>Supabase Access Token(PAT)</strong> 은 이 목록에 없습니다. 계정 전체의 마스터키라
-          팀이 하나를 돌려쓰면 감사 추적이 사라지고, 그 사람이 나가면 전부 끊깁니다. 각자 발급해
-          <strong> 자기 Unity 에만</strong> 둡니다 — DB 에는 한 번도 올라가지 않습니다.
+        {/* PAT 정책 — 산문 카드 하나를 차지하던 설명의 요약. 세부는 툴팁. */}
+        <p
+          className="appset-foot"
+          title="계정 전체의 마스터키라 팀이 하나를 돌려쓰면 감사 추적이 사라지고, 그 사람이 나가면 전부 끊깁니다. DB 에는 한 번도 올라가지 않습니다."
+        >
+          Supabase Access Token(PAT)은 여기 없습니다 — 각자 발급해 자기 Unity 에만 둡니다.
         </p>
       </section>
     </div>

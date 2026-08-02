@@ -182,12 +182,13 @@ export function EnvSettingsPage() {
       <section className="appset-block">
         <h3 className="appset-title">
           이 환경
-          {local && <span className="env-badge editor" style={{ marginLeft: 6 }}>편집 중</span>}
+          {local && <span className="env-badge editor" style={{ marginLeft: 6 }}>편집 중</span>}{' '}
+          <i
+            className="fa-solid fa-circle-info hint-i"
+            title="값은 suparun_env 에 있고 Unity 가 대시보드·배포·빌드 때 읽어 갑니다. 다른 환경은 그 환경에 들어가서 고칩니다."
+          />
         </h3>
-        <p className="appset-desc">
-          지금 들어와 있는 Supabase 프로젝트의 설정입니다. <strong>Unity 가 이 값을 읽습니다.</strong>{' '}
-          다른 환경은 그 환경에 들어가서 고칩니다.
-        </p>
+        <p className="appset-desc">Unity 가 읽는 이 프로젝트의 설정입니다.</p>
 
         <div className="appset-row">
           <div className="appset-row-main">
@@ -222,17 +223,15 @@ export function EnvSettingsPage() {
         {local && st && (
           <div className="appset-row">
             <div className="appset-row-main">
-              <div className="appset-row-name">컴파일 후 자동 스키마 반영</div>
+              <div className="appset-row-name">
+                컴파일 후 자동 스키마 반영
+                <i
+                  className="fa-solid fa-circle-info hint-i"
+                  title="꺼져 있으면 스키마는 배포할 때만 반영됩니다. 처음 켜면 [UserData] 표에 RLS 정책이 생기고, 게임도 같은 anon key 를 쓰므로 여기서 연 문은 플레이어에게도 열립니다. 팀 공유값(Unity 설정 파일)입니다."
+                />
+              </div>
               <div className="appset-row-key">
-                {autoSchema ? (
-                  '컴파일할 때마다 이 환경에 스키마가 반영됩니다. 팀 공유값입니다(Unity 설정 파일).'
-                ) : (
-                  <>
-                    꺼져 있습니다 — 이 환경의 스키마는 <strong>배포할 때</strong> 반영됩니다.
-                    처음 켜면 [UserData] 표에 RLS 정책이 생깁니다. 게임도 같은 anon key 를 쓰므로
-                    여기서 연 문은 플레이어에게도 열립니다.
-                  </>
-                )}
+                {autoSchema ? '컴파일할 때마다 이 환경에 반영됩니다' : '스키마는 배포할 때 반영됩니다'}
               </div>
             </div>
             <div className="appset-row-fields">
@@ -257,11 +256,15 @@ export function EnvSettingsPage() {
         {local && st && (
           <div className="appset-row">
             <div className="appset-row-main">
-              <div className="appset-row-name">행 편집 시 Id 상수 자동 생성</div>
+              <div className="appset-row-name">
+                행 편집 시 Id 상수 자동 생성
+                <i
+                  className="fa-solid fa-circle-info hint-i"
+                  title="행이 늘거나 줄면(추가·삭제·복사·스냅샷 복원) {Name}Ids 상수를 다시 만듭니다. PK 집합이 실제로 바뀐 경우에만 Unity 가 재컴파일됩니다. dev 만 켜는 것이 의도입니다."
+                />
+              </div>
               <div className="appset-row-key">
-                {autoIds
-                  ? '행이 늘거나 줄면(추가·삭제·복사·스냅샷 복원) {Name}Ids 상수를 자동으로 다시 만듭니다. PK 집합이 실제로 바뀐 경우에만 Unity 가 재컴파일됩니다.'
-                  : '꺼져 있습니다 — 이 환경에서의 행 편집이 Unity 코드 생성을 유발하지 않습니다. dev 만 켜는 것이 의도입니다.'}
+                {autoIds ? '행 추가·삭제 시 {Name}Ids 상수를 다시 만듭니다' : 'dev 에서만 켜는 것을 권장합니다'}
               </div>
             </div>
             <div className="appset-row-fields">
@@ -297,11 +300,14 @@ export function EnvSettingsPage() {
 
         <div className="appset-row">
           <div className="appset-row-main">
-            <div className="appset-row-name">게임 로그인</div>
-            <div className="appset-row-key">
-              플레이어가 게임에서 로그인하는 방법입니다. 고른 것만 서버 인증 코드가 생성되므로{' '}
-              <strong>다음 배포부터</strong> 반영됩니다.
+            <div className="appset-row-name">
+              게임 로그인
+              <i
+                className="fa-solid fa-circle-info hint-i"
+                title="플레이어가 게임에서 로그인하는 방법입니다. 고른 것만 서버 인증 코드가 생성되므로 다음 배포부터 반영됩니다."
+              />
             </div>
+            <div className="appset-row-key">고른 방법만 서버 코드가 생성됩니다 · 다음 배포부터</div>
           </div>
           <div className="appset-row-fields">
             {PLATFORM_AUTH.map((p) => {
@@ -330,10 +336,7 @@ export function EnvSettingsPage() {
       {/* ── 위험 영역 ── */}
       <section className="appset-block danger">
         <h3 className="appset-title danger">위험 영역</h3>
-        <p className="appset-desc">
-          아래 조작은 <strong>되돌릴 수 없습니다.</strong> 대상은 이 환경뿐입니다 — 다른
-          프로젝트는 거기 들어가서 지웁니다.
-        </p>
+        <p className="appset-desc">되돌릴 수 없습니다. 대상은 이 환경뿐입니다.</p>
 
         {local && st && (
           <div className="appset-danger-row">

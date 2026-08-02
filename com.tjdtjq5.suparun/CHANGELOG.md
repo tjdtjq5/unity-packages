@@ -1,6 +1,15 @@
 # Changelog
 
-## [Unreleased]
+## [1.1.0] - 2026-08-02
+
+### Changed
+- **어드민 Metaplay Light 전면 리스킨.** Brutalist Terminal(녹색/흑색·ASCII 트리) 테마를 폐기하고
+  Metaplay 대시보드 클론(docs/reports/metaplay-screens 기준)으로 전환.
+  - 레이아웃: 화이트 사이드바(브랜드 모노그램+환경 칩, Game/LiveOps/Technical 3그룹, FA solid 아이콘)
+    + 탑바(View/Manage 타이틀 · UTC/로컬 2단 시계 · 아바타). prod 는 탑바 경고색 유지
+  - 클린 카피 규칙: 카드 머리 산문 금지(ⓘ 툴팁으로), 행 = 이름+상태 칩+한 줄 설명,
+    링크는 우측 아이콘 버튼, 한글 설명 모노스페이스 해제
+  - 로그인·온보딩 센터 카드, 차트 라이트 톤, 어드민 표시 버전을 패키지 버전과 동기화
 
 ### Breaking Changes
 - **Unity 대시보드(EditorWindow) 삭제.** 화면은 어드민 웹 하나뿐이다. 화면이 둘이면 같은 값을

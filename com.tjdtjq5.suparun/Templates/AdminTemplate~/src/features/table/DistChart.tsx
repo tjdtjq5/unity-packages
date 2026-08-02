@@ -26,8 +26,8 @@ export function DistChart({ buckets, field }: { buckets: DistBucket[]; field: st
           {
             label: field,
             data: buckets.map((b) => b.count),
-            backgroundColor: 'rgba(0,255,102,0.4)',
-            borderColor: '#00ff66',
+            backgroundColor: 'rgba(74,144,217,0.55)',
+            borderColor: '#4a90d9',
             borderWidth: 1,
           },
         ],

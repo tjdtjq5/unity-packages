@@ -63,11 +63,6 @@ export function ReleasesPage() {
 
   return (
     <div className="releases-page">
-      <p className="text-muted m-3 mb-2">
-        릴리스는 <b>무엇이 함께 나갔는가</b>의 기록입니다 — logic version(클라 게이트)·git·config
-        버전·서버 리비전이 한 줄에 묶입니다. 실행은 순차이고 단계마다 기록이 남습니다.
-      </p>
-
       {canWrite && opsVisible() && <CreateForm versions={versions} onDone={load} />}
 
       {releases.length === 0 ? (
@@ -168,7 +163,15 @@ function CreateForm({ versions, onDone }: { versions: ConfigVersion[]; onDone: (
   }
 
   return (
-    <div className="audit-search m-3 mt-0">
+    <div className="audit-search m-3">
+      {/* Metaplay 카드 문법 — 제목 한 줄, 설명은 ⓘ 툴팁으로 */}
+      <div className="sec-title">
+        새 릴리스{' '}
+        <i
+          className="fa-solid fa-circle-info hint-i"
+          title="logic version(클라 게이트)·git·config 버전·서버 리비전을 한 줄로 묶어 내보냅니다. 실행은 순차이고 단계마다 기록이 남습니다."
+        />
+      </div>
       <div className="row g-2 align-items-end">
         <div className="col-sm-4">
           <label className="form-label mb-1">config 버전</label>

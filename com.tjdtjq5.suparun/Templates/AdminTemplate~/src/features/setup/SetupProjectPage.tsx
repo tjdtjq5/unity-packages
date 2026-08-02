@@ -123,11 +123,15 @@ export function SetupProjectPage({ projectRef }: { projectRef: string }) {
   return (
     <div className="appset">
       <section className="appset-block">
-        <h3 className="appset-title">환경으로 셋업</h3>
+        <h3 className="appset-title">
+          환경으로 셋업{' '}
+          <i
+            className="fa-solid fa-circle-info hint-i"
+            title="이름을 정하면 연결 → 편집 환경 전환 → 스키마 반영이 한 번에 이어지고, 끝나면 이 환경으로 들어갑니다."
+          />
+        </h3>
         <p className="appset-desc">
-          <strong>{project?.name ?? projectRef}</strong> ({projectRef}) 은 아직 어느 환경도
-          아닙니다. 이름을 정하면 연결 → 편집 환경 전환 → 스키마 반영이 한 번에 이어지고,
-          끝나면 이 환경으로 들어갑니다.
+          <strong>{project?.name ?? projectRef}</strong> ({projectRef}) 을 새 환경으로 연결합니다.
         </p>
 
         <div className="appset-row">

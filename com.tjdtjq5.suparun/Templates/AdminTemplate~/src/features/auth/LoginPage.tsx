@@ -74,85 +74,79 @@ export function LoginPage() {
   }
 
   return (
-    <div id="login-page" className="page page-center">
-      <div className="terminal-window">
-        <div className="terminal-titlebar">
-          <span className="dot" />
-          <span className="title">SUPARUN.ADMIN :: AUTHENTICATE</span>
+    <div id="login-page" className="auth-page">
+      <div className="auth-card">
+        <div className="auth-head">
+          <div className="auth-logo">S</div>
+          <h1 className="auth-title">SupaRun Admin</h1>
+          <p className="auth-sub">이메일과 비밀번호로 로그인하세요</p>
         </div>
-        <div className="terminal-body">
-          <div className="prompt-line">
-            <span className="user">supabase://auth</span>
-            <span className="sep">$</span> login --interactive
-            <span className="cursor">_</span>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            void login()
+          }}
+        >
+          <div className="auth-field">
+            <label className="form-label">이메일</label>
+            <input
+              type="email"
+              autoComplete="email"
+              placeholder="admin@example.com"
+              className="form-control"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="auth-field">
+            <label className="form-label">비밀번호</label>
+            <input
+              type="password"
+              autoComplete="current-password"
+              placeholder="6자 이상"
+              className="form-control"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
           </div>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              void login()
-            }}
-          >
-            <div className="form-line">
-              <span className="prefix">&gt; email:</span>
-              <input
-                type="email"
-                autoComplete="email"
-                placeholder="admin@example.com"
-                className="terminal-input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
+          {shown && (
+            <div className={`alert alert-${shown.kind === 'error' ? 'danger' : 'success'}`}>
+              {shown.text}
             </div>
-            <div className="form-line">
-              <span className="prefix">&gt; password:</span>
-              <input
-                type="password"
-                autoComplete="current-password"
-                placeholder="6+ chars"
-                className="terminal-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
+          )}
 
-            {shown && (
-              <div className={`alert alert-${shown.kind === 'error' ? 'danger' : 'success'}`}>
-                {shown.text}
-              </div>
-            )}
+          <div className="auth-actions">
+            <button type="submit" className="btn btn-primary" disabled={busy !== null}>
+              {busy === 'login' ? (
+                <>
+                  <Spinner size={12} />
+                  로그인 중…
+                </>
+              ) : (
+                '로그인'
+              )}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy !== null}
+              onClick={() => void signUp()}
+            >
+              {busy === 'signup' ? (
+                <>
+                  <Spinner size={12} />
+                  가입 중…
+                </>
+              ) : (
+                '회원가입'
+              )}
+            </button>
+          </div>
+        </form>
 
-            <div className="action-line">
-              <button type="submit" className="btn-terminal" disabled={busy !== null}>
-                {busy === 'login' ? (
-                  <>
-                    <Spinner size={12} />
-                    [AUTH...]
-                  </>
-                ) : (
-                  '[ENTER]'
-                )}
-              </button>
-              <button
-                type="button"
-                className="btn-terminal"
-                disabled={busy !== null}
-                onClick={() => void signUp()}
-              >
-                {busy === 'signup' ? (
-                  <>
-                    <Spinner size={12} />
-                    [SIGNUP...]
-                  </>
-                ) : (
-                  '[REGISTER]'
-                )}
-              </button>
-            </div>
-          </form>
-
-          <div className="status-bar">SupaRun v0.7.0 / READY</div>
-        </div>
+        <div className="auth-foot">SupaRun v1.1.0</div>
       </div>
     </div>
   )

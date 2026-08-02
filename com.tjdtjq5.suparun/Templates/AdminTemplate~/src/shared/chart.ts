@@ -19,13 +19,13 @@ declare global {
   }
 }
 
-/** Brutalist Terminal 톤 전역 기본값. 앱 부팅 시 1회 호출한다. */
+/** Metaplay Light 톤 전역 기본값. 앱 부팅 시 1회 호출한다. */
 export function applyChartDefaults(): void {
   const C = window.Chart
   if (!C) return
-  C.defaults.color = 'rgba(216,228,216,0.8)'
-  C.defaults.borderColor = 'rgba(26,42,26,1)'
+  C.defaults.color = '#6c757d'
+  C.defaults.borderColor = '#e5e7eb'
   C.defaults.font = C.defaults.font ?? {}
-  C.defaults.font.family = "'JetBrains Mono','SF Mono',Consolas,monospace"
+  C.defaults.font.family = "'Pretendard Variable','Pretendard',-apple-system,'Segoe UI',sans-serif"
   C.defaults.font.size = 11
 }

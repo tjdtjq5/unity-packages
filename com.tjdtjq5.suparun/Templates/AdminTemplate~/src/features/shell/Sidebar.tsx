@@ -64,15 +64,15 @@ function GroupHeader({
   return (
     <button className="tree-section toggle" onClick={onToggle} type="button">
       <span className="caret">{collapsed ? '▸' : '▾'}</span>
-      <span>[{label}]</span>
+      <span>{label}</span>
       <span className="tree-count">{count}</span>
     </button>
   )
 }
 
 /**
- * ASCII tree 사이드바. 바닐라 renderSidebar / renderGroup 을 대체한다.
- * 그룹별 `[SECTION]` 헤더 + `├─`/`└─` 분기(마지막 항목만 `└─`).
+ * Config·Table 사이드바 목록. 바닐라 renderSidebar / renderGroup 을 대체한다.
+ * 그룹별 접이식 소제목 + 아이콘 항목 (Metaplay 내비 동형).
  */
 export function Sidebar({
   types,
@@ -136,10 +136,10 @@ export function Sidebar({
           />
           {!collapsed.has('__tables') && (
             <div className="tree-list">
-              {tableTypes.map((t, i) => (
+              {tableTypes.map((t) => (
                 <TreeItem
                   key={t.tableName}
-                  branch={i === tableTypes.length - 1 ? '└─' : '├─'}
+                  icon="fa-database"
                   label={t.name}
                   dataType={t.tableName}
                   active={route.kind === 'table' && route.tableName === t.tableName}
@@ -183,10 +183,10 @@ function ConfigGroup({
       />
       {!hidden && (
         <div className="tree-list">
-          {items.map((t, i) => (
+          {items.map((t) => (
             <TreeItem
               key={t.tableName}
-              branch={i === items.length - 1 ? '└─' : '├─'}
+              icon="fa-table-cells-large"
               label={t.name}
               dataType={t.tableName}
               active={active === t.tableName}
@@ -201,13 +201,13 @@ function ConfigGroup({
 
 /** `data-type` 은 `[` `]` 단축키(cycleConfig)가 순서를 읽는 데 쓴다. */
 function TreeItem({
-  branch,
+  icon,
   label,
   dataType,
   active,
   onClick,
 }: {
-  branch: string
+  icon: string
   label: string
   dataType?: string
   active: boolean
@@ -223,7 +223,7 @@ function TreeItem({
         onClick()
       }}
     >
-      <span className="branch">{branch}</span>
+      <i className={`fa-solid ${icon}`} />
       <span className="label">{label}</span>
     </a>
   )

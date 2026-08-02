@@ -144,9 +144,9 @@ export function App() {
         {session.user?.email ?? '이 계정'} 으로 로그인했지만 아직 롤이 부여되지 않았습니다.
         <br />
         game-admin 에게 User Roles 화면에서 롤 부여를 요청하세요.
-        <div className="action-line" style={{ marginTop: 12 }}>
-          <button className="btn-terminal" onClick={() => void sb?.auth.signOut()}>
-            [LOGOUT]
+        <div className="auth-actions" style={{ marginTop: 12 }}>
+          <button className="btn" onClick={() => void sb?.auth.signOut()}>
+            로그아웃
           </button>
         </div>
       </Notice>
@@ -166,11 +166,9 @@ export function App() {
 
 function Notice({ tone, children }: { tone: 'warning' | 'danger'; children: React.ReactNode }) {
   return (
-    <div className="page page-center">
-      <div className="terminal-window">
-        <div className="terminal-body">
-          <div className={`alert alert-${tone}`}>{children}</div>
-        </div>
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className={`alert alert-${tone}`}>{children}</div>
       </div>
     </div>
   )
