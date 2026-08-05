@@ -50,24 +50,28 @@ namespace Tjdtjq5.AddrX.Editor
             string[] imported, string[] deleted, string[] moved, string[] movedFrom,
             AddrXSetupRules rules, string root)
         {
-            // 새 폴더 → Addressables 그룹 생성
+            // 새 폴더 → Addressables 그룹 생성.
+            // _groupDepth > 1 이면 1뎁스 폴더만으로는 그룹명이 결정되지 않는다(하위 폴더까지 봐야 안다).
+            // 그때 폴더명으로 그룹을 미리 만들면 실제 엔트리는 다른 그룹으로 가고 빈 유령 그룹만 남으므로,
+            // 선생성은 깊이 1에서만 한다. 깊이가 깊으면 RegisterAsset 이 필요 시점에 만든다.
             foreach (var path in ConcatArrays(imported, moved))
             {
+                if (rules.GroupDepth != 1) break;
                 if (!path.StartsWith(root) || !AssetDatabase.IsValidFolder(path)) continue;
 
                 var relative = path.Substring(root.Length);
                 if (relative.Contains("/")) continue; // 1뎁스만
 
-                var groupName = relative;
-                if (string.IsNullOrEmpty(groupName)) continue;
+                var folderName = relative;
+                if (string.IsNullOrEmpty(folderName)) continue;
 
                 var settings = AddressableAssetSettingsDefaultObject.Settings;
-                if (settings != null && settings.FindGroup(groupName) == null)
+                if (settings != null && settings.FindGroup(folderName) == null)
                 {
-                    var group = settings.CreateGroup(groupName, false, false, true,
+                    var group = settings.CreateGroup(folderName, false, false, true,
                         null, typeof(BundledAssetGroupSchema));
-                    ApplyGroupSchema(group, rules.IsGroupRemote(groupName));
-                    AddrXLog.Info("Setup", $"폴더 감지 → Addressables 그룹 생성: {groupName}");
+                    ApplyGroupSchema(group, rules.IsRemoteFolder(folderName));
+                    AddrXLog.Info("Setup", $"폴더 감지 → Addressables 그룹 생성: {folderName}");
                 }
             }
 
@@ -138,8 +142,11 @@ namespace Tjdtjq5.AddrX.Editor
                 return false;
             }
 
+            // 원격 판정은 그룹명이 아니라 1뎁스 폴더명으로 한다.
+            // 그룹명을 넘기면 _groupDepth > 1 일 때 "Common-Prefabs" 로 조회되어 매칭이 조용히 실패하고,
+            // 원격이어야 할 콘텐츠가 로컬 스키마로 생성된다.
             var group = settings.FindGroup(groupName)
-                ?? CreateGroup(settings, groupName, rules.IsGroupRemote(groupName));
+                ?? CreateGroup(settings, groupName, rules.IsRemoteFolder(rules.GetRootFolder(path)));
 
             var guid = AssetDatabase.AssetPathToGUID(path);
             var entry = settings.CreateOrMoveEntry(guid, group);

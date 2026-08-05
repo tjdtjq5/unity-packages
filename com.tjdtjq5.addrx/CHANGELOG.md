@@ -1,5 +1,52 @@
 # Changelog
 
+## [2.0.0] - 2026-08-05
+
+### Breaking Changes — 원격 판정의 식별자를 "그룹"에서 "1뎁스 폴더"로 정정
+
+"원격이냐"는 **콘텐츠 영역**의 속성이지 번들 경계(그룹)의 속성이 아니다. 지금까지는 둘이 같은 문자열이라
+우연히 동작했지만, `Group Depth` 도입으로 그룹명 ≠ 폴더명이 가능해지면서 구분이 필요해졌다.
+
+- `IsGroupRemote(string groupName)` → **`IsRemoteFolder(string folderName)`**
+- `SetGroupRemote(string groupName, bool)` → **`SetRemoteFolder(string folderName, bool)`**
+- `RemoteGroups` → **`RemoteFolders`**, `RemoteGroupEntry` → **`RemoteFolderEntry`**
+- 직렬화 필드 `_remoteGroups` → `_remoteFolders`, `groupName` → `folderName`
+  (둘 다 `[FormerlySerializedAs]` 부착 — 기존 `AddrXSetupRules.asset`의 설정은 그대로 이관된다)
+
+> 업그레이드 후 Setup 탭에서 Local/Remote 표시가 기존과 같은지 한 번 확인할 것.
+
+### Added — Group Depth (주소와 번들 경계의 분리)
+
+지금까지 `GetAddress()`와 `GetGroupName()`이 **둘 다 1뎁스 폴더를 하드코딩**해서, 주소(공개 조회 키)와
+그룹(번들 경계)이 용접돼 있었다. 그 결과 그룹 경합을 줄이는 유일한 수단인 "그룹 세분화"를 쓰려면
+모든 주소를 바꿔야 했다.
+
+- **`GroupDepth`** (기본 1) — 그룹을 나눌 폴더 깊이. Setup 탭에서 슬라이더로 조절.
+  `GetGroupName()`만 영향을 받고 **`GetAddress()`는 항상 1뎁스 기준이라 주소가 바뀌지 않는다.**
+  ```
+  Depth 1 → Common/Prefabs/UI/Foo.prefab → 그룹 "Common"          주소 "Common/Foo"
+  Depth 2 →                              → 그룹 "Common-Prefabs"  주소 "Common/Foo"
+  ```
+  폴더 깊이가 설정값보다 얕으면 있는 만큼만 쓴다. **기본값 1에서는 기존 동작과 완전히 동일하다.**
+- **`GetRootFolder(path)`** — 1뎁스 폴더명(콘텐츠 영역 식별자). 원격 판정의 기준.
+- Setup 탭 **`Mismatched`** 카운트 — 현재 규칙과 다른 그룹에 있는 에셋 수. 0이 아니면 경고 표시.
+
+### Fixed
+
+- **원격 그룹이 로컬로 조용히 강등되던 경로** — `AddrXAutoRegister`가 원격 판정에 그룹명을 넘기고 있었다.
+  `Group Depth > 1`이면 매칭이 실패해 원격 콘텐츠가 로컬 스키마로 생성된다. 1뎁스 폴더명을 넘기도록 수정.
+- **빈 유령 그룹 자동 정리** — `전체 동기화`가 현재 규칙으로 만들어질 수 없는 빈 그룹을 제거한다.
+  조건은 ①엔트리 0개 ②규칙상 생성 불가한 이름 ③`DefaultGroup`이 아님 (셋 모두 만족 시에만, 로그 남김).
+  `Group Depth` 변경으로 비게 된 구 그룹이 쌓이는 것을 막는다.
+- **깊이 > 1에서 폴더 생성 시 유령 그룹이 즉시 생기던 문제** — 1뎁스 폴더만으로는 그룹명이 결정되지 않으므로
+  선생성을 깊이 1에서만 하도록 제한. 깊은 설정에서는 `RegisterAsset`이 필요 시점에 만든다.
+
+### Docs
+
+- README에 **버전 관리(Git)** 섹션 신설 — Addressables 그룹 에셋에 `merge=unityyamlmerge`를 걸면 안 되는 이유
+  (인덱스 매칭으로 동일 GUID 엔트리 중복 생성), 그리고 폴백 머지툴 부재 시 **충돌 마커 없이 ours만 남아
+  상대 변경분이 조용히 사라지는** 실패 모드.
+
 ## [1.0.0] - 2026-07-24
 
 ### Breaking Changes

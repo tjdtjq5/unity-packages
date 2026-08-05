@@ -28,7 +28,7 @@ namespace Tjdtjq5.AddrX.Editor
 
                 // 기본 폴더 생성
                 foreach (var folderName in DefaultFolders)
-                    EnsureGroup(rules, folderName, rules.IsGroupRemote(folderName));
+                    EnsureGroup(rules, folderName, rules.IsRemoteFolder(folderName));
 
                 // Label Category의 모든 옵션을 Addressables 라벨로 등록
                 if (settings != null)

@@ -261,13 +261,28 @@ report.Leaks;       // IReadOnlyList<HandleInfo>
 
 **대시보드:**
 - 상태 요약 (Addressables 버전, 그룹/라벨 수)
-- 에셋 상태 (Registered / Unregistered / Conflicts)
+- 에셋 상태 (Registered / Unregistered / Conflicts / Mismatched)
+- Group Depth 슬라이더
 - 전체 동기화 버튼
 
 **자동 등록:**
 - `Assets/Addressables/` 하위 에셋을 AssetPostprocessor로 자동 등록
-- 1뎁스 = 그룹, 2뎁스 = 라벨, 주소 = `그룹/파일명`
+- 주소 = `1뎁스폴더/파일명`, 그룹 = `Group Depth` 만큼의 폴더를 `-`로 연결
 - 폴더 추가/삭제 → Rules SO 양방향 동기화
+
+**Group Depth — 그룹 입도**
+
+주소(공개 조회 키)와 그룹(번들 경계)은 별개다. `Group Depth`는 **그룹만** 나누며 주소는 바뀌지 않는다.
+
+```
+Depth = 1 (기본)  Common/Prefabs/UI/Foo.prefab → 그룹 "Common"            주소 "Common/Foo"
+Depth = 2         Common/Prefabs/UI/Foo.prefab → 그룹 "Common-Prefabs"    주소 "Common/Foo"
+```
+
+팀 인원이 늘면 깊이를 올려 그룹 에셋 경합을 줄일 수 있다. 코드의 주소 참조는 손댈 필요가 없다.
+
+변경은 저장만 되고 즉시 반영되지 않는다 — `Mismatched` 카운트가 재배치 대상을 알려주며,
+`전체 동기화`가 이동과 빈 그룹 정리를 함께 수행한다.
 
 ### ⚙ 톱니바퀴 Settings
 
@@ -364,6 +379,48 @@ public interface IDiffRule
     List<DiffWarning> Check(AddressableAssetSettings settings);
 }
 ```
+
+---
+
+## 버전 관리 (Git)
+
+AddrX는 폴더에 에셋을 넣기만 해도 자동 등록하므로, Addressables **그룹 에셋의 변경 빈도가 높다.**
+여러 명이 같은 폴더에 에셋을 추가하면 `AssetGroups/*.asset` 한 파일에 변경이 몰린다.
+
+### 그룹 에셋에 Unity Smart Merge를 걸지 말 것
+
+`.gitattributes`에서 Addressables 데이터를 `merge=unityyamlmerge`로 라우팅하면 **안 된다.**
+
+```gitattributes
+# Addressables 데이터는 git 내장 3-way 텍스트 머지를 쓴다 (값 없는 `merge` = 내장 머지).
+# *.asset 을 unityyamlmerge 로 보내는 줄이 위에 있다면, 그 뒤에 이 줄을 두어 덮어쓴다.
+Assets/AddressableAssetsData/**/*.asset merge
+```
+
+이유는 두 가지다.
+
+**① 텍스트 머지가 더 정확하다.** Addressables는 직렬화할 때마다 엔트리를 GUID ordinal로 정렬한다
+(`AddressableAssetGroup.OnBeforeSerialize`). 블록이 균일·결정적이라 라인 단위 3-way 머지가 정확히 동작한다.
+반면 UnityYAMLMerge는 이 배열을 인덱스로 매칭해서, 양쪽이 각각 엔트리를 추가하면 **둘 다 append** →
+**동일 GUID 엔트리가 중복 생성**된다.
+
+중복은 스스로 사라지지 않는다. `ResetEntryMap`의 `m_EntryMap.Add`가 중복 키에 예외를 던지고 catch만 하는데,
+`OnBeforeSerialize`는 `m_SerializeEntries`가 null일 때만 재생성하므로 중복이 디스크에 계속 남고
+도메인 리로드마다 예외 로그가 찍힌다. (해당 그룹에 에셋을 하나 추가/삭제하면 캐시가 무효화되어 복구된다.)
+
+**② 실패가 조용하다.** UnityYAMLMerge는 폴백 머지툴(PlasticSCM / Beyond Compare / P4Merge 등)이
+설치돼 있지 않으면 `exit 1`로 죽는다. 이때 git은 충돌로 표시하지만
+**파일에는 충돌 마커가 남지 않고 ours가 그대로** 남는다.
+열어보면 멀쩡해 보여서 그냥 `git add` 하면 **상대방 변경분이 통째로 사라진다.**
+
+> 진단: `git ls-files -u`에는 나오는데 파일에 `<<<<<<<`가 없으면 이 경우다.
+
+`.prefab` / `.unity` 등 다른 Unity YAML은 Smart Merge가 유효하다. 다만 위 ②는 모든 확장자에 해당하므로,
+드라이버를 등록할 때 `-h --force --fallback none`을 붙여 조용한 실패를 막는 것이 좋다.
+
+### 경합이 심해지면
+
+`Group Depth`를 올려 그룹을 잘게 나눈다. 주소는 바뀌지 않으므로 코드 수정이 필요 없다.
 
 ---
 

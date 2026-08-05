@@ -152,7 +152,7 @@ Unity Gaming Services CLI 래핑 에디터 윈도우 (`Tools > UGS Manager` 또�
 
 ---
 
-### AddrX `v1.0.0`
+### AddrX `v2.0.0`
 
 Unity Addressables 안전 래퍼 — SafeHandle 기반 자동 해제, 누수 감지, 에디터 분석 도구
 
@@ -164,14 +164,18 @@ Unity Addressables 안전 래퍼 — SafeHandle 기반 자동 해제, 누수 감
 | LeakDetector | 씬 전환 시 미해제 핸들 자동 감지 |
 | DebugHUD | 인게임 오버레이 (F9 토글) |
 | 자동 등록 | `Assets/Addressables/` 하위 에셋 자동 그룹/라벨 등록 |
+| Group Depth | 그룹 입도 조절 — 주소는 그대로 두고 번들 경계만 세분화 |
 | Analysis | 중복 검사, 그룹 건강도, 크기 예산, 에디터/빌드 Diff |
 | AddrX Manager | Setup / Tracker / Analysis 3탭 에디터 윈도우 (`Alt+Shift+A`) |
 
 ```json
-"com.tjdtjq5.addrx": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.addrx#addrx/v1.0.0"
+"com.tjdtjq5.addrx": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.addrx#addrx/v2.0.0"
 ```
 
-> 의존: `editor-toolkit >= 1.3.0`, `com.unity.addressables >= 2.2.2`
+> 의존: `com.unity.addressables >= 2.2.2` (v1.0.0에서 editor-toolkit 의존 제거됨)
+>
+> ⚠v2.0.0 Breaking — `IsGroupRemote`/`SetGroupRemote`/`RemoteGroups` → `IsRemoteFolder`/`SetRemoteFolder`/`RemoteFolders`.
+> 직렬화 데이터는 `[FormerlySerializedAs]`로 이관되지만, 업그레이드 후 Setup 탭에서 Local/Remote 표시를 한 번 확인할 것.
 
 ---
 

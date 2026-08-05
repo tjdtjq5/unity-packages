@@ -36,7 +36,7 @@ namespace Tjdtjq5.AddrX.Editor
             var relative = path.Substring(_cachedRoot.Length);
             if (relative.Contains("/")) return;
 
-            Color color = rules.IsGroupRemote(relative) ? COL_REMOTE : COL_LOCAL;
+            Color color = rules.IsRemoteFolder(relative) ? COL_REMOTE : COL_LOCAL;
 
             float bx = rect.xMax - 14f;
             float by = rect.y + (rect.height - 8f) * 0.5f;

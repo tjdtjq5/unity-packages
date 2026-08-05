@@ -37,16 +37,35 @@ Editor/Setup/
 | `Instance` | `static AddrXSetupRules Instance` | 싱글톤 (Resources.Load) |
 | `GetOrCreate()` | `static AddrXSetupRules GetOrCreate()` | 없으면 기본값으로 생성 |
 | `RootPath` | `string RootPath` | 루트 경로 (기본 `Assets/Addressables`) |
-| `GetAddress()` | `string GetAddress(string assetPath)` | 에셋 경로 → 주소 (`그룹/파일명`, 확장자 제외) |
-| `GetGroupName()` | `string GetGroupName(string assetPath)` | 에셋 경로 → 그룹명 (1뎁스 폴더명) |
-| `IsGroupRemote()` | `bool IsGroupRemote(string groupName)` | 원격 그룹 여부 |
-| `SetGroupRemote()` | `void SetGroupRemote(string groupName, bool isRemote)` | 로컬/원격 전환 |
+| `GetAddress()` | `string GetAddress(string assetPath)` | 에셋 경로 → 주소 (`1뎁스폴더/파일명`, 확장자 제외). **깊이와 무관** |
+| `GetRootFolder()` | `string GetRootFolder(string assetPath)` | 에셋 경로 → 1뎁스 폴더명 (콘텐츠 영역 식별자) |
+| `GetGroupName()` | `string GetGroupName(string assetPath)` | 에셋 경로 → 그룹명 (`GroupDepth` 만큼 `-`로 연결) |
+| `GroupDepth` | `int GroupDepth` | 그룹 입도 (기본 1, 최소 1) |
+| `SetGroupDepth()` | `void SetGroupDepth(int depth)` | 그룹 입도 설정 (저장만, 반영은 전체 동기화) |
+| `IsRemoteFolder()` | `bool IsRemoteFolder(string folderName)` | 원격 여부. **인자는 1뎁스 폴더명** |
+| `SetRemoteFolder()` | `void SetRemoteFolder(string folderName, bool isRemote)` | 로컬/원격 전환 |
 | `GetGroupFolders()` | `string[] GetGroupFolders()` | 루트 하위 1뎁스 폴더 목록 |
 | `GetLabelsForAsset()` | `List<string> GetLabelsForAsset(string assetGuid)` | 에셋의 전체 라벨 목록 (디폴트 + 오버라이드) |
 | `GetLabelForCategory()` | `string GetLabelForCategory(string guid, string cat)` | 특정 카테고리 라벨 |
 | `SetLabelOverride()` | `void SetLabelOverride(string guid, string cat, string val)` | 라벨 오버라이드 설정 |
 | `LabelCategories` | `List<LabelCategory>` | 라벨 카테고리 목록 |
-| `RemoteGroups` | `List<RemoteGroupEntry>` | 원격 그룹 목록 |
+| `RemoteFolders` | `List<RemoteFolderEntry>` | 원격 폴더 목록 |
+
+#### 주소와 그룹은 별개다
+
+`GetAddress()`(공개 조회 키)는 **항상 1뎁스 기준**이고, `GetGroupName()`(번들 경계)만
+`GroupDepth`의 영향을 받는다. 그래서 그룹을 잘게 나눠도 **주소는 바뀌지 않는다.**
+
+```
+GroupDepth = 1 → Common/Prefabs/UI/Foo.prefab → 그룹 "Common"           주소 "Common/Foo"
+GroupDepth = 2 →                              → 그룹 "Common-Prefabs"   주소 "Common/Foo"
+GroupDepth = 3 →                              → 그룹 "Common-Prefabs-UI" 주소 "Common/Foo"
+```
+
+폴더 깊이가 설정값보다 얕으면 있는 만큼만 쓴다.
+
+⚠구분자가 `-`인 것은 제약이다. 그룹명에 `/`가 들어가면 `FindUniqueGroupName`이 `-`로 치환해
+그룹을 만드는데 조회는 치환 전 이름으로 하므로, `FindGroup`이 매번 실패해 그룹이 무한 증식한다.
 
 ### LabelCategory (Serializable class)
 
@@ -95,7 +114,10 @@ Editor/Setup/
 
 - `AddrXSetupRules`는 `Resources` 폴더에 위치해야 한다 (`Assets/AddrX/Resources/AddrXSetupRules.asset`).
 - `AddrXAutoRegister`는 `AssetPostprocessor`이므로 에셋 Import 시 자동 실행된다. 대량 에셋 이동 시 퍼포먼스에 주의.
-- 주소 규칙은 **파일명 기반** (`그룹/파일명`)이므로 같은 그룹 내 파일명 중복은 차단된다.
+- 주소 규칙은 **파일명 기반** (`1뎁스폴더/파일명`)이므로 같은 1뎁스 폴더 안의 파일명 중복은 차단된다. `GroupDepth`를 올려도 주소 규칙은 그대로이므로 이 제약은 변하지 않는다.
 - `AddrXFolderColorizer`와 `AddrXLabelDrawer`는 `[InitializeOnLoad]`로 항상 활성화된다. 비활성화하려면 스크립트 자체를 제거해야 한다.
-- `SetGroupRemote()` 호출 시 `AddrXSetupRules`만 변경되고, 실제 Addressables 그룹 스키마는 별도로 `ApplyGroupSchema()`를 호출해야 반영된다. (SetupTab 대시보드에서는 자동 처리)
+- `SetRemoteFolder()` 호출 시 `AddrXSetupRules`만 변경되고, 실제 Addressables 그룹 스키마는 별도로 `ApplyGroupSchema()`를 호출해야 반영된다. (SetupTab 대시보드에서는 자동 처리)
 - Label Category의 옵션 변경/삭제 시 기존 Addressables 라벨과의 동기화는 수동으로 `전체 동기화` 버튼을 실행해야 한다.
+- `GroupDepth` 변경도 같은 규약이다 — 저장만 되고 기존 엔트리는 옛 그룹에 남는다. Setup 탭의 `Mismatched` 카운트가 재배치 대상 수를 알려주며, `전체 동기화`가 이동 + 빈 그룹 정리를 함께 수행한다.
+- `전체 동기화`는 **현재 규칙으로 만들어질 수 없는 빈 그룹**을 제거한다. 조건은 ①엔트리 0개 ②규칙상 생성 불가한 이름 ③`DefaultGroup`이 아님 — 셋 모두 만족할 때만이며 제거 시 로그를 남긴다. 에셋을 넣기 전 미리 만들어 둔 빈 그룹은 대상이 될 수 있다.
+- ⚠원격 판정(`IsRemoteFolder`)의 인자는 **1뎁스 폴더명**이다. `GetGroupName()` 결과를 넘기면 `GroupDepth > 1`일 때 매칭이 조용히 실패해, 원격이어야 할 콘텐츠가 로컬 스키마로 생성된다.

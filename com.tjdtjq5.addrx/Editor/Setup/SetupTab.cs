@@ -27,6 +27,7 @@ namespace Tjdtjq5.AddrX.Editor
         // Dashboard
         int _registeredCount;
         int _unregisteredCount;
+        int _mismatchCount;
         List<(string address, List<string> paths)> _conflicts = new();
         bool _showConflicts;
         bool _showGroups;
@@ -197,6 +198,8 @@ namespace Tjdtjq5.AddrX.Editor
             var rules = AddrXSetupRules.GetOrCreate();
             var folders = rules.GetGroupFolders();
 
+            DrawGroupDepthField(rules);
+
             if (folders.Length == 0)
             {
                 EditorGUILayout.LabelField("  Assets/Addressables/ 에 폴더가 없습니다.",
@@ -206,7 +209,7 @@ namespace Tjdtjq5.AddrX.Editor
 
             foreach (var folderName in folders)
             {
-                bool isRemote = rules.IsGroupRemote(folderName);
+                bool isRemote = rules.IsRemoteFolder(folderName);
 
                 EditorGUILayout.BeginHorizontal();
 
@@ -218,7 +221,7 @@ namespace Tjdtjq5.AddrX.Editor
                 var toggleLabel = isRemote ? "Remote" : "Local";
                 if (GUILayout.Button(toggleLabel, GUILayout.Width(60), GUILayout.Height(20)))
                 {
-                    rules.SetGroupRemote(folderName, !isRemote);
+                    rules.SetRemoteFolder(folderName, !isRemote);
 
                     // Addressables 그룹 스키마도 업데이트
                     var settings = AddressableAssetSettingsDefaultObject.Settings;
@@ -232,6 +235,31 @@ namespace Tjdtjq5.AddrX.Editor
 
                 EditorGUILayout.EndHorizontal();
             }
+        }
+
+        /// <summary>
+        /// 그룹 입도 설정. 값은 저장만 되고 반영은 전체 동기화에서 이뤄진다
+        /// (라벨 카테고리·원격 토글과 같은 규약).
+        /// </summary>
+        void DrawGroupDepthField(AddrXSetupRules rules)
+        {
+            EditorGUI.BeginChangeCheck();
+            int depth = EditorGUILayout.IntSlider(
+                new GUIContent("Group Depth",
+                    "그룹을 나눌 폴더 깊이. 1 = 1뎁스 폴더 하나가 그룹 하나(기본).\n"
+                    + "올리면 그룹이 잘게 나뉘어 팀 작업 시 그룹 에셋 경합이 줄어든다.\n"
+                    + "주소는 깊이와 무관하게 항상 1뎁스 기준이므로 바뀌지 않는다."),
+                rules.GroupDepth, 1, 4);
+            if (EditorGUI.EndChangeCheck())
+                rules.SetGroupDepth(depth);
+
+            var sample = new[] { "Common", "Prefabs", "UI" };
+            var sampleGroup = string.Join("-", sample, 0, Mathf.Min(depth, sample.Length));
+            EditorGUILayout.LabelField(
+                $"  Common/Prefabs/UI/Foo.prefab  →  그룹 \"{sampleGroup}\" · 주소 \"Common/Foo\"",
+                EditorStyles.miniLabel);
+
+            EditorGUILayout.Space(6);
         }
 
         // ═══════════════════════════════════════════════════════
@@ -541,7 +569,7 @@ namespace Tjdtjq5.AddrX.Editor
             int localCount = 0, remoteCount = 0;
             foreach (var f in folders)
             {
-                if (rules.IsGroupRemote(f)) remoteCount++;
+                if (rules.IsRemoteFolder(f)) remoteCount++;
                 else localCount++;
             }
 
@@ -583,7 +611,17 @@ namespace Tjdtjq5.AddrX.Editor
             AddrXGui.DrawStatCard("Registered", _registeredCount.ToString());
             AddrXGui.DrawStatCard("Unregistered", _unregisteredCount.ToString());
             AddrXGui.DrawStatCard("Conflicts", _conflicts.Count.ToString());
+            AddrXGui.DrawStatCard("Mismatched", _mismatchCount.ToString());
             EditorGUILayout.EndHorizontal();
+
+            // 그룹 깊이를 바꾸면 기존 엔트리는 옛 그룹에 남는다(설정 변경 ≠ 즉시 반영).
+            if (_mismatchCount > 0)
+            {
+                EditorGUILayout.HelpBox(
+                    $"{_mismatchCount}개 에셋이 현재 Group Depth 규칙과 다른 그룹에 있습니다.\n"
+                    + "전체 동기화를 실행하면 올바른 그룹으로 이동하고, 비게 된 그룹은 정리됩니다.",
+                    MessageType.Warning);
+            }
 
             EditorGUILayout.Space(8);
 
@@ -639,16 +677,21 @@ namespace Tjdtjq5.AddrX.Editor
 
             _registeredCount = 0;
             _unregisteredCount = 0;
+            _mismatchCount = 0;
             _conflicts.Clear();
 
             if (settings == null || rules == null || !AssetDatabase.IsValidFolder(rules.RootPath)) return;
 
             var registeredGuids = new HashSet<string>();
+            var guidToGroup = new Dictionary<string, string>();
             foreach (var group in settings.groups)
             {
                 if (group == null) continue;
                 foreach (var entry in group.entries)
+                {
                     registeredGuids.Add(entry.guid);
+                    guidToGroup[entry.guid] = group.Name;
+                }
             }
 
             var guids = AssetDatabase.FindAssets("", new[] { rules.RootPath });
@@ -666,7 +709,18 @@ namespace Tjdtjq5.AddrX.Editor
                     addressMap[address] = new List<string>();
                 addressMap[address].Add(path);
 
-                if (registeredGuids.Contains(guid)) _registeredCount++;
+                if (registeredGuids.Contains(guid))
+                {
+                    _registeredCount++;
+
+                    // 규칙이 지시하는 그룹과 실제 소속 그룹이 다르면 동기화가 필요하다는 신호.
+                    // _groupDepth 를 바꾼 직후가 대표적인 경우.
+                    var expectedGroup = rules.GetGroupName(path);
+                    if (expectedGroup != null
+                        && guidToGroup.TryGetValue(guid, out var actualGroup)
+                        && actualGroup != expectedGroup)
+                        _mismatchCount++;
+                }
                 else _unregisteredCount++;
             }
 
@@ -700,13 +754,54 @@ namespace Tjdtjq5.AddrX.Editor
                     registered++;
             }
 
+            int removed = RemoveStaleEmptyGroups(settings, rules, paths);
+
             settings.SetDirty(AddressableAssetSettings.ModificationEvent.EntryModified, null, true);
 
             _notification = $"동기화 완료: {registered}개 등록"
-                + (skipped > 0 ? $", {skipped}개 충돌 스킵" : "");
+                + (skipped > 0 ? $", {skipped}개 충돌 스킵" : "")
+                + (removed > 0 ? $", 빈 그룹 {removed}개 정리" : "");
             _notificationType = skipped > 0
                 ? NotificationType.Error
                 : NotificationType.Success;
+        }
+
+        /// <summary>
+        /// 현재 규칙으로 만들어질 수 없는 빈 그룹을 제거한다.
+        /// _groupDepth 를 바꾸면 구 그룹(예: "Common")이 빈 껍데기로 남고 아무도 지우지 않아 계속 쌓인다.
+        /// </summary>
+        static int RemoveStaleEmptyGroups(
+            AddressableAssetSettings settings, AddrXSetupRules rules, List<string> paths)
+        {
+            // 현재 규칙이 실제로 만들어낼 수 있는 그룹명 집합.
+            var expected = new HashSet<string>();
+            foreach (var path in paths)
+            {
+                var name = rules.GetGroupName(path);
+                if (name != null) expected.Add(name);
+            }
+
+            // 깊이 1에서는 에셋이 없는 1뎁스 폴더도 그룹을 갖는 것이 정상이다
+            // (SyncFoldersToRules 가 폴더 생성 시점에 미리 만들어 둔다).
+            if (rules.GroupDepth == 1)
+                foreach (var folder in rules.GetGroupFolders())
+                    expected.Add(folder);
+
+            var defaultGroup = settings.DefaultGroup;
+            var doomed = settings.groups
+                .Where(g => g != null
+                            && g != defaultGroup          // Addressables 기본 그룹은 절대 건드리지 않는다
+                            && g.entries.Count == 0
+                            && !expected.Contains(g.Name))
+                .ToList();
+
+            foreach (var group in doomed)
+            {
+                AddrXLog.Info("Setup", $"규칙에 없는 빈 그룹 제거: {group.Name}");
+                settings.RemoveGroup(group);
+            }
+
+            return doomed.Count;
         }
     }
 }

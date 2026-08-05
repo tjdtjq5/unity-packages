@@ -3,13 +3,20 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Tjdtjq5.AddrX.Editor
 {
+    /// <summary>
+    /// 원격으로 취급할 <b>1뎁스 폴더</b> 항목.
+    /// "원격이냐"는 콘텐츠 영역의 속성이지 번들 경계(그룹)의 속성이 아니므로
+    /// _groupDepth 와 무관하게 항상 1뎁스 폴더명으로 식별한다.
+    /// </summary>
     [Serializable]
-    public class RemoteGroupEntry
+    public class RemoteFolderEntry
     {
-        public string groupName;
+        [FormerlySerializedAs("groupName")]
+        public string folderName;
     }
 
     [Serializable]
@@ -37,12 +44,21 @@ namespace Tjdtjq5.AddrX.Editor
         static AddrXSetupRules _instance;
 
         [SerializeField] string _rootPath = "Assets/Addressables";
-        [SerializeField] List<RemoteGroupEntry> _remoteGroups = new();
+
+        [Tooltip("그룹을 나눌 폴더 깊이. 1 = 1뎁스 폴더 하나가 그룹 하나(기본).\n" +
+                 "올리면 그룹이 잘게 나뉘어 팀 작업 시 그룹 에셋 경합이 줄어든다.\n" +
+                 "주소(GetAddress)는 깊이와 무관하게 항상 1뎁스 기준이라 바뀌지 않는다.\n" +
+                 "변경 후에는 Setup 탭의 전체 동기화를 실행해야 반영된다.")]
+        [SerializeField] int _groupDepth = 1;
+
+        [FormerlySerializedAs("_remoteGroups")]
+        [SerializeField] List<RemoteFolderEntry> _remoteFolders = new();
         [SerializeField] List<LabelCategory> _labelCategories = new();
         [SerializeField] List<LabelOverride> _labelOverrides = new();
 
         public string RootPath => _rootPath;
-        public List<RemoteGroupEntry> RemoteGroups => _remoteGroups;
+        public int GroupDepth => Math.Max(1, _groupDepth);
+        public List<RemoteFolderEntry> RemoteFolders => _remoteFolders;
         public List<LabelCategory> LabelCategories => _labelCategories;
         public List<LabelOverride> LabelOverrides => _labelOverrides;
 
@@ -69,19 +85,19 @@ namespace Tjdtjq5.AddrX.Editor
                 Directory.CreateDirectory(dir);
 
             _instance = CreateInstance<AddrXSetupRules>();
-            _instance._remoteGroups = DefaultRemoteGroups();
+            _instance._remoteFolders = DefaultRemoteFolders();
             _instance._labelCategories = DefaultLabelCategories();
             UnityEditor.AssetDatabase.CreateAsset(_instance, AssetPath);
             UnityEditor.AssetDatabase.SaveAssets();
             return _instance;
         }
 
-        /// <summary>기본 원격 그룹 프리셋. 여기에 있는 그룹만 Remote로 취급.</summary>
-        static List<RemoteGroupEntry> DefaultRemoteGroups() => new()
+        /// <summary>기본 원격 폴더 프리셋. 여기에 있는 1뎁스 폴더만 Remote로 취급.</summary>
+        static List<RemoteFolderEntry> DefaultRemoteFolders() => new()
         {
-            new() { groupName = "Chapter2" },
-            new() { groupName = "Chapter3" },
-            new() { groupName = "Audio_BGM" },
+            new() { folderName = "Chapter2" },
+            new() { folderName = "Chapter3" },
+            new() { folderName = "Audio_BGM" },
         };
 
         static List<LabelCategory> DefaultLabelCategories() => new()
@@ -108,13 +124,38 @@ namespace Tjdtjq5.AddrX.Editor
             return $"{group}/{fileName}";
         }
 
-        /// <summary>에셋 경로 → 그룹명 (1뎁스).</summary>
-        public string GetGroupName(string assetPath)
+        /// <summary>
+        /// 에셋 경로 → 1뎁스 폴더명. "콘텐츠 영역"의 식별자로,
+        /// 주소(<see cref="GetAddress"/>)와 원격 판정(<see cref="IsRemoteFolder"/>)의 기준이다.
+        /// <see cref="GetGroupName"/>(번들 경계)과 달리 _groupDepth 의 영향을 받지 않는다.
+        /// </summary>
+        public string GetRootFolder(string assetPath)
         {
             if (!assetPath.StartsWith(_rootPath + "/")) return null;
             var relative = assetPath.Substring(_rootPath.Length + 1);
             var idx = relative.IndexOf('/');
             return idx > 0 ? relative.Substring(0, idx) : null;
+        }
+
+        /// <summary>
+        /// 에셋 경로 → 그룹명. 폴더 조각을 _groupDepth 개까지 '-'로 이어 만든다.
+        /// 폴더 깊이가 설정값보다 얕으면 있는 만큼만 쓴다(_groupDepth = 1 이면 <see cref="GetRootFolder"/>와 동일).
+        /// </summary>
+        /// <remarks>
+        /// 구분자가 '-'인 것은 취향이 아니라 제약이다. 그룹명에 '/'가 들어가면
+        /// AddressableAssetSettings.FindUniqueGroupName 이 '-'로 치환해 그룹을 만드는데,
+        /// 조회는 치환 전 이름으로 하므로 FindGroup 이 매번 실패해 그룹이 무한 증식한다.
+        /// </remarks>
+        public string GetGroupName(string assetPath)
+        {
+            if (!assetPath.StartsWith(_rootPath + "/")) return null;
+            var relative = assetPath.Substring(_rootPath.Length + 1);
+            var parts = relative.Split('/');
+            if (parts.Length < 2) return null;
+
+            // 마지막 조각은 파일명이므로 폴더 조각만 센다.
+            var take = Math.Min(GroupDepth, parts.Length - 1);
+            return string.Join("-", parts, 0, take);
         }
 
         /// <summary>에셋의 라벨 목록을 반환한다. 카테고리별 디폴트 + 오버라이드 적용.</summary>
@@ -163,18 +204,32 @@ namespace Tjdtjq5.AddrX.Editor
             UnityEditor.EditorUtility.SetDirty(this);
         }
 
-        /// <summary>그룹이 원격인지 확인한다. _remoteGroups에 있으면 원격.</summary>
-        public bool IsGroupRemote(string groupName)
+        /// <summary>
+        /// 1뎁스 폴더가 원격인지 확인한다.
+        /// ⚠인자는 <b>그룹명이 아니라 1뎁스 폴더명</b>이다(<see cref="GetRootFolder"/>).
+        /// _groupDepth > 1 이면 그룹명 ≠ 폴더명이므로 <see cref="GetGroupName"/> 결과를 넘기면 안 된다.
+        /// </summary>
+        public bool IsRemoteFolder(string folderName)
         {
-            return _remoteGroups.Exists(g => g.groupName == groupName);
+            return _remoteFolders.Exists(f => f.folderName == folderName);
         }
 
-        /// <summary>그룹의 원격 여부를 설정한다.</summary>
-        public void SetGroupRemote(string groupName, bool isRemote)
+        /// <summary>
+        /// 그룹 입도를 설정한다. 저장만 하며, 기존 엔트리의 재배치는
+        /// 명시적 전체 동기화(Setup 탭)에서 이뤄진다 — 라벨/원격 설정과 동일한 규약.
+        /// </summary>
+        public void SetGroupDepth(int depth)
         {
-            _remoteGroups.RemoveAll(g => g.groupName == groupName);
+            _groupDepth = Math.Max(1, depth);
+            UnityEditor.EditorUtility.SetDirty(this);
+        }
+
+        /// <summary>1뎁스 폴더의 원격 여부를 설정한다.</summary>
+        public void SetRemoteFolder(string folderName, bool isRemote)
+        {
+            _remoteFolders.RemoveAll(f => f.folderName == folderName);
             if (isRemote)
-                _remoteGroups.Add(new RemoteGroupEntry { groupName = groupName });
+                _remoteFolders.Add(new RemoteFolderEntry { folderName = folderName });
             UnityEditor.EditorUtility.SetDirty(this);
         }
 
