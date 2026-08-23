@@ -206,7 +206,14 @@ namespace Tjdtjq5.AddrX
                 _prefabCache[key] = entry;
             }
 
-            var handle = await entry.LoadTask.AsUniTask();
+            // 캐시 히트 fast-path — Task→UniTask 변환은 완료된 Task라도 continuation을 SynchronizationContext에
+            // Post하므로 호출당 1프레임을 먹는다(순차 스폰 루프 = 셀당 1프레임 "드르륵"). 핸들이 이미 있거나
+            // 로드 Task가 끝나 있으면 await 없이 반환해 같은 프레임에 N개를 만들 수 있게 한다.
+            var handle = entry.Handle;
+            if (handle == null)
+                handle = entry.LoadTask.Status == TaskStatus.RanToCompletion
+                    ? entry.LoadTask.Result
+                    : await entry.LoadTask.AsUniTask();
             if (handle == null || !handle.IsReady)
             {
                 _prefabCache.Remove(key);   // 실패 → 다음 시도 재로드

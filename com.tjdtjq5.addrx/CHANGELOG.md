@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.1] - 2026-08-23
+
+### Fixed — 캐시 히트 `InstantiateAsync`가 호출당 1프레임을 먹던 문제
+
+`GetOrLoadPrefabAsync`가 프리팹이 이미 캐시돼 있어도 `entry.LoadTask.AsUniTask()`를 거쳤다. UniTask의
+`Task→UniTask` 변환은 완료된 Task라도 continuation을 SynchronizationContext에 Post하므로 캐시 히트도
+다음 프레임에 완료됐고, 순차 `await InstantiateAsync` 루프는 N개 = N프레임("드르륵" 스폰)이 됐다.
+
+- 캐시 엔트리에 핸들이 있거나 로드 Task가 `RanToCompletion`이면 `await` 없이 동기 반환.
+- 첫 로드(번들)는 종전대로 비동기. 실패 시 캐시 제거·재시도 경로 불변.
+
 ## [2.0.0] - 2026-08-05
 
 ### Breaking Changes — 원격 판정의 식별자를 "그룹"에서 "1뎁스 폴더"로 정정
