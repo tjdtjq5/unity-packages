@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.0.2] - 2026-09-07
+
+### Fixed — 자동 등록 해제가 파일명만 같은 다른 에셋의 엔트리를 지우던 문제
+
+`AddrXAutoRegister.RemoveEntry`는 삭제된 경로의 GUID를 먼저 찾지만, 삭제·이동된 경로는 이미
+AssetDatabase에서 사라져 `AssetPathToGUID`가 항상 빈 문자열을 낸다. 그래서 매번 주소 기반 폴백으로
+떨어졌고, 폴백은 `GetAddress(path)`(= 1뎁스 폴더 + 파일명)가 같은 엔트리를 실물 생존 여부와 무관하게
+지웠다. 빈 폴더 `Assets/Addressables/Common/SpriteAtlas/Character/Enemy` 하나를 지우자 같은 주소
+`Common/Enemy`를 쓰던 `Enemy.prefab`의 엔트리가 함께 사라져, 런타임에
+`InvalidKeyException: No Location found for Key=...`가 났다.
+
+- 폴백 매칭에 "실물이 사라진 엔트리"라는 조건을 추가. 같은 주소에 죽은 엔트리와 살아있는 엔트리가
+  공존해도 죽은 쪽만 정확히 고른다.
+- 정상적인 해제(진짜 삭제된 에셋의 엔트리 제거)는 종전대로 동작.
+
 ## [2.0.1] - 2026-08-23
 
 ### Fixed — 캐시 히트 `InstantiateAsync`가 호출당 1프레임을 먹던 문제

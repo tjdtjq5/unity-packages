@@ -121,7 +121,11 @@ namespace Tjdtjq5.AddrX.Editor
             var group = settings.FindGroup(groupName);
             if (group == null) return;
 
-            var match = group.entries.FirstOrDefault(e => e.address == address);
+            // 주소만 보고 지우면, 삭제된 파일과 파일명이 같을 뿐인 살아있는 다른 에셋의
+            // 엔트리가 날아간다(빈 폴더 .../Character/Enemy 삭제가 Enemy.prefab 의
+            // Common/Enemy 를 지운 사고). 실물이 사라진 엔트리만 고른다.
+            var match = group.entries.FirstOrDefault(e =>
+                e.address == address && string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(e.guid)));
             if (match != null)
                 settings.RemoveAssetEntry(match.guid);
         }

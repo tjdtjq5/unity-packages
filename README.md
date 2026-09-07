@@ -152,7 +152,7 @@ Unity Gaming Services CLI 래핑 에디터 윈도우 (`Tools > UGS Manager` 또�
 
 ---
 
-### AddrX `v2.0.1`
+### AddrX `v2.0.2`
 
 Unity Addressables 안전 래퍼 — SafeHandle 기반 자동 해제, 누수 감지, 에디터 분석 도구
 
@@ -169,7 +169,7 @@ Unity Addressables 안전 래퍼 — SafeHandle 기반 자동 해제, 누수 감
 | AddrX Manager | Setup / Tracker / Analysis 3탭 에디터 윈도우 (`Alt+Shift+A`) |
 
 ```json
-"com.tjdtjq5.addrx": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.addrx#addrx/v2.0.1"
+"com.tjdtjq5.addrx": "https://github.com/tjdtjq5/unity-packages.git?path=com.tjdtjq5.addrx#addrx/v2.0.2"
 ```
 
 > 의존: `com.unity.addressables >= 2.2.2` (v1.0.0에서 editor-toolkit 의존 제거됨)
