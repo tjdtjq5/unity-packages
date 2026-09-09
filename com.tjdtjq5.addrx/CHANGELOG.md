@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.1.0] - 2026-09-09
+
+### Added — InstantiateAsync 계열에 CancellationToken
+
+`InstantiateAsync` 8개 오버로드와 내부 `CreateInstanceAsync`가 `CancellationToken ct = default`를
+받는다. 기존 호출부는 그대로 컴파일된다.
+
+취소는 **대기 지점에서만** 관측된다 — 로드 자체는 끊지 않는다. 두 가지 이유다.
+
+- Addressables에 로드 취소 API가 없다. `Release`뿐이고 중도 `Release`는 안전하지 않다.
+- 프리팹 로드는 `_prefabCache`로 키당 1개를 공유한다. 한 호출자의 취소로 `LoadTask`를 끊으면
+  같은 키를 기다리던 다른 호출자까지 죽는다.
+
+따라서 이 API가 주는 보장은 **"취소된 호출자에게는 인스턴스를 만들어 주지 않는다"**이고,
+호출자는 `OperationCanceledException`을 받는다. 로드 대기 중 취소가 확인되면
+`GetOrLoadPrefabAsync`가 올린 `Live` 참조를 되돌린 뒤 던진다.
+
+동기(소비처 사례): 서버 왕복을 기다리는 팝업이 파괴됐는데 그 사이 시작된 프리팹 로드가 완료돼,
+재개된 continuation이 파괴된 MonoBehaviour의 `destroyCancellationToken`을 읽어
+`MissingReferenceException`을 냈다. 소비처는 `ct`를 넘기고 있었지만 래퍼가 진입 시 1회만 검사하고
+AddrX로 전달하지 않아 무력했다.
+
 ## [2.0.2] - 2026-09-07
 
 ### Fixed — 자동 등록 해제가 파일명만 같은 다른 에셋의 엔트리를 지우던 문제

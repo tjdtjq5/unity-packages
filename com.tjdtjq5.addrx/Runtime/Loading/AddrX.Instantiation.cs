@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -48,25 +49,25 @@ namespace Tjdtjq5.AddrX
 
         /// <summary>키로 프리팹을 로드해 인스턴스화한다. 반환 핸들 Dispose 시 Instantiator.Destroy로 파괴/회수.</summary>
         public static async UniTask<SafeHandle<GameObject>> InstantiateAsync(
-            object key, Transform parent = null, bool inWorldSpace = false)
+            object key, Transform parent = null, bool inWorldSpace = false, CancellationToken ct = default)
         {
-            var go = await CreateInstanceAsync(key, parent, inWorldSpace);
+            var go = await CreateInstanceAsync(key, parent, inWorldSpace, ct);
             return go == null ? null : WrapInstance<GameObject>(go, key);
         }
 
         /// <summary>키로 인스턴스화하고 컴포넌트 T로 반환한다.</summary>
         public static async UniTask<SafeHandle<T>> InstantiateAsync<T>(
-            object key, Transform parent = null, bool inWorldSpace = false)
+            object key, Transform parent = null, bool inWorldSpace = false, CancellationToken ct = default)
         {
-            var go = await CreateInstanceAsync(key, parent, inWorldSpace);
+            var go = await CreateInstanceAsync(key, parent, inWorldSpace, ct);
             return go == null ? null : WrapInstance<T>(go, key);
         }
 
         /// <summary>키로 인스턴스화 후 위치를 설정한다.</summary>
         public static async UniTask<SafeHandle<GameObject>> InstantiateAsync(
-            object key, Vector3 position, Transform parent = null)
+            object key, Vector3 position, Transform parent = null, CancellationToken ct = default)
         {
-            var go = await CreateInstanceAsync(key, parent, false);
+            var go = await CreateInstanceAsync(key, parent, false, ct);
             if (go == null) return null;
             go.transform.position = position;
             return WrapInstance<GameObject>(go, key);
@@ -74,9 +75,9 @@ namespace Tjdtjq5.AddrX
 
         /// <summary>키로 인스턴스화 후 위치를 설정하고 컴포넌트 T로 반환한다.</summary>
         public static async UniTask<SafeHandle<T>> InstantiateAsync<T>(
-            object key, Vector3 position, Transform parent = null)
+            object key, Vector3 position, Transform parent = null, CancellationToken ct = default)
         {
-            var go = await CreateInstanceAsync(key, parent, false);
+            var go = await CreateInstanceAsync(key, parent, false, ct);
             if (go == null) return null;
             go.transform.position = position;
             return WrapInstance<T>(go, key);
@@ -87,20 +88,20 @@ namespace Tjdtjq5.AddrX
         // ════════════════════════════════════════
 
         public static UniTask<SafeHandle<GameObject>> InstantiateAsync(
-            AssetReference reference, Transform parent = null, bool inWorldSpace = false)
-            => InstantiateAsync(ResolveKey(reference), parent, inWorldSpace);
+            AssetReference reference, Transform parent = null, bool inWorldSpace = false, CancellationToken ct = default)
+            => InstantiateAsync(ResolveKey(reference), parent, inWorldSpace, ct);
 
         public static UniTask<SafeHandle<T>> InstantiateAsync<T>(
-            AssetReference reference, Transform parent = null, bool inWorldSpace = false)
-            => InstantiateAsync<T>(ResolveKey(reference), parent, inWorldSpace);
+            AssetReference reference, Transform parent = null, bool inWorldSpace = false, CancellationToken ct = default)
+            => InstantiateAsync<T>(ResolveKey(reference), parent, inWorldSpace, ct);
 
         public static UniTask<SafeHandle<GameObject>> InstantiateAsync(
-            AssetReference reference, Vector3 position, Transform parent = null)
-            => InstantiateAsync(ResolveKey(reference), position, parent);
+            AssetReference reference, Vector3 position, Transform parent = null, CancellationToken ct = default)
+            => InstantiateAsync(ResolveKey(reference), position, parent, ct);
 
         public static UniTask<SafeHandle<T>> InstantiateAsync<T>(
-            AssetReference reference, Vector3 position, Transform parent = null)
-            => InstantiateAsync<T>(ResolveKey(reference), position, parent);
+            AssetReference reference, Vector3 position, Transform parent = null, CancellationToken ct = default)
+            => InstantiateAsync<T>(ResolveKey(reference), position, parent, ct);
 
         // ════════════════════════════════════════
         //  Destroy / Release
@@ -148,12 +149,31 @@ namespace Tjdtjq5.AddrX
             return reference.RuntimeKey;
         }
 
-        static async UniTask<GameObject> CreateInstanceAsync(object key, Transform parent, bool inWorldSpace)
+        /// <summary>
+        /// <paramref name="ct"/> 는 <b>대기 지점</b>에서만 관측된다 — 로드 자체는 끊지 않는다.
+        /// 이유가 둘이다. (1) Addressables 에 로드 취소 API 가 없다(Release 뿐이고 중도 Release 는
+        /// 안전하지 않다). (2) 프리팹 로드는 <see cref="_prefabCache"/> 로 키당 1개를 공유하므로,
+        /// 한 호출자의 취소로 <c>LoadTask</c> 를 끊으면 같은 키를 기다리던 다른 호출자까지 죽는다.
+        /// 따라서 얻는 보장은 "취소된 호출자에게는 인스턴스를 만들어 주지 않는다"이며, 호출자는
+        /// <see cref="OperationCanceledException"/> 을 받는다.
+        /// </summary>
+        static async UniTask<GameObject> CreateInstanceAsync(
+            object key, Transform parent, bool inWorldSpace, CancellationToken ct = default)
         {
+            ct.ThrowIfCancellationRequested();
+
             await EnsureInitialized();
 
             var prefab = await GetOrLoadPrefabAsync(key);
             if (prefab == null) return null;
+
+            // 로드를 기다리는 사이 호출자가 사라졌다(팝업 파괴 등) — 만들기 전에 끊는다.
+            // GetOrLoadPrefabAsync 가 이미 Live 를 올렸으므로 아래 null 분기와 같은 방식으로 되돌린다.
+            if (ct.IsCancellationRequested)
+            {
+                if (_prefabCache.TryGetValue(key, out var cancelled) && cancelled.Live > 0) cancelled.Live--;
+                throw new OperationCanceledException(ct);
+            }
 
             var go = _instantiator.Instantiate(prefab, parent, inWorldSpace);
             if (go == null)
